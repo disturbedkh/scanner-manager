@@ -1,0 +1,87 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "beartracker-885-scanner-manager"
+version = "0.9.0a1"
+description = "Desktop GUI for managing Uniden BearTracker 885 HPD files, ZIP/coverage simulation, RadioReference imports, and Uniden Sentinel/Updater integration."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+authors = [
+    { name = "Scanner Manager contributors" },
+]
+keywords = [
+    "uniden",
+    "beartracker",
+    "bt885",
+    "scanner",
+    "radioreference",
+    "hpd",
+    "scanning",
+    "ham-radio",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Win32 (MS Windows)",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Communications :: Ham Radio",
+    "Topic :: Utilities",
+]
+dependencies = []
+
+[project.optional-dependencies]
+radioreference = ["zeep>=4.2", "keyring>=24.0"]
+map = ["tkintermapview>=1.29"]
+donate-qr = ["qrcode>=7.4"]
+full = [
+    "zeep>=4.2",
+    "keyring>=24.0",
+    "tkintermapview>=1.29",
+    "qrcode>=7.4",
+]
+
+[project.urls]
+Homepage = "https://github.com/disturbedkh/scanner-manager"
+Wiki = "https://github.com/disturbedkh/scanner-manager/wiki"
+Issues = "https://github.com/disturbedkh/scanner-manager/issues"
+Changelog = "https://github.com/disturbedkh/scanner-manager/blob/main/CHANGELOG.md"
+Donate = "https://paypal.me/gvillescanner"
+
+[project.scripts]
+scanner-manager = "scanner_manager:main"
+
+[tool.setuptools]
+py-modules = [
+    "scanner_manager",
+    "metastore",
+    "rr_api",
+    "sdcard",
+    "uniden_tools",
+]
+
+[tool.setuptools.package-data]
+"*" = ["data/*.json"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "I"]
+ignore = [
+    "E501",
+    "E402",
+    "E741",
+    "B008",
+]

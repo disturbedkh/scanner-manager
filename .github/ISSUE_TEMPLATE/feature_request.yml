@@ -1,0 +1,38 @@
+name: Feature request
+description: Suggest an enhancement or new capability.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: |
+        Please describe the scenario where you'd want this feature.
+        "It would be nice if..." is fine; "I wanted to do X but
+        couldn't because..." is better.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you like to see?
+      description: Sketch the UX or API you have in mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered
+      description: Other tools, workarounds, or designs you rejected.
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: I'm willing to contribute a PR for this.
+          required: false
+        - label: I've checked the wiki roadmap and existing issues.
+          required: true

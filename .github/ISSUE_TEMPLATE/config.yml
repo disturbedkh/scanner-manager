@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Wiki
+    url: https://github.com/disturbedkh/scanner-manager/wiki
+    about: Tutorials, feature tours, architecture notes.
+  - name: Security issues
+    url: https://github.com/disturbedkh/scanner-manager/security/advisories/new
+    about: Report a vulnerability privately.

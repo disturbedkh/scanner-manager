@@ -1,0 +1,43 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.idea/
+.vscode/
+*.backup_*
+
+# Reverse-engineering scratch space. Developer-only (scripts/re_unpack.ps1
+# produces decompiled Uniden/RR assemblies into this tree). Never ship.
+_re/
+
+# Vendored Uniden installers. These are Uniden's property; we do NOT
+# redistribute them. The app downloads them from Uniden's CDN at runtime
+# using the manifest in data/uniden_installers.json (with SHA-256
+# verification). Developers may keep a local copy here for offline work;
+# git will never see it.
+BCDx36HP_Sentinel_Version_*/
+BT885_UpdateManager_V*/
+
+# User state / per-install runtime files. Kept out of the repo so that
+# a clean clone has a predictable starting state and user-specific ZIP
+# caches or session backups aren't accidentally committed.
+scanner_manager.meta.json
+scanner_manager.session.bak
+*.session.bak
+app_settings.json
+zip_county_map.json
+
+# Build outputs.
+dist/
+build/
+*.spec.bak
+
+# Crash logs (written by the global exception hook).
+logs/
+crash-*.log

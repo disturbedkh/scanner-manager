@@ -1,0 +1,92 @@
+name: Bug report
+description: Something broke. Help us reproduce.
+labels: ["bug", "alpha"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug! Please fill in as much as you can.
+        A crash log or a screenshot is worth a thousand words.
+
+  - type: input
+    id: app-version
+    attributes:
+      label: Scanner Manager version
+      description: See Help -> About. Or the window title.
+      placeholder: "e.g. 0.9.0a1"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS / Python
+      description: Windows + Python version, or Linux + distro.
+      placeholder: "e.g. Windows 11 23H2 / Python 3.12.4"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: distribution
+    attributes:
+      label: How did you install?
+      options:
+        - Windows one-file EXE (GitHub Releases)
+        - "pip install from source"
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: scanner-model
+    attributes:
+      label: Scanner model + firmware
+      description: If the bug involves writing/reading the SD card.
+      placeholder: "e.g. BearTracker 885 fw 1.07.16"
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the actual behavior you observed.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Please list the exact clicks / inputs.
+      placeholder: |
+        1. Load SD card at "E:\BCDx36HP"
+        2. Enable location filter with ZIP 32605
+        3. Click ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Crash log or console output
+      description: |
+        If the app crashed, attach the log from
+        %LOCALAPPDATA%/scanner-manager/logs/crash-*.log.
+        Paste tracebacks or screenshots here.
+      render: shell
+
+  - type: checkboxes
+    id: backed-up
+    attributes:
+      label: Pre-flight
+      options:
+        - label: I have a backup of my SD card (if the bug involves writing the card).
+          required: false
+        - label: I have searched existing issues and this isn't a duplicate.
+          required: true
