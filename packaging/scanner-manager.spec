@@ -1,14 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
 #
-# PyInstaller spec for Scanner Manager.
+# PyInstaller spec for Scanner Manager - cross-platform.
 #
 # Build with (from repo root):
 #   pyinstaller packaging/scanner-manager.spec --noconfirm
 #
-# This produces dist/ScannerManager.exe on Windows. A matching release
-# workflow (.github/workflows/release.yml) runs this on every v* tag
-# and attaches the EXE plus its SHA-256 to the GitHub Release.
-"""PyInstaller spec for the Scanner Manager one-file EXE build."""
+# Produces:
+#   Windows : dist/ScannerManager.exe          (one-file, windowed)
+#   macOS   : dist/ScannerManager.app          (.app bundle)
+#             + dist/ScannerManager             (matching unix binary)
+#   Linux   : dist/ScannerManager              (one-file, windowed)
+#
+# A release workflow (.github/workflows/release.yml) runs this spec on
+# windows-latest, macos-latest, and ubuntu-latest and attaches each
+# platform's artifact to the GitHub Release.
+"""PyInstaller spec for the Scanner Manager one-file build."""
 from __future__ import annotations
 
 import os
@@ -20,7 +26,23 @@ from pathlib import Path
 # instead (the build command is always run from the repo root).
 REPO_ROOT = Path(os.getcwd()).resolve()
 ENTRY = str(REPO_ROOT / "scanner_manager.py")
-ICON_PATH = REPO_ROOT / "packaging" / "icon.ico"
+
+IS_WINDOWS = sys.platform == "win32"
+IS_MACOS = sys.platform == "darwin"
+IS_LINUX = not IS_WINDOWS and not IS_MACOS
+
+# Icons:
+#  * Windows prefers .ico (multi-resolution)
+#  * macOS needs .icns for .app bundles
+#  * Linux accepts .ico/.png but PyInstaller ignores it for the binary
+ICO_PATH = REPO_ROOT / "packaging" / "icon.ico"
+ICNS_PATH = REPO_ROOT / "packaging" / "icon.icns"
+if IS_MACOS and ICNS_PATH.exists():
+    ICON: str | None = str(ICNS_PATH)
+elif ICO_PATH.exists():
+    ICON = str(ICO_PATH)
+else:
+    ICON = None
 
 # Files that must be bundled into the EXE so runtime lookups work.
 datas = [
@@ -90,11 +112,42 @@ exe = EXE(
     upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
+    # windowed=True hides the console on Windows and suppresses stdout
+    # attachment on macOS. On Linux it's effectively a no-op - the
+    # binary will still produce output if launched from a terminal.
     console=False,
     windowed=True,
     disable_windowed_traceback=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(ICON_PATH) if ICON_PATH.exists() else None,
+    icon=ICON,
 )
+
+# macOS-specific .app bundle. On Windows / Linux the EXE above is the
+# final artifact; macOS expects a ``.app`` directory so Finder can show
+# the icon and double-click handlers work correctly.
+if IS_MACOS:
+    app = BUNDLE(
+        exe,
+        name="ScannerManager.app",
+        icon=ICON,
+        bundle_identifier="org.disturbedkh.scanner-manager",
+        info_plist={
+            "CFBundleName": "Scanner Manager",
+            "CFBundleDisplayName": "Scanner Manager",
+            "CFBundleShortVersionString": os.environ.get(
+                "SCANNER_MANAGER_VERSION", "0.9.0a2"
+            ),
+            "CFBundleVersion": os.environ.get(
+                "SCANNER_MANAGER_VERSION", "0.9.0a2"
+            ),
+            "NSHighResolutionCapable": True,
+            # We read removable SD cards; declare the usage description
+            # so Finder prompts nicely on recent macOS versions.
+            "NSRemovableVolumesUsageDescription": (
+                "Scanner Manager reads and writes HPD configuration "
+                "files on your scanner's SD card."
+            ),
+        },
+    )

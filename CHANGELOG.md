@@ -6,6 +6,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.0a2] - 2026-04-24
+
+Cross-platform alpha. Scanner Manager now builds and runs on Windows,
+macOS, and Linux. The Uniden vendor tools (Sentinel, BT885 Update
+Manager) remain Windows-only because Uniden doesn't publish macOS /
+Linux builds of them; the Uniden Tools panel now shows a clear
+"Windows only" notice on other platforms instead of appearing broken.
+
+### Added
+
+- **macOS and Linux builds.** Tag-triggered release workflow now
+  matrix-builds on `windows-latest`, `macos-latest`, and
+  `ubuntu-latest`, attaching `ScannerManager-windows-x64.zip`,
+  `ScannerManager-macos.tar.gz`, and `ScannerManager-linux-x64.tar.gz`
+  (plus per-file SHA-256 sidecars) to every GitHub Release.
+- **macOS `.app` bundle.** PyInstaller spec now emits a proper
+  `ScannerManager.app` with `Info.plist` (display name, version,
+  removable-volume usage description). Bundle identifier:
+  `org.disturbedkh.scanner-manager`.
+- **Cross-platform file-manager opener.** "Open Data Folder" now
+  uses `os.startfile` on Windows, `open` on macOS, and `xdg-open`
+  on Linux.
+- **CI smoke-import check.** CI now asserts every top-level module
+  imports cleanly on all three OSes before running the test matrix.
+
+### Changed
+
+- **PyInstaller spec is single-source.** One `packaging/scanner-manager.spec`
+  now branches on `sys.platform` to produce a Windows EXE, a macOS
+  `.app`, or a Linux binary. Icon selection prefers `icon.icns` on
+  macOS when present, else falls back to `icon.ico`.
+- **Uniden Tools detection is OS-aware.** `_candidate_exe_paths()`
+  returns an empty list on non-Windows (truthfully, there's nowhere
+  real to look) and normalizes path separators so the unit tests
+  exercise the detection code on Linux CI runners too.
+- **PyInstaller-aware state dir.** When running from a frozen bundle,
+  `app_settings.json` / MetaStore / `.session.bak` live next to the
+  binary instead of inside `_MEIPASS` (which is wiped on exit).
+- **Bundled resource lookup.** Added `bundled_resources_dir()` so
+  `data/uniden_installers.json` and `data/zip_county_map_sample.json`
+  are read from `_MEIPASS` when frozen and from the checkout dir
+  otherwise.
+- **CI matrix extended to macOS.** `.github/workflows/ci.yml` now
+  runs on `macos-latest` (py3.11 + py3.12) alongside Windows and
+  Ubuntu.
+
+### Fixed
+
+- **`test_detect_picks_up_installed_exe` was red on Ubuntu CI.** Root
+  cause was hard-coded backslash separators in the Uniden installer
+  relpaths plus `%VAR%` env expansion that only works on Windows.
+  Detection now normalizes separators and reads env vars directly,
+  so the same test passes on all three OSes.
+
 ## [0.9.0a1] - 2026-04-19
 
 First public alpha. The core editing, simulation, and RadioReference

@@ -13,8 +13,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest]
+        os: [windows-latest, ubuntu-latest, macos-latest]
         python-version: ["3.9", "3.11", "3.12"]
+        exclude:
+          # macOS 14+ runners dropped Python 3.9 wheels for tkinter.
+          # Only test 3.11 / 3.12 on macOS to keep the job matrix lean
+          # and avoid a flaky setup-python lookup.
+          - os: macos-latest
+            python-version: "3.9"
 
     steps:
       - name: Check out
@@ -46,6 +52,16 @@ jobs:
         if: runner.os == 'Windows'
         run: pytest -x --maxfail=3
 
+      - name: Run tests (macOS)
+        if: runner.os == 'macOS'
+        run: pytest -x --maxfail=3
+
       - name: Run tests (Linux, headless)
         if: runner.os == 'Linux'
         run: xvfb-run -a pytest -x --maxfail=3
+
+      - name: Smoke-test module import
+        shell: bash
+        run: |
+          python -c "import scanner_manager; print('import ok:', scanner_manager.APP_VERSION)"
+          python -c "import sdcard, metastore, uniden_tools, rr_api; print('all modules import cleanly')"

@@ -84,12 +84,48 @@ def get_app_version() -> str:
         try:
             return version("beartracker-885-scanner-manager")
         except PackageNotFoundError:
-            return "0.9.0a1-dev"
+            return "0.9.0a2-dev"
     except Exception:
-        return "0.9.0a1-dev"
+        return "0.9.0a2-dev"
 
 
 APP_VERSION = get_app_version()
+
+IS_WINDOWS = sys.platform == "win32"
+IS_MACOS = sys.platform == "darwin"
+IS_LINUX = sys.platform.startswith("linux")
+
+
+def bundled_resources_dir() -> Path:
+    """Return the dir that holds read-only assets (``data/...``) at runtime.
+
+    When running from a PyInstaller one-file EXE, this is ``_MEIPASS``
+    (the temp extraction dir). When running from source, it's the dir
+    containing ``scanner_manager.py``.
+    """
+    mei = getattr(sys, "_MEIPASS", None)
+    if mei:
+        return Path(mei)
+    return Path(__file__).resolve().parent
+
+
+def open_in_file_manager(path: str) -> None:
+    """Open ``path`` in the host OS's file manager.
+
+    Wraps the three platform idioms (``os.startfile`` on Windows,
+    ``open`` on macOS, ``xdg-open`` on Linux/BSD) so the caller can
+    just pass a path without a platform check. Raises the underlying
+    exception on failure so callers can surface a meaningful error.
+    """
+    if IS_WINDOWS:
+        os.startfile(path)  # type: ignore[attr-defined]
+    elif IS_MACOS:
+        import subprocess as _sp
+        _sp.run(["open", path], check=False)
+    else:
+        import subprocess as _sp
+        _sp.run(["xdg-open", path], check=False)
+
 
 try:
     import rr_api
@@ -1320,15 +1356,25 @@ class ZipCountyLookup:
     }
     """
 
-    def __init__(self, script_dir: Path):
+    def __init__(
+        self,
+        script_dir: Path,
+        *,
+        bundled_dir: Optional[Path] = None,
+    ):
         self.by_zip: Dict[str, List[Dict[str, Any]]] = {}
         self.script_dir = script_dir
-        self._load(script_dir)
+        self.bundled_dir = bundled_dir or script_dir
+        self._load(script_dir, self.bundled_dir)
 
-    def _load(self, script_dir: Path):
+    def _load(self, script_dir: Path, bundled_dir: Path):
+        # Preference order: a user-provided override in the app dir,
+        # then the bundled sample. The bundled dir may differ from the
+        # app dir when running as a PyInstaller frozen EXE.
         candidates = [
             script_dir / "zip_county_map.json",
             script_dir / "data" / "zip_county_map_sample.json",
+            bundled_dir / "data" / "zip_county_map_sample.json",
         ]
         for candidate in candidates:
             if not candidate.exists():
@@ -3013,7 +3059,10 @@ class ScannerManagerApp:
         self.hpd = HpdFile()
         self.config = HpdConfig()
         self.config_loaded = False
-        self.zip_lookup = ZipCountyLookup(Path(__file__).resolve().parent)
+        self.zip_lookup = ZipCountyLookup(
+            Path(__file__).resolve().parent,
+            bundled_dir=bundled_resources_dir(),
+        )
 
         self._selected_entry: Optional[FreqEntry] = None
         self._selected_group: Optional[GroupNode] = None
@@ -3045,7 +3094,16 @@ class ScannerManagerApp:
         self._firmware_zip_loaded = False
         self._firmware_city_table = FirmwareCityTable()
         self._firmware_city_loaded = False
-        self._script_dir = Path(__file__).resolve().parent
+        # Resolve the writable state dir. When running from a PyInstaller
+        # frozen bundle, ``__file__`` is inside ``_MEIPASS`` (a temp dir)
+        # and isn't writable across runs, so we fall back to the dir
+        # containing the EXE itself. That keeps app_settings.json, the
+        # metastore, and session snapshots next to the binary - which is
+        # the convention most Windows users expect.
+        if getattr(sys, "frozen", False):
+            self._script_dir = Path(sys.executable).resolve().parent
+        else:
+            self._script_dir = Path(__file__).resolve().parent
         self._custom_locations = CustomLocationsStore(self._script_dir)
         self._app_settings_path = self._script_dir / "app_settings.json"
         self._app_settings = self._load_app_settings()
@@ -11895,6 +11953,24 @@ class UnidenToolsDialog:
             foreground="#444",
         ).pack(fill=tk.X, pady=(0, 6))
 
+        if not IS_WINDOWS:
+            ttk.Label(
+                frame,
+                text=(
+                    "\u26a0  Uniden Sentinel and the BT885 Update Manager are "
+                    "Windows-only applications. This panel cannot launch or "
+                    "install them on "
+                    f"{'macOS' if IS_MACOS else 'this platform'}. Everything "
+                    "else in Scanner Manager (HPD editing, RadioReference "
+                    "import, ZIP/GPS simulation, workspaces) works here; you "
+                    "just won't be able to drive Uniden's vendor tools from "
+                    "this host. Run Scanner Manager on Windows to use them."
+                ),
+                wraplength=780,
+                justify=tk.LEFT,
+                foreground="#a33",
+            ).pack(fill=tk.X, pady=(0, 6))
+
         columns = ("name", "family", "version", "path")
         self.tree = ttk.Treeview(
             frame, columns=columns, show="headings",
@@ -12086,7 +12162,7 @@ class UnidenToolsDialog:
             )
             return
         try:
-            os.startfile(target)  # type: ignore[attr-defined]
+            open_in_file_manager(target)
         except Exception as exc:
             messagebox.showerror("Open", str(exc), parent=self.top)
 

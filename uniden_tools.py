@@ -72,16 +72,6 @@ class UnidenTool:
 # Well-known locations (Windows only; graceful empty on other OSes)
 # ---------------------------------------------------------------------------
 
-_DEF_PROGRAM_FILES = [
-    r"%ProgramFiles(x86)%",
-    r"%ProgramFiles%",
-]
-
-
-def _expand(path_template: str) -> str:
-    return os.path.expandvars(path_template)
-
-
 _TOOL_CANDIDATES: Dict[str, Dict[str, Any]] = {
     TOOL_BT885: {
         "display_name": "BT885 Update Manager",
@@ -245,12 +235,44 @@ def resolve_installer(
 
 
 def _candidate_exe_paths(rel: str) -> List[str]:
+    """Return Windows Program Files-style candidate paths for ``rel``.
+
+    The Uniden tools we probe for are Windows-only binaries, so on
+    non-Windows hosts we deliberately return ``[]`` (there's nowhere
+    real to look). Tests that want to exercise the Windows detection
+    codepath must run on Windows or mock this function.
+
+    On Windows we expand ``%ProgramFiles(x86)%`` / ``%ProgramFiles%``
+    and also look under ``%SystemDrive%\\Uniden\\...`` for legacy
+    installers. ``rel`` may be given with either forward- or back-
+    slashes; we normalize to the local separator.
+    """
+    # Normalize the relative path so it works on whichever OS is
+    # actually running us (tests on Linux still get sane paths).
+    rel_norm = rel.replace("\\", os.sep).replace("/", os.sep)
+
+    is_windows = sys.platform == "win32"
+    pf_env_names = ("ProgramFiles(x86)", "ProgramFiles")
+
     out: List[str] = []
-    for prefix in _DEF_PROGRAM_FILES:
-        out.append(os.path.join(_expand(prefix), rel))
+    for env_name in pf_env_names:
+        val = os.environ.get(env_name)
+        if val:
+            out.append(os.path.join(val, rel_norm))
+        elif is_windows:
+            # Fall back to %VAR% expansion on real Windows hosts in
+            # case the env var was somehow missed above.
+            expanded = os.path.expandvars(f"%{env_name}%")
+            if expanded and not expanded.startswith("%"):
+                out.append(os.path.join(expanded, rel_norm))
+
     # Some older installers land under %SystemDrive%\Uniden\.
-    system_drive = os.environ.get("SystemDrive", "C:")
-    out.append(os.path.join(system_drive + os.sep, rel))
+    system_drive = os.environ.get("SystemDrive")
+    if system_drive:
+        out.append(os.path.join(system_drive + os.sep, rel_norm))
+    elif is_windows:
+        out.append(os.path.join("C:" + os.sep, rel_norm))
+
     # De-duplicate while preserving order.
     seen: set = set()
     unique: List[str] = []

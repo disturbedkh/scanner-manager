@@ -43,21 +43,39 @@ Screenshots and a feature tour live in the
 
 ## Install
 
-### Option A — Windows one-file EXE (easiest)
+Scanner Manager runs on Windows, macOS, and Linux. The full HPD
+editor, RadioReference import, ZIP/GPS simulation, Workspaces, and
+MetaStore work on every platform. The Uniden vendor tools (Sentinel
+and BT885 Update Manager) are Windows-only — on macOS and Linux the
+app detects this and the Uniden Tools panel shows a Windows-only
+notice. Everything else is unaffected.
 
-1. Download `ScannerManager.exe` from the
-   [latest release](https://github.com/disturbedkh/scanner-manager/releases).
-2. Double-click to run. Windows SmartScreen may warn you because the
-   EXE isn't code-signed; click **More info → Run anyway**.
-3. Verify the download if you like:
-   ```powershell
-   (Get-FileHash -Algorithm SHA256 .\ScannerManager.exe).Hash
-   ```
-   Compare against the matching `.sha256` file attached to the release.
+### Option A — Prebuilt downloads (easiest)
+
+Grab the latest from the
+[Releases page](https://github.com/disturbedkh/scanner-manager/releases):
+
+| OS      | Download                              | Run it               |
+| ------- | ------------------------------------- | -------------------- |
+| Windows | `ScannerManager-windows-x64.zip`      | Unzip, double-click `ScannerManager.exe`. Windows SmartScreen may warn because the EXE isn't code-signed; click **More info → Run anyway**. |
+| macOS   | `ScannerManager-macos.tar.gz`         | Extract, move `ScannerManager.app` to `/Applications`. First launch: right-click → **Open** (unsigned, Gatekeeper will ask once). |
+| Linux   | `ScannerManager-linux-x64.tar.gz`     | Extract, `chmod +x ScannerManager`, run. Tk and glibc 2.31+ required. |
+
+Every asset ships with a matching `.sha256`. Verify if you like:
+
+```powershell
+# Windows
+(Get-FileHash -Algorithm SHA256 .\ScannerManager.exe).Hash
+```
+
+```bash
+# macOS / Linux
+shasum -a 256 ScannerManager-*.tar.gz
+```
 
 ### Option B — from source (any OS)
 
-Requires Python 3.9+ with Tkinter:
+Requires Python 3.9+ with Tkinter.
 
 ```bash
 git clone https://github.com/disturbedkh/scanner-manager.git
@@ -67,8 +85,15 @@ python -m pip install -e .
 scanner-manager
 ```
 
-On Linux you'll need your distro's Tk package (`sudo apt install
-python3-tk` on Debian/Ubuntu).
+Platform notes:
+
+- **Windows**: ships with Tk in the standard Python installer.
+- **macOS**: `python.org` Python or `brew install python-tk@3.12`.
+  The system Python on recent macOS has a stripped Tk; prefer the
+  python.org build.
+- **Linux**: install your distro's Tk package
+  (`sudo apt install python3-tk` on Debian/Ubuntu, `sudo dnf install
+  python3-tkinter` on Fedora).
 
 ## Quickstart
 
