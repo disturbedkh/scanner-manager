@@ -17,7 +17,6 @@ from metastore import (
     OP_DELETE_SYSTEM,
     OP_EDIT_ENTRY,
     OP_EDIT_SYSTEM,
-    OP_SET_AVOID,
     GlobalMetaStore,
     MetaStore,
     entry_id_for,
@@ -113,7 +112,7 @@ def test_metastore_mark_reverted_persists_and_hides_from_later_queries(tmp_path:
     e1 = store.record(
         op=OP_EDIT_ENTRY, target_id="t1", payload={}, txn_id=txn,
     )
-    e2 = store.record(op=OP_SET_AVOID, target_id="t1", payload={})
+    e2 = store.record(op=OP_EDIT_ENTRY, target_id="t1", payload={})
     store.record(op=OP_EDIT_ENTRY, target_id="t2", payload={})
 
     laters = store.later_active_events_on(e1.event_id)
@@ -314,12 +313,18 @@ _BOUND_INSTANCE_METHODS = (
     "_find_entry_by_id", "_find_group_by_key", "_find_system_by_key",
     "_log_event", "_new_txn_id",
     "_apply_entry_snapshot", "_apply_group_snapshot",
-    "_do_edit_entry", "_do_set_avoid", "_do_set_service",
+    "_do_edit_entry", "_do_set_service",
     "_do_add_cfreq", "_do_add_cgroup",
     "_log_add_entry", "_log_add_group",
     "_do_edit_system", "_do_delete_system",
     "_capture_baselines",
     "revert_event",
+    "_replay_events_after_update",
+    "_replay_single_event",
+    "_find_entry_after_update",
+    "_find_group_after_update",
+    "_find_system_after_update",
+    "_find_group_for_reinsert",
 )
 
 
@@ -366,16 +371,19 @@ def test_revert_event_restores_previous_entry_state(headless_app):
     assert any(e.op == "revert" for e in headless_app._meta.events)
 
 
-def test_do_set_avoid_logs_event_and_is_reversible(headless_app):
-    group = headless_app.hpd.systems[0].groups[0]
-    entry = group.entries[0]
-    headless_app._do_set_avoid(entry, "On")
-    assert entry.record.get_field(4, "") == "On"
-
-    ev = [e for e in headless_app._meta.events if e.op == OP_SET_AVOID][-1]
-    ok, _ = headless_app.revert_event(ev)
-    assert ok is True
-    assert entry.record.get_field(4, "") == "Off"
+def test_metastore_skips_legacy_set_avoid_events(headless_app):
+    """Forward-compat: sidecars written by v0.9.0a2 contain ``set_avoid``
+    events the current app no longer understands. The replayer should
+    quietly skip them instead of crashing or counting them as missed."""
+    store = headless_app._meta
+    store.record(
+        op="set_avoid",
+        target_id="entry_that_no_longer_exists",
+        payload={"before": {"avoid": "Off"}, "after": {"avoid": "On"}},
+        summary="legacy avoid toggle",
+    )
+    report = headless_app._replay_events_after_update()
+    assert report["missed"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -401,7 +409,7 @@ def test_mark_events_committed_stamps_only_uncommitted(tmp_path: Path):
     store.mark_events_committed(ts="2026-01-01T00:00:00Z")
     assert e_old.committed_at == "2026-01-01T00:00:00Z"
 
-    e_new = store.record(op=OP_SET_AVOID, target_id="t1", payload={})
+    e_new = store.record(op=OP_EDIT_ENTRY, target_id="t1", payload={})
     n = store.mark_events_committed(ts="2026-02-02T00:00:00Z")
     assert n == 1
     assert e_new.committed_at == "2026-02-02T00:00:00Z"
@@ -426,7 +434,7 @@ def test_committed_flag_persists_across_reload(tmp_path: Path):
 def test_uncommitted_events_returns_only_pending(tmp_path: Path):
     store = _make_bound_store(tmp_path)
     e1 = store.record(op=OP_EDIT_ENTRY, target_id="t1", payload={})
-    e2 = store.record(op=OP_SET_AVOID, target_id="t1", payload={})
+    e2 = store.record(op=OP_EDIT_ENTRY, target_id="t1", payload={})
     store.mark_events_committed(ts="2026-04-04T00:00:00Z")
     e3 = store.record(op=OP_EDIT_ENTRY, target_id="t2", payload={})
 
@@ -603,15 +611,6 @@ def test_do_set_service_log_false_skips_event(headless_app):
     ok = headless_app._do_set_service(entry, 1, log=False)
     assert ok is True
     assert entry.service_type == 1
-    assert len(headless_app._meta.events) == before_events
-
-
-def test_do_set_avoid_log_false_skips_event(headless_app):
-    entry = headless_app.hpd.systems[0].groups[0].entries[0]
-    before_events = len(headless_app._meta.events)
-    ok = headless_app._do_set_avoid(entry, "On", log=False)
-    assert ok is True
-    assert entry.record.get_field(4, "") == "On"
     assert len(headless_app._meta.events) == before_events
 
 

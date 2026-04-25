@@ -1,4 +1,4 @@
-"""SD card identity probing, cloning, and sync engine.
+"""SD card identity probing, cloning, sync, and snapshot engine.
 
 Design (see Feature 1 plan):
 
@@ -35,7 +35,9 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
+import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -637,3 +639,326 @@ def sync_push(
         "%Y-%m-%dT%H:%M:%SZ"
     )
     return report, diffs
+
+
+# ---------------------------------------------------------------------------
+# Snapshot engine (per-profile revert history)
+# ---------------------------------------------------------------------------
+
+SNAPSHOT_DIRNAME = ".snapshots"
+
+# Files we refuse to snapshot (they live inside the workspace but are
+# internal bookkeeping). Snapshotting would recurse into the snapshot
+# dir forever, so we explicitly skip it along with the session snapshot
+# sidecars created by the MetaStore.
+_SNAPSHOT_SKIP_SUFFIXES = (".session.bak",)
+
+
+SNAP_REASON_MANUAL = "manual"
+SNAP_REASON_PRE_SWAP = "pre-swap"
+SNAP_REASON_PRE_RESTORE = "pre-restore"
+SNAP_REASON_AUTO = "auto"
+
+DEFAULT_MAX_SNAPSHOTS = 10
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+@dataclass
+class Snapshot:
+    """In-memory record of one per-profile snapshot.
+
+    Persisted into ``profile["snapshots"]`` inside ``GlobalMetaStore``.
+    The physical payload lives at
+    ``<profile_dir>/<SNAPSHOT_DIRNAME>/<id>/`` as a mirrored subtree.
+    """
+
+    id: str
+    created_at: str
+    reason: str = SNAP_REASON_MANUAL
+    note: str = ""
+    source_root: str = ""
+    file_count: int = 0
+    size_bytes: int = 0
+    sha256: str = ""
+    card_fingerprint: str = ""
+    card_volume_serial: str = ""
+    target_model: str = ""
+    keep: bool = False
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "created_at": self.created_at,
+            "reason": self.reason,
+            "note": self.note,
+            "source_root": self.source_root,
+            "file_count": self.file_count,
+            "size_bytes": self.size_bytes,
+            "sha256": self.sha256,
+            "card_fingerprint": self.card_fingerprint,
+            "card_volume_serial": self.card_volume_serial,
+            "target_model": self.target_model,
+            "keep": bool(self.keep),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "Snapshot":
+        return cls(
+            id=str(data.get("id") or ""),
+            created_at=str(data.get("created_at") or ""),
+            reason=str(data.get("reason") or SNAP_REASON_MANUAL),
+            note=str(data.get("note") or ""),
+            source_root=str(data.get("source_root") or ""),
+            file_count=int(data.get("file_count") or 0),
+            size_bytes=int(data.get("size_bytes") or 0),
+            sha256=str(data.get("sha256") or ""),
+            card_fingerprint=str(data.get("card_fingerprint") or ""),
+            card_volume_serial=str(data.get("card_volume_serial") or ""),
+            target_model=str(data.get("target_model") or ""),
+            keep=bool(data.get("keep") or False),
+        )
+
+
+def snapshot_dir_for(profile_dir: str) -> Path:
+    return Path(profile_dir) / SNAPSHOT_DIRNAME
+
+
+def _iter_snapshottable(root: Path) -> Iterable[Tuple[Path, str]]:
+    """Yield (absolute_path, relpath) for every file under ``root`` that
+    belongs inside a snapshot. Skips the snapshot dir itself and session
+    backup sidecars so snapshots never include stale ``.session.bak``
+    files nor nest snapshots inside snapshots.
+    """
+    for dirpath, dirs, files in os.walk(root):
+        if SNAPSHOT_DIRNAME in dirs:
+            dirs.remove(SNAPSHOT_DIRNAME)
+        for fname in files:
+            if fname.endswith(_SNAPSHOT_SKIP_SUFFIXES):
+                continue
+            fpath = Path(dirpath) / fname
+            try:
+                rel = str(fpath.relative_to(root)).replace("\\", "/")
+            except ValueError:
+                continue
+            yield fpath, rel
+
+
+def _copy_tree(src_paths: Iterable[Tuple[Path, str]], dst: Path) -> Tuple[int, int]:
+    """Copy the given (abs_path, relpath) pairs into ``dst``.
+
+    Returns (file_count, total_size_bytes).
+    """
+    dst.mkdir(parents=True, exist_ok=True)
+    count = 0
+    total = 0
+    for abs_src, rel in src_paths:
+        target = dst / rel
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(abs_src, target)
+            count += 1
+            try:
+                total += abs_src.stat().st_size
+            except OSError:
+                pass
+        except OSError:
+            continue
+    return count, total
+
+
+def _snapshot_tree_fingerprint(root: Path) -> str:
+    """Stable content fingerprint for a snapshot subtree.
+
+    Used to dedupe identical snapshots: iterate in sorted relpath order,
+    fold (relpath, size, sha-first-4MB) into one sha256. Files are read
+    with a 4MB cap so multi-GB workspaces stay cheap.
+    """
+    h = hashlib.sha256()
+    for abs_src, rel in sorted(_iter_snapshottable(root), key=lambda t: t[1]):
+        try:
+            size = abs_src.stat().st_size
+        except OSError:
+            continue
+        h.update(f"{rel}|{size}|".encode("utf-8"))
+        try:
+            h.update(
+                _hash_file(abs_src, max_bytes=4 * 1024 * 1024).encode("ascii")
+            )
+        except OSError:
+            continue
+    return h.hexdigest()
+
+
+def snapshot_workspace(
+    profile_dir: str,
+    *,
+    reason: str = SNAP_REASON_MANUAL,
+    note: str = "",
+    card_identity: Optional[CardIdentity] = None,
+    snap_id: Optional[str] = None,
+) -> Snapshot:
+    """Copy every non-internal file under ``profile_dir`` into a new snapshot.
+
+    The snapshot gets a stable id (uuid hex) so its folder under
+    ``.snapshots/<id>/`` survives renames. Returns the :class:`Snapshot`
+    metadata; the caller is responsible for appending it to the profile
+    record in GlobalMetaStore and persisting.
+    """
+    root = Path(profile_dir)
+    if not root.exists() or not root.is_dir():
+        raise FileNotFoundError(f"Workspace not found: {profile_dir}")
+    sid = snap_id or uuid.uuid4().hex[:12]
+    snap_root = snapshot_dir_for(profile_dir) / sid
+    snap_root.mkdir(parents=True, exist_ok=True)
+    count, total = _copy_tree(_iter_snapshottable(root), snap_root)
+    fingerprint = _snapshot_tree_fingerprint(snap_root)
+    ci = card_identity or CardIdentity()
+    snap = Snapshot(
+        id=sid,
+        created_at=_utc_now_iso(),
+        reason=reason,
+        note=note,
+        source_root=str(root),
+        file_count=count,
+        size_bytes=total,
+        sha256=fingerprint,
+        card_fingerprint=ci.content_fingerprint or "",
+        card_volume_serial=ci.volume_serial or "",
+        target_model=ci.target_model or "",
+        keep=(reason == SNAP_REASON_MANUAL),
+    )
+    return snap
+
+
+def snapshot_payload_root(profile_dir: str, snap_id: str) -> Path:
+    return snapshot_dir_for(profile_dir) / snap_id
+
+
+def restore_snapshot(
+    profile_dir: str,
+    snap_id: str,
+    *,
+    make_pre_restore_snapshot: bool = True,
+) -> Tuple[Snapshot, Optional[Snapshot]]:
+    """Replace the workspace contents with the given snapshot.
+
+    By default we first snapshot the current workspace as
+    ``reason="pre-restore"`` so the user can undo a restore. The returned
+    tuple is ``(restore_marker, pre_restore)`` where the first entry
+    describes the snapshot we restored FROM (suitable for event logging)
+    and the second is the freshly-captured pre-restore snapshot (or
+    ``None`` if skipped).
+    """
+    root = Path(profile_dir)
+    payload = snapshot_payload_root(profile_dir, snap_id)
+    if not payload.exists() or not payload.is_dir():
+        raise FileNotFoundError(f"Snapshot folder missing: {payload}")
+    pre_restore: Optional[Snapshot] = None
+    if make_pre_restore_snapshot:
+        pre_restore = snapshot_workspace(
+            profile_dir,
+            reason=SNAP_REASON_PRE_RESTORE,
+            note=f"Before restoring {snap_id}",
+        )
+
+    for abs_src, _rel in list(_iter_snapshottable(root)):
+        try:
+            abs_src.unlink()
+        except OSError:
+            continue
+    for dirpath, _dirs, _files in os.walk(root, topdown=False):
+        dpath = Path(dirpath)
+        if dpath == root:
+            continue
+        if SNAPSHOT_DIRNAME in dpath.parts:
+            continue
+        try:
+            dpath.rmdir()
+        except OSError:
+            continue
+
+    restored = list(_iter_snapshottable(payload))
+    _copy_tree(restored, root)
+
+    marker = Snapshot(
+        id=snap_id,
+        created_at=_utc_now_iso(),
+        reason="restored",
+        source_root=str(root),
+        file_count=len(restored),
+    )
+    return marker, pre_restore
+
+
+def delete_snapshot_payload(profile_dir: str, snap_id: str) -> bool:
+    """Remove the on-disk payload folder for a snapshot.
+
+    Returns True if anything was removed. Safe to call even if the
+    payload is already gone.
+    """
+    payload = snapshot_payload_root(profile_dir, snap_id)
+    if not payload.exists():
+        return False
+    try:
+        shutil.rmtree(payload, ignore_errors=True)
+        return True
+    except Exception:
+        return False
+
+
+def snapshot_disk_usage(profile_dir: str) -> int:
+    """Total bytes used by all snapshot payloads for the given profile."""
+    root = snapshot_dir_for(profile_dir)
+    if not root.exists():
+        return 0
+    total = 0
+    for dirpath, _dirs, files in os.walk(root):
+        for fname in files:
+            try:
+                total += (Path(dirpath) / fname).stat().st_size
+            except OSError:
+                continue
+    return total
+
+
+def prune_snapshots(
+    snapshots: List[Snapshot],
+    *,
+    max_snapshots: int = DEFAULT_MAX_SNAPSHOTS,
+    keep_manual: bool = True,
+) -> Tuple[List[Snapshot], List[Snapshot]]:
+    """Return ``(kept, removed)`` for the given snapshot list.
+
+    Ordering guarantees:
+      * Manual snapshots (or those with ``keep=True``) are never removed
+        when ``keep_manual`` is True.
+      * Among prunable (auto / pre-swap / pre-restore) snapshots, the
+        oldest go first.
+      * Kept list preserves original ordering.
+    """
+    if max_snapshots <= 0:
+        max_snapshots = 1
+
+    def _is_pinned(s: Snapshot) -> bool:
+        return bool(keep_manual and (s.keep or s.reason == SNAP_REASON_MANUAL))
+
+    pinned = [s for s in snapshots if _is_pinned(s)]
+    prunable = [s for s in snapshots if not _is_pinned(s)]
+
+    allowance = max(0, max_snapshots - len(pinned))
+    prunable_sorted = sorted(prunable, key=lambda s: s.created_at or "")
+    if len(prunable_sorted) > allowance:
+        overflow = len(prunable_sorted) - allowance
+        removed = prunable_sorted[:overflow]
+        keeps = set(id(s) for s in prunable_sorted[overflow:])
+    else:
+        removed = []
+        keeps = set(id(s) for s in prunable_sorted)
+    kept: List[Snapshot] = []
+    for s in snapshots:
+        if _is_pinned(s) or id(s) in keeps:
+            kept.append(s)
+    return kept, removed

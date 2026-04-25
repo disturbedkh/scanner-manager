@@ -56,7 +56,7 @@ so toggling buttons visibly re-ranks the tree.
 Click **Export Effective Scan Set...** to write a CSV/TXT containing:
 
 - System, Group, Entry
-- Service Type and Avoid flag
+- Service Type
 - Frequency / TGID
 - Lat, Lon, Range (mi), Distance (mi)
 

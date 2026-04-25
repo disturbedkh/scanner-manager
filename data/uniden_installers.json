@@ -1,28 +1,28 @@
 {
   "_comment": "Pinned Uniden installer metadata. We do NOT redistribute these binaries; scanner_manager downloads them directly from Uniden's CDN and verifies SHA-256 against this manifest. When Uniden rotates the URL or releases a new installer, update the entry here and bump the manifest_version.",
-  "manifest_version": 1,
+  "manifest_version": 2,
   "tools": {
     "bt885_update_manager": {
       "display_name": "BT885 Update Manager",
       "scanner_family": "BearTracker 885",
       "version": "0.00.05",
-      "download_url": "https://info.uniden.com/twiki/pub/UnidenMan4/BearTracker885UpdateManager/BT885_UpdateManager_V0_00_05.zip",
+      "download_url": "https://info.uniden.com/twiki/pub/UnidenMan4/BearTracker885/BT885_UpdateManager_V0_00_05.zip",
       "archive_type": "zip",
-      "sha256": "",
-      "size_bytes": 0,
+      "sha256": "bedf84f553da39ad2b3b08a145b50be341252ef906f120a9e9e08bff25dd5144",
+      "size_bytes": 51399340,
       "installer_relpath_in_archive": "BT885_UpdateManager_V0_00_05/setup.exe",
-      "vendor_page": "https://info.uniden.com/UnidenMan4/BearTracker885UpdateManager"
+      "vendor_page": "https://info.uniden.com/twiki/bin/view/UnidenMan4/BearTracker885"
     },
     "bcdx36hp_sentinel": {
       "display_name": "BCDx36HP Sentinel",
       "scanner_family": "BCD436HP / BCD536HP / SDS100 / SDS200",
       "version": "3.01.01",
-      "download_url": "https://info.uniden.com/twiki/pub/UnidenMan4/BCD436HPSentinelSoftware/BCDx36HP_Sentinel_Version_3_01_01.zip",
+      "download_url": "https://info.uniden.com/twiki/pub/UnidenMan4/BCD536HP/BCDx36HP_Sentinel_Version_3_01_01.zip",
       "archive_type": "zip",
-      "sha256": "",
-      "size_bytes": 0,
+      "sha256": "9c8cb1397b8aca36f5509b9aa8b78b9237aeb3d560f418f3eb29bf1dae17bdc1",
+      "size_bytes": 45715205,
       "installer_relpath_in_archive": "BCDx36HP_Sentinel_Version_3_01_01/setup.exe",
-      "vendor_page": "https://info.uniden.com/UnidenMan4/BCD436HPSentinelSoftware"
+      "vendor_page": "https://info.uniden.com/twiki/bin/view/Unidenman4/BCDx36HPSentinel"
     }
   }
 }

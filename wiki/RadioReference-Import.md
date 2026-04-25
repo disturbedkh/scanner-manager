@@ -46,25 +46,22 @@ bulk pulls; the HTML scraper is handy for one-off categories.
 4. Tick the rows you want to add or overwrite; leave the rest alone.
 5. **Apply**.
 
-## How the import is logged
+## How the import is recorded
 
-A multi-hundred-entry import would normally produce one MetaStore event
-per added row. Instead, Scanner Manager:
+Instead of logging hundreds of separate edits, the whole import is
+recorded as a **single entry in the Change History**. That means:
 
-1. Enters a MetaStore **batch** so only one sidecar write hits disk.
-2. Performs every add / update / avoid / delete with `log=False` so no
-   per-entry event is recorded.
-3. Records **one composite `OP_IMPORT_APPLY` event** summarizing the
-   entire operation, with enough payload to reverse it later.
-
-Result: imports are fast, produce tiny change-log entries, and one
-**Revert** click in the Changes dialog rolls the whole import back.
+- Imports stay fast and don't bloat the change log.
+- One **Revert** click rolls the entire import back in one go.
+- The RadioReference refresh data you most care about - the rows that
+  were added, updated, or deleted - is captured as a single summary
+  you can undo cleanly.
 
 ## Reconciliation with user edits
 
 When you re-run an import later:
 
-- Your **Avoid** and **Delete** flags are preserved.
+- Your **Delete** flags are preserved.
 - Your **service-type overrides** are preserved.
 - Renames you've made are preserved when RR can still be matched by
   frequency or TGID.
@@ -73,6 +70,20 @@ When you re-run an import later:
 
 See [Architecture](Architecture) for how the event replay logic backs
 this up.
+
+## Encrypted talkgroups
+
+The BearTracker 885 can't decode encrypted audio, so Scanner Manager
+defaults to keeping these out of your HPD:
+
+- **New imports** skip encrypted TGIDs entirely.
+- **Refreshes** of an existing system delete any existing entries that
+  RadioReference has since flagged encrypted. Those deletions are
+  bundled into the same Change History entry as the import, so one
+  Revert click restores everything.
+- **Override:** the import dialog has a "Include encrypted talkgroups
+  (not recommended)" checkbox for power users who want the entries in
+  the tree anyway. The choice is remembered per-system.
 
 ## Troubleshooting
 

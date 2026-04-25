@@ -63,6 +63,10 @@ Grab the latest from the
 
 Every asset ships with a matching `.sha256`. Verify if you like:
 
+Once installed, future updates are one click: open **Help → Check for
+Updates...** from inside the app. No git required. The full flow is
+documented at [Updating](../../wiki/Updating).
+
 ```powershell
 # Windows
 (Get-FileHash -Algorithm SHA256 .\ScannerManager.exe).Hash
@@ -128,7 +132,7 @@ Detailed walkthroughs for every feature are in the
 | [Channel List Management](../../wiki/Channel-List-Management)     | Edit/bulk/delete + reverting changes     |
 | [CityTable](../../wiki/CityTable-and-Custom-Locations)            | Custom locations, patched CityTable      |
 | [Service Types](../../wiki/Scanner-Button-Service-Types)          | Which service types map to which button  |
-| [Alerts & Discovery](../../wiki/Alerts-and-Discovery)             | Alerts and Discovery viewers             |
+| [Alerts](../../wiki/Alerts)                                       | Alerts folder viewer                     |
 | [Architecture](../../wiki/Architecture)                           | MetaStore, batching, revert semantics    |
 | [Troubleshooting](../../wiki/Troubleshooting)                     | Recovering from `.session.bak`           |
 | [Glossary](../../wiki/Glossary)                                   | HPD, TRS, TGID, Service Type, etc.       |

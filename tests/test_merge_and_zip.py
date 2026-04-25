@@ -18,15 +18,14 @@ from scanner_manager import (
     diff_cfreq_with_rr,
     diff_tgid_with_rr,
     discover_backups,
-    discover_log_files,
     entry_matches_bulk_filter,
     entry_passes_button_filter,
     haversine_miles,
+    classify_rr_tg_import_action,
     is_rr_mode_encrypted,
     is_scannable,
     list_backups_for,
     nearest_distance_miles,
-    parse_discovery_file,
     prune_backups,
     prune_backups_detailed,
     rectangle_contains_point,
@@ -116,7 +115,7 @@ def test_reconcile_reapplies_edits_and_reinserts_user_entries(tmp_path: Path):
         for group in system.groups
         for entry in group.entries
     ]
-    assert any(e.name == "Primary Renamed" and e.record.get_field(4) == "On" for e in entries)
+    assert any(e.name == "Primary Renamed" and e.service_type == 8 for e in entries)
     assert any(e.name == "User Added" and e.record.get_field(5) == "460125000" for e in entries)
 
 
@@ -819,6 +818,75 @@ def test_rr_trs_parser_flags_encrypted_modes():
     assert is_rr_mode_encrypted("A") is False
 
 
+def test_rr_import_skips_encrypted_by_default():
+    """New encrypted TGs on a fresh import are skipped unless user opts in."""
+    action = classify_rr_tg_import_action(
+        is_encrypted=True,
+        has_existing=False,
+        has_update_diff=False,
+        encrypted_policy="delete",
+        include_encrypted=False,
+    )
+    assert action == "encrypted"
+
+    action_override = classify_rr_tg_import_action(
+        is_encrypted=True,
+        has_existing=False,
+        has_update_diff=False,
+        encrypted_policy="delete",
+        include_encrypted=True,
+    )
+    assert action_override == "new"
+
+    action_plain = classify_rr_tg_import_action(
+        is_encrypted=False,
+        has_existing=False,
+        has_update_diff=False,
+        encrypted_policy="delete",
+        include_encrypted=False,
+    )
+    assert action_plain == "new"
+
+
+def test_rr_refresh_purges_existing_encrypted():
+    """Existing TGs that are now encrypted on RR get deleted by default."""
+    action = classify_rr_tg_import_action(
+        is_encrypted=True,
+        has_existing=True,
+        has_update_diff=False,
+        encrypted_policy="delete",
+        include_encrypted=False,
+    )
+    assert action == "delete_encrypted"
+
+    action_skip = classify_rr_tg_import_action(
+        is_encrypted=True,
+        has_existing=True,
+        has_update_diff=False,
+        encrypted_policy="skip",
+        include_encrypted=False,
+    )
+    assert action_skip == "same_encrypted"
+
+    action_update = classify_rr_tg_import_action(
+        is_encrypted=False,
+        has_existing=True,
+        has_update_diff=True,
+        encrypted_policy="delete",
+        include_encrypted=False,
+    )
+    assert action_update == "update"
+
+    action_same = classify_rr_tg_import_action(
+        is_encrypted=False,
+        has_existing=True,
+        has_update_diff=False,
+        encrypted_policy="delete",
+        include_encrypted=False,
+    )
+    assert action_same == "same"
+
+
 def test_trs_apply_import_skips_duplicates_and_inherits_geo(tmp_path: Path):
     hpd_path = tmp_path / "trs.hpd"
     hpd_path.write_text(
@@ -938,31 +1006,6 @@ def test_hpd_add_tgroup_and_tgid(tmp_path: Path):
     assert len(group.entries) == 1
     assert group.entries[0].record.get_field(5) == "2217"
     assert hpd.has_changes is True
-
-
-def test_discover_log_files_groups_conventional_and_trunk(tmp_path: Path):
-    root = tmp_path / "discovery"
-    (root / "Conventional").mkdir(parents=True)
-    (root / "Trunk").mkdir(parents=True)
-    (root / "Conventional" / "scan1.dsc").write_text("x", encoding="utf-8")
-    (root / "Trunk" / "session.dsc").write_text("y", encoding="utf-8")
-    groups = discover_log_files(root)
-    assert len(groups["Conventional"]) == 1
-    assert len(groups["Trunk"]) == 1
-
-
-def test_parse_discovery_file_parses_records(tmp_path: Path):
-    p = tmp_path / "test.dsc"
-    p.write_text(
-        "TargetModel\tBCDx36HP\n"
-        "FormatVersion\t1.00\n"
-        "Hit\tFreq=155575000\tMode=FM\tTime=2026-04-19T09:00:00\n"
-        "Hit\tFreq=460050000\tMode=NFM\n",
-        encoding="utf-8",
-    )
-    info = parse_discovery_file(p)
-    assert info["header"]["TargetModel"] == "BCDx36HP"
-    assert info["counts"]["Hit"] == 2
 
 
 def test_hpd_edit_entry_changes_fields(tmp_path: Path):
@@ -1136,31 +1179,20 @@ def test_audit_mode_issue_with_rr_prefers_rr_data(tmp_path: Path):
 
 
 def test_entry_matches_bulk_filter():
-    class FakeRec:
-        def __init__(self, avoid):
-            self._avoid = avoid
-
-        def get_field(self, idx, default=""):
-            if idx == 4:
-                return self._avoid
-            return default
-
     from scanner_manager import FreqEntry
     entry = FreqEntry(
-        record=FakeRec("Off"),  # type: ignore[arg-type]
+        record=None,  # type: ignore[arg-type]
         name="x",
         service_type=7,
         entry_type="C-Freq",
         system_id="1",
     )
-    assert entry_matches_bulk_filter(entry, {"C-Freq"}, None, None, None, None)
-    assert not entry_matches_bulk_filter(entry, {"TGID"}, None, None, None, None)
-    assert entry_matches_bulk_filter(entry, {"C-Freq"}, {7}, None, None, None)
-    assert not entry_matches_bulk_filter(entry, {"C-Freq"}, {2}, None, None, None)
-    assert entry_matches_bulk_filter(entry, {"C-Freq"}, None, None, "1", None)
-    assert not entry_matches_bulk_filter(entry, {"C-Freq"}, None, None, "2", None)
-    assert entry_matches_bulk_filter(entry, {"C-Freq"}, None, None, None, "Off")
-    assert not entry_matches_bulk_filter(entry, {"C-Freq"}, None, None, None, "On")
+    assert entry_matches_bulk_filter(entry, {"C-Freq"}, None, None, None)
+    assert not entry_matches_bulk_filter(entry, {"TGID"}, None, None, None)
+    assert entry_matches_bulk_filter(entry, {"C-Freq"}, {7}, None, None)
+    assert not entry_matches_bulk_filter(entry, {"C-Freq"}, {2}, None, None)
+    assert entry_matches_bulk_filter(entry, {"C-Freq"}, None, None, "1")
+    assert not entry_matches_bulk_filter(entry, {"C-Freq"}, None, None, "2")
 
 
 def test_rectangle_contains_point_and_group_coverage(tmp_path: Path):

@@ -15,15 +15,20 @@ Scanner hobby acronyms relevant to working with Scanner Manager.
 
 ## File formats
 
-- **HPD** - Uniden's configuration file format; the name derives from
-  the `.hpd` file extension on the state-split files. Binary.
-  Contains systems, groups, entries, and metadata.
-- **`hpdb.cfg`** - master HPD file written to the card root.
-  References the per-state `s_*.hpd` files.
-- **`s_*.hpd`** - per-state HPD files; loaded on demand depending on
-  the selected state.
-- **`.meta.json`** - MetaStore sidecar. Never hand-edit.
-- **`.session.bak`** - per-session HPD safety snapshot.
+- **HPD** - Uniden's binary configuration file format (`.hpd`). A
+  single HPD file holds one or more systems, the groups inside them,
+  and every conventional frequency and trunked talkgroup inside those
+  groups. The BearTracker splits these by state.
+- **`hpdb.cfg`** - the master HPD file the scanner loads from the card
+  root. Points at the per-state `s_*.hpd` files.
+- **`s_*.hpd`** - per-state HPD files the scanner loads on demand
+  when you pick a location.
+- **`.meta.json`** - Scanner Manager's change-history sidecar, stored
+  next to each HPD file. It's how **Undo** knows what to reverse.
+  Never hand-edit it.
+- **`.session.bak`** - automatic safety copy of the HPD file written
+  on every save. Used by **Tools -> Restore session snapshot** if a
+  save goes wrong.
 
 ## RadioReference
 

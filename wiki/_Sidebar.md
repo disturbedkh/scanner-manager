@@ -6,6 +6,7 @@
 
 - [Install](Install)
 - [Quickstart](Quickstart)
+- [Updating](Updating)
 
 **Features**
 
@@ -17,7 +18,7 @@
 - [Channel List Management](Channel-List-Management)
 - [CityTable & Custom Locations](CityTable-and-Custom-Locations)
 - [Service Types](Scanner-Button-Service-Types)
-- [Alerts & Discovery](Alerts-and-Discovery)
+- [Alerts](Alerts)
 
 **Reference**
 

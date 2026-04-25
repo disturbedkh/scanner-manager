@@ -152,6 +152,32 @@ def load_installer_manifest(
         return {}
 
 
+class InstallerHashMismatch(ValueError):
+    """Raised by :func:`download_installer` when the downloaded file's
+    SHA-256 does not match the pinned value in the manifest. Carries the
+    computed vs expected hash so the UI can surface both side-by-side.
+    """
+
+    def __init__(
+        self,
+        *,
+        tool_id: str,
+        url: str,
+        expected: str,
+        got: str,
+    ) -> None:
+        self.tool_id = tool_id
+        self.url = url
+        self.expected = expected
+        self.got = got
+        super().__init__(
+            "Downloaded file failed SHA-256 verification. This usually "
+            "means Uniden rotated the installer on their side. Please "
+            "file an issue with the URL and the hash we computed so the "
+            "manifest can be re-pinned."
+        )
+
+
 def sha256_of_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
     """Stream-hash ``path`` and return its lowercase hex SHA-256 digest."""
     h = hashlib.sha256()
@@ -611,13 +637,20 @@ def download_installer(
 
     expected = (descriptor.get("sha256") or "").strip().lower()
     if not verify_installer(partial, expected):
+        got_hash = ""
+        try:
+            got_hash = sha256_of_file(partial)
+        except Exception:
+            got_hash = ""
         try:
             partial.unlink()
         except OSError:
             pass
-        raise ValueError(
-            "Downloaded file failed SHA-256 verification. Refusing to run "
-            "an unverified installer."
+        raise InstallerHashMismatch(
+            tool_id=str(descriptor.get("tool_id") or ""),
+            url=str(descriptor.get("download_url") or ""),
+            expected=expected,
+            got=got_hash,
         )
     partial.replace(target)
     return target

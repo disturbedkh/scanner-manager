@@ -64,6 +64,13 @@ sha256sum   ScannerManager-linux-x64.tar.gz
 Compare against the value inside the `.sha256` file next to the
 download. If they don't match, do **not** run the binary.
 
+### Staying current
+
+After the first install you don't need to re-download manually. **Help
+→ Check for Updates...** from inside the app will pull the next
+release directly from GitHub, verify its SHA-256, and swap the EXE
+for you on Windows. See [Updating](Updating) for the full flow.
+
 ## First-run
 
 The first launch shows an *alpha notice* modal. Dismiss it once; it

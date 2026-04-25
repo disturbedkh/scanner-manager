@@ -16,9 +16,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 import uniden_tools
+
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 # ---------------------------------------------------------------------------
 # Manifest shape
@@ -46,6 +49,31 @@ def test_manifest_download_urls_look_like_uniden():
         assert url.startswith("https://"), (
             f"{key} download_url should be HTTPS, got {url!r}"
         )
+
+
+def test_manifest_shipped_tools_have_pinned_sha256_and_size():
+    """Every tool shipped in ``data/uniden_installers.json`` must carry a
+    real 64-hex SHA-256 and a positive ``size_bytes``. Empty pins are only
+    tolerated in in-memory test fixtures (see ``_FAKE_MANIFEST`` below).
+    """
+    manifest = uniden_tools.load_installer_manifest()
+    tools = manifest.get("tools") or {}
+    assert tools, "Shipped manifest should define at least one tool."
+    for key, entry in tools.items():
+        sha = (entry.get("sha256") or "").strip().lower()
+        assert _SHA256_RE.match(sha), (
+            f"{key} sha256 must be 64 lowercase hex chars; got {sha!r}"
+        )
+        size = int(entry.get("size_bytes") or 0)
+        assert size > 0, f"{key} size_bytes must be > 0; got {size!r}"
+
+
+def test_manifest_version_is_bumped_past_one():
+    """After real hashes are pinned the manifest version should be >= 2
+    so older app versions know a trust-anchor refresh happened.
+    """
+    manifest = uniden_tools.load_installer_manifest()
+    assert int(manifest.get("manifest_version") or 0) >= 2
 
 
 # ---------------------------------------------------------------------------

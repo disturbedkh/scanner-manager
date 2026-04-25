@@ -27,8 +27,12 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+import coverage_maps
 import sdcard
 import uniden_tools
+import updater
+from scanner_profiles import DEFAULT_PROFILE_ID, get_profile
+from scanner_profiles.registry import profiles_for_target_model
 from metastore import (
     OP_ADD_ENTRY,
     OP_ADD_GROUP,
@@ -43,7 +47,6 @@ from metastore import (
     OP_IMPORT_APPLY,
     OP_LINK_RR,
     OP_REVERT,
-    OP_SET_AVOID,
     OP_SET_SERVICE,
     OP_UNLINK_RR,
     Event,
@@ -65,6 +68,7 @@ APP_TAGLINE = "Uniden BearTracker 885 SD card companion"
 APP_GITHUB_URL = "https://github.com/disturbedkh/scanner-manager"
 APP_WIKI_URL = f"{APP_GITHUB_URL}/wiki"
 APP_ISSUES_URL = f"{APP_GITHUB_URL}/issues"
+APP_RELEASES_URL = f"{APP_GITHUB_URL}/releases"
 
 DONATE_PAYPAL_URL = "https://paypal.me/gvillescanner"
 DONATE_BTC_ADDR = "3FEgJ7y5qpagB2NqZaNhCurx8tA3cC8Gv3"
@@ -84,9 +88,9 @@ def get_app_version() -> str:
         try:
             return version("beartracker-885-scanner-manager")
         except PackageNotFoundError:
-            return "0.9.0a2-dev"
+            return "0.9.0b2-dev"
     except Exception:
-        return "0.9.0a2-dev"
+        return "0.9.0b2-dev"
 
 
 APP_VERSION = get_app_version()
@@ -135,6 +139,11 @@ except Exception:  # pragma: no cover - module always imports
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
+
+# Active scanner profile. Currently defaults to the BearTracker 885 for
+# every HPD we touch; when multi-scanner support lands, the workspace
+# open path flips this to match the HPD's TargetModel header.
+ACTIVE_PROFILE = get_profile(DEFAULT_PROFILE_ID)
 
 SERVICE_TYPES = {
     1: "Multi Dispatch",
@@ -228,18 +237,26 @@ def tgid_mode_canonical(label: str) -> str:
     return upper or ""
 
 SERVICE_TYPE_HELP_TEXT = (
-    "BearTracker 885 Scan Buttons (only these exist):\n"
-    "  Police -> Type 2 (Police Dispatch)\n"
-    "  Fire -> Type 3 (Fire Dispatch)\n"
-    "  EMS -> Type 4 (EMS Dispatch)\n"
-    "  DOT -> Type 14 (Public Works) - shown green like 2/3/4\n\n"
-    "Type 1 (Multi Dispatch) is generic dispatch only.\n"
-    "It is not a dedicated scanner button and is not 'all buttons'.\n"
-    "No other service-type buttons are available on this scanner.\n"
-    "Any channel using a different service type will not be scanned.\n"
-    "Remap channels to 2/3/4/14 for predictable behavior.\n"
-    "Example: Security channels -> Type 14 to hear them under DOT.\n\n"
-    "Tip: Select a group or system to apply service type or avoid to all entries at once."
+    "Which scanner button plays which kind of channel:\n"
+    "  Police button   - plays Police Dispatch channels\n"
+    "  Fire button     - plays Fire Dispatch channels\n"
+    "  EMS button      - plays EMS Dispatch channels\n"
+    "  DOT button      - plays Public Works channels\n"
+    "\n"
+    "Channels tagged 'Multi Dispatch' play whenever any of the four\n"
+    "buttons is active. Channels tagged for a different kind (tac,\n"
+    "talk, etc.) are ignored - the scanner has no button for them.\n"
+    "\n"
+    "Pro tip: if you want the scanner to play something the BearTracker\n"
+    "doesn't have a button for - say, a security frequency - re-tag it\n"
+    "as a Public Works channel so it comes through on the DOT button.\n"
+    "You can pick a whole group or system and apply a service type to\n"
+    "everything inside with one click.\n"
+    "\n"
+    "Advanced: the numeric service type IDs the HPD file uses are\n"
+    "  2 Police Dispatch, 3 Fire Dispatch, 4 EMS Dispatch,\n"
+    "  14 Public Works, 1 Multi Dispatch.\n"
+    "Everything else (Tac, Talk, Auto/BTW) is stored but not played."
 )
 
 # ---------------------------------------------------------------------------
@@ -343,7 +360,6 @@ class EntryCustomization:
     group_name: str
     name: str
     service_type: int
-    avoid: str
     identity_value: str
     mode: str = ""
     tone: str = ""
@@ -744,20 +760,6 @@ class HpdFile:
         entry.service_type = new_type
         self.has_changes = True
 
-    def toggle_avoid(self, entry: FreqEntry):
-        """Toggle the avoid (Off/On) state."""
-        rec = entry.record
-        if entry.entry_type == "C-Freq":
-            idx = 4
-        elif entry.entry_type == "TGID":
-            idx = 4
-        else:
-            return
-        current = rec.get_field(idx, "Off")
-        new_val = "On" if current == "Off" else "Off"
-        rec.set_field(idx, new_val)
-        self.has_changes = True
-
     def edit_entry(
         self,
         entry: FreqEntry,
@@ -991,7 +993,6 @@ class HpdFile:
                             group_name=entry.group_name,
                             name=entry.name,
                             service_type=entry.service_type,
-                            avoid=rec.get_field(4, "Off"),
                             identity_value=identity,
                             mode=mode,
                             tone=tone,
@@ -1024,11 +1025,6 @@ class HpdFile:
                 changed = False
                 if entry.service_type != custom.service_type:
                     self.update_service_type(entry, custom.service_type)
-                    changed = True
-                current_avoid = entry.record.get_field(4, "Off")
-                if current_avoid != custom.avoid:
-                    entry.record.set_field(4, custom.avoid)
-                    self.has_changes = True
                     changed = True
                 if changed:
                     reapplied += 1
@@ -1070,9 +1066,8 @@ class HpdFile:
                     mode=custom.mode or "ALL",
                     service_type=custom.service_type,
                 )
-            entry.record.set_field(4, custom.avoid)
             self.has_changes = True
-            return True
+            return entry is not None
         except Exception:
             return False
 
@@ -2034,61 +2029,6 @@ class CustomLocationsStore:
         return None
 
 
-_SCANNER_HEADER_TYPES = {"TargetModel", "FormatVersion", "DateModified"}
-
-
-def parse_discovery_file(path: Path) -> Dict[str, Any]:
-    """Parse a discovery log file as tab-delimited records.
-    Falls back to reporting raw bytes when unreadable as text."""
-    info: Dict[str, Any] = {
-        "path": str(path),
-        "name": path.name,
-        "size_bytes": 0,
-        "modified": "",
-        "header": {},
-        "records": [],
-        "counts": {},
-        "raw_preview": "",
-    }
-    try:
-        stat = path.stat()
-        info["size_bytes"] = stat.st_size
-        info["modified"] = datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds")
-    except Exception:
-        pass
-    try:
-        text = path.read_text(encoding="utf-8", errors="replace")
-    except Exception:
-        return info
-    info["raw_preview"] = text[:2000]
-    for line in text.splitlines():
-        fields = line.split("\t")
-        if not fields or not fields[0]:
-            continue
-        rec_type = fields[0]
-        if rec_type in _SCANNER_HEADER_TYPES and len(fields) > 1:
-            info["header"][rec_type] = fields[1]
-            continue
-        info["records"].append((rec_type, fields))
-        info["counts"][rec_type] = info["counts"].get(rec_type, 0) + 1
-    return info
-
-
-def discover_log_files(discovery_root: Path) -> Dict[str, List[Path]]:
-    """Walk discovery/Conventional and discovery/Trunk subfolders for log files."""
-    groups: Dict[str, List[Path]] = {"Conventional": [], "Trunk": []}
-    if not discovery_root.exists():
-        return groups
-    for kind in ("Conventional", "Trunk"):
-        sub = discovery_root / kind
-        if not sub.exists():
-            continue
-        for p in sorted(sub.rglob("*")):
-            if p.is_file() and not p.name.startswith("."):
-                groups[kind].append(p)
-    return groups
-
-
 def discover_alert_files(alert_root: Path) -> List[Path]:
     """Return every file under the ``alert/`` folder, recursively, skipping
     hidden entries. Flat list; folder grouping happens at render time.
@@ -2419,7 +2359,6 @@ def entry_matches_bulk_filter(
     service_types: Optional[Set[int]],
     county_id: Optional[int],
     system_id: Optional[str],
-    avoid_state: Optional[str],
 ) -> bool:
     """Generic predicate for bulk operations."""
     if entry_types and entry.entry_type not in entry_types:
@@ -2434,10 +2373,6 @@ def entry_matches_bulk_filter(
             system_county = entry.system_id if entry.system_type == "Conventional" else None
         if system_county != str(county_id):
             return False
-    if avoid_state is not None:
-        current_avoid = entry.record.get_field(4, "Off")
-        if current_avoid != avoid_state:
-            return False
     return True
 
 
@@ -2449,7 +2384,10 @@ def entry_passes_button_filter(
     """Return True if an entry with this service type should appear with the given button filters."""
     if service_type in active_button_types:
         return True
-    if service_type in SCANNABLE_TYPES and service_type not in active_button_types:
+    if (
+        service_type in ACTIVE_PROFILE.scannable_service_types()
+        and service_type not in active_button_types
+    ):
         return False
     return bool(include_others)
 
@@ -2911,6 +2849,41 @@ def is_rr_mode_encrypted(rr_mode: str) -> bool:
     return upper in {"DE", "TE", "AE"}
 
 
+def classify_rr_tg_import_action(
+    *,
+    is_encrypted: bool,
+    has_existing: bool,
+    has_update_diff: bool,
+    encrypted_policy: str,
+    include_encrypted: bool,
+) -> str:
+    """Decide what to do with a TG row in the RR-import dialog.
+
+    Centralizes the encrypted-policy branching so the rules (skip new
+    encrypted by default; delete existing encrypted by default; respect
+    a per-system "include encrypted" override) are unit-testable without
+    spinning up a Tk window. Returns one of:
+
+    - ``"new"``: add this unseen talkgroup.
+    - ``"update"``: overwrite changed fields on an existing entry.
+    - ``"same"``: identical to existing, nothing to do.
+    - ``"delete_encrypted"``: existing entry now marked encrypted on RR, remove.
+    - ``"same_encrypted"``: existing encrypted entry but user chose to skip.
+    - ``"encrypted"``: new encrypted TG the user hasn't opted into (skip).
+    """
+    if is_encrypted:
+        if has_existing:
+            if encrypted_policy == "delete":
+                return "delete_encrypted"
+            return "same_encrypted"
+        if include_encrypted:
+            return "new"
+        return "encrypted"
+    if has_existing:
+        return "update" if has_update_diff else "same"
+    return "new"
+
+
 def _normalize_tgid_mode_for_diff(mode: str) -> str:
     """Normalize TGID mode strings so legacy/short values compare equal to what
     actually lives on the SD card (ALL / ANALOG / DIGITAL).
@@ -2931,37 +2904,13 @@ def _normalize_tgid_mode_for_diff(mode: str) -> str:
 
 
 def _rr_trs_mode_to_hpd(mode_text: str) -> str:
-    """Map RadioReference trunk 'Mode' cell to a BearTracker HPD TGID mode.
+    """Map RadioReference trunk 'Mode' cell to the HPD TGID mode for the active scanner.
 
-    The HPD file only accepts ALL / ANALOG / DIGITAL — there is no separate
-    TDMA token on this scanner, TDMA is inferred from the trunk system type
-    (P25Standard). So RadioReference 'D', 'T', 'TD', 'TDMA', P25 Phase 2, etc.
-    all collapse to 'DIGITAL' on disk.
-
-    DE / TE / AE still map to DIGITAL / ANALOG respectively for storage, but
-    encryption is flagged separately via is_rr_mode_encrypted() so the import
-    UI can warn / skip / avoid / delete those rows.
+    Delegates to :meth:`ScannerProfile.rr_mode_to_hpd_mode` so the exact
+    mapping is owned by the scanner profile. Kept as a free function for
+    back-compat with existing call sites.
     """
-    if not mode_text:
-        return "ALL"
-    upper = mode_text.strip().upper()
-    compact = re.sub(r"[\s\-_/]+", "", upper)
-
-    if upper == "ALL":
-        return "ALL"
-    if upper == "AE":
-        return "ANALOG"
-    if upper in ("A", "ANALOG"):
-        return "ANALOG"
-    if upper in ("TE", "DE") or upper.startswith("DE/") or upper.startswith("DE "):
-        return "DIGITAL"
-    if upper in ("T", "TD", "D", "DMR") or "TDMA" in upper or "TDMA" in compact:
-        return "DIGITAL"
-    if "PHASE2" in compact or "PHASE 2" in upper:
-        return "DIGITAL"
-    if upper.startswith("P25"):
-        return "DIGITAL"
-    return "ALL"
+    return ACTIVE_PROFILE.rr_mode_to_hpd_mode(mode_text)
 
 
 def _tag_to_service_type(tag: str) -> Optional[int]:
@@ -3068,14 +3017,12 @@ class ScannerManagerApp:
         self._selected_group: Optional[GroupNode] = None
         self._selected_system: Optional[SystemNode] = None
         self._tree_id_map: Dict[str, object] = {}
-        self._show_scannable_only = tk.BooleanVar(value=False)
         self._button_police = tk.BooleanVar(value=True)
         self._button_fire = tk.BooleanVar(value=True)
         self._button_ems = tk.BooleanVar(value=True)
         self._button_dot = tk.BooleanVar(value=True)
         self._button_multi = tk.BooleanVar(value=True)
         self._include_others = tk.BooleanVar(value=True)
-        self._exclude_avoided = tk.BooleanVar(value=False)
         self._sd_space_var = tk.StringVar(value="")
         self._last_reconcile_audit: Optional[Path] = None
         self._state_id_list: List[int] = []
@@ -3137,6 +3084,7 @@ class ScannerManagerApp:
         # so the main window is on screen before the modal opens.
         if not self._app_settings.get("first_run_seen"):
             self.root.after(250, self._show_first_run_notice)
+        self.root.after(5000, lambda: self._run_update_check(manual=False))
 
     # ---- GUI Construction -------------------------------------------------
 
@@ -3149,6 +3097,9 @@ class ScannerManagerApp:
         help_menu = tk.Menu(menubar, tearoff=0)
         help_menu.add_command(
             label="Open Wiki", command=self._on_help_wiki,
+        )
+        help_menu.add_command(
+            label="Check for Updates...", command=self._on_help_check_for_updates,
         )
         help_menu.add_command(
             label="Report an Issue...", command=self._on_help_report_issue,
@@ -3212,6 +3163,10 @@ class ScannerManagerApp:
             row1, text="Sync to SD",
             command=self._on_sync_to_sd,
         ).pack(side=tk.LEFT, padx=2)
+        ttk.Button(
+            row1, text="Swap Profile...",
+            command=self._on_swap_profile,
+        ).pack(side=tk.LEFT, padx=2)
         ttk.Separator(row1, orient=tk.VERTICAL).pack(side=tk.LEFT, padx=8, fill=tk.Y)
         ttk.Button(
             row1, text="RR API...",
@@ -3272,19 +3227,10 @@ class ScannerManagerApp:
             variable=self._include_others,
             command=self._on_filter_changed,
         ).pack(side=tk.LEFT, padx=3)
-        ttk.Checkbutton(
-            row3, text="Exclude avoided",
-            variable=self._exclude_avoided,
-            command=self._on_filter_changed,
-        ).pack(side=tk.LEFT, padx=3)
         ttk.Button(
             row3, text="Export Effective Scan Set...",
             command=self._on_export_scan_set,
         ).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(
-            row3, text="Discovery...",
-            command=self._on_view_discovery,
-        ).pack(side=tk.RIGHT, padx=2)
         ttk.Button(
             row3, text="Alerts...",
             command=self._on_view_alerts,
@@ -3397,7 +3343,6 @@ class ScannerManagerApp:
             ("Mode:", "mode"),
             ("Tone / NAC:", "tone"),
             ("Service Type:", "service"),
-            ("Avoid:", "avoid"),
             ("Group:", "group"),
         ]
         for i, (label_text, key) in enumerate(detail_fields):
@@ -3427,9 +3372,6 @@ class ScannerManagerApp:
         btn_frame = ttk.Frame(frame)
         btn_frame.grid(row=edit_row + 1, column=0, columnspan=2, pady=8)
         ttk.Button(btn_frame, text="Update Service Type", command=self._on_update_service).pack(
-            side=tk.LEFT, padx=3,
-        )
-        ttk.Button(btn_frame, text="Toggle Avoid", command=self._on_toggle_avoid).pack(
             side=tk.LEFT, padx=3,
         )
         ttk.Button(btn_frame, text="Edit...", command=self._on_edit_selected).pack(
@@ -3552,7 +3494,7 @@ class ScannerManagerApp:
         )
         self._card_state_label.pack(side=tk.LEFT)
         # Pipeline-health pill: click to open the DataPipelineDialog.
-        self._pipeline_health_var = tk.StringVar(value="Pipeline: ?")
+        self._pipeline_health_var = tk.StringVar(value="Update pipeline: unknown")
         self._pipeline_health_label = tk.Label(
             status_frame, textvariable=self._pipeline_health_var,
             relief=tk.SUNKEN, anchor=tk.E, padx=6, pady=1,
@@ -3639,6 +3581,14 @@ class ScannerManagerApp:
             self._global_meta.remove_profile(dlg.result["profile_id"])
             self._global_meta.save()
             self._set_status("Removed workspace profile.")
+        elif action == "activate":
+            self._activate_profile_on_card(dlg.result["profile_id"])
+        elif action == "snapshots":
+            self._open_profile_snapshots(dlg.result["profile_id"])
+
+    def _on_swap_profile(self) -> None:
+        """Toolbar shortcut: open the Workspaces dialog at the activate tab."""
+        self._on_manage_workspaces()
 
     def _clone_current_card_as_new_profile(
         self,
@@ -3853,6 +3803,234 @@ class ScannerManagerApp:
         )
         self._set_status(summary)
 
+    # --- Snapshots & profile swap --------------------------------------
+
+    def _profile_snapshots(self, profile: Dict[str, Any]) -> List["sdcard.Snapshot"]:
+        raw = profile.get("snapshots") or []
+        return [sdcard.Snapshot.from_dict(s) for s in raw if isinstance(s, dict)]
+
+    def _set_profile_snapshots(
+        self,
+        profile: Dict[str, Any],
+        snapshots: List["sdcard.Snapshot"],
+    ) -> None:
+        profile["snapshots"] = [s.to_dict() for s in snapshots]
+
+    def _profile_retention(self, profile: Dict[str, Any]) -> Dict[str, Any]:
+        ret = profile.get("retention") or {}
+        return {
+            "max_snapshots": int(ret.get("max_snapshots") or sdcard.DEFAULT_MAX_SNAPSHOTS),
+            "keep_manual": bool(ret.get("keep_manual", True)),
+        }
+
+    def _prune_and_persist_snapshots(
+        self,
+        profile: Dict[str, Any],
+        snapshots: List["sdcard.Snapshot"],
+    ) -> List["sdcard.Snapshot"]:
+        ret = self._profile_retention(profile)
+        kept, removed = sdcard.prune_snapshots(
+            snapshots,
+            max_snapshots=ret["max_snapshots"],
+            keep_manual=ret["keep_manual"],
+        )
+        for s in removed:
+            try:
+                sdcard.delete_snapshot_payload(profile["workspace_dir"], s.id)
+            except Exception:
+                pass
+        self._set_profile_snapshots(profile, kept)
+        return kept
+
+    def _take_profile_snapshot(
+        self,
+        profile: Dict[str, Any],
+        *,
+        reason: str,
+        note: str = "",
+        card_identity: Optional["sdcard.CardIdentity"] = None,
+    ) -> Optional["sdcard.Snapshot"]:
+        workspace = profile.get("workspace_dir") or ""
+        if not workspace or not os.path.isdir(workspace):
+            return None
+        try:
+            snap = sdcard.snapshot_workspace(
+                workspace,
+                reason=reason,
+                note=note,
+                card_identity=card_identity,
+            )
+        except Exception as exc:
+            messagebox.showerror(
+                "Snapshot",
+                f"Could not create snapshot:\n{exc}",
+            )
+            return None
+        snapshots = self._profile_snapshots(profile)
+        snapshots.append(snap)
+        snapshots = self._prune_and_persist_snapshots(profile, snapshots)
+        self._global_meta.upsert_profile(profile)
+        self._global_meta.save()
+        return snap
+
+    def _activate_profile_on_card(self, profile_id: str) -> None:
+        """One-click swap: push profile ``profile_id`` onto the physical SD card.
+
+        Creates a pre-swap snapshot of the currently-active profile (so
+        the card's previous contents are recoverable), then runs the
+        standard push flow with force-overwrite, then flips
+        ``active_profile_id`` to the chosen profile.
+        """
+        target = self._global_meta.get_profile(profile_id)
+        if target is None:
+            messagebox.showerror("Swap Profile", "Profile not found.")
+            return
+        workspace = target.get("workspace_dir") or ""
+        if not workspace or not os.path.isdir(workspace):
+            messagebox.showerror(
+                "Swap Profile",
+                "The workspace folder for this profile is missing:\n"
+                f"{workspace}",
+            )
+            return
+        card_hint = (
+            target.get("last_synced_card_path")
+            or (self._path_var.get() or "").strip()
+        )
+        if not card_hint or not os.path.isdir(card_hint) or card_hint == workspace:
+            card_hint = filedialog.askdirectory(
+                title="Select the SD card root to receive this profile",
+                initialdir=card_hint if card_hint and os.path.isdir(card_hint) else None,
+            )
+            if not card_hint:
+                return
+        if not messagebox.askyesno(
+            "Swap Profile",
+            (
+                f"Overwrite the SD card at\n  {card_hint}\n"
+                f"with profile '{target.get('name') or profile_id}'?\n\n"
+                "A snapshot of the card's current contents will be saved "
+                "to the currently-active profile before anything is copied."
+            ),
+        ):
+            return
+        self._set_status("Preparing profile swap...")
+        self.root.update_idletasks()
+        active = self._active_profile()
+        card_identity = sdcard.probe_card_identity(card_hint)
+        if active is not None and active.get("profile_id") != profile_id:
+            try:
+                snap_report = sdcard.sync_pull(
+                    card_root=card_hint,
+                    workspace_root=active["workspace_dir"],
+                    baseline=self._profile_baseline(active),
+                )
+                _ = snap_report
+            except Exception:
+                pass
+            self._take_profile_snapshot(
+                active,
+                reason=sdcard.SNAP_REASON_PRE_SWAP,
+                note=(
+                    f"Card state before activating '{target.get('name') or profile_id}'"
+                ),
+                card_identity=card_identity,
+            )
+        self._set_status(
+            f"Copying profile '{target.get('name') or profile_id}' onto SD card..."
+        )
+        self.root.update_idletasks()
+        report, diffs = sdcard.sync_push(
+            card_root=card_hint,
+            workspace_root=workspace,
+            baseline=self._profile_baseline(target),
+            only_hpd=False,
+            overwrite_changed_card=True,
+        )
+        if report.errors:
+            messagebox.showerror(
+                "Swap Profile",
+                "Some files could not be copied:\n\n"
+                + "\n".join(f"{rel}: {msg}" for rel, msg in report.errors[:12]),
+            )
+            return
+        self._update_profile_baseline(target, workspace)
+        target["last_synced_card_path"] = card_hint
+        self._global_meta.upsert_profile(target)
+        self._global_meta.set_active_profile(profile_id)
+        self._global_meta.save()
+        self._path_var.set(workspace)
+        self._remember_sd_path(workspace)
+        self._try_load_config(workspace)
+        self._set_status(
+            f"Activated '{target.get('name') or profile_id}' on SD card "
+            f"({len(report.copied)} file(s) copied)."
+        )
+        _ = diffs
+
+    def _open_profile_snapshots(self, profile_id: str) -> None:
+        """Open the snapshots dialog for ``profile_id`` and act on the result."""
+        profile = self._global_meta.get_profile(profile_id)
+        if profile is None:
+            messagebox.showerror("Snapshots", "Profile not found.")
+            return
+        dlg = ProfileSnapshotsDialog(self.root, self, profile_id)
+        if dlg.result is None:
+            return
+        action = dlg.result.get("action")
+        if action == "restore":
+            self._restore_profile_snapshot(profile_id, dlg.result["snap_id"])
+        elif action == "take_manual":
+            self._take_profile_snapshot(
+                profile,
+                reason=sdcard.SNAP_REASON_MANUAL,
+                note=dlg.result.get("note") or "",
+            )
+            self._set_status("Created manual snapshot.")
+
+    def _restore_profile_snapshot(self, profile_id: str, snap_id: str) -> None:
+        profile = self._global_meta.get_profile(profile_id)
+        if profile is None:
+            return
+        workspace = profile.get("workspace_dir") or ""
+        if not workspace or not os.path.isdir(workspace):
+            messagebox.showerror(
+                "Restore Snapshot",
+                "Workspace folder for this profile is missing.",
+            )
+            return
+        if not messagebox.askyesno(
+            "Restore Snapshot",
+            (
+                "Restore this snapshot into the workspace? Any unsaved "
+                "changes will be lost, and a 'pre-restore' snapshot will "
+                "be created so you can undo this."
+            ),
+        ):
+            return
+        try:
+            _marker, pre_restore = sdcard.restore_snapshot(workspace, snap_id)
+        except Exception as exc:
+            messagebox.showerror(
+                "Restore Snapshot", f"Could not restore snapshot:\n{exc}"
+            )
+            return
+        snapshots = self._profile_snapshots(profile)
+        if pre_restore is not None:
+            snapshots.append(pre_restore)
+        snapshots = self._prune_and_persist_snapshots(profile, snapshots)
+        self._update_profile_baseline(profile, workspace)
+        self._global_meta.upsert_profile(profile)
+        self._global_meta.save()
+        if self.hpd.filepath:
+            try:
+                self.hpd.load(self.hpd.filepath)
+                self._attach_meta_for_hpd(self.hpd.filepath, is_restore=True)
+                self._populate_tree()
+            except Exception:
+                pass
+        self._set_status(f"Restored snapshot {snap_id}.")
+
     def _on_browse(self):
         initial = self._path_var.get().strip() or self._app_settings.get("sd_path", "")
         folder = filedialog.askdirectory(
@@ -3973,14 +4151,12 @@ class ScannerManagerApp:
         menu = tk.Menu(self.root, tearoff=0)
         if isinstance(obj, FreqEntry):
             menu.add_command(label="Edit entry...", command=self._on_edit_selected)
-            menu.add_command(label="Toggle Avoid", command=self._on_toggle_avoid)
             menu.add_separator()
             menu.add_command(label="Delete entry", command=self._on_delete_selected)
         elif isinstance(obj, GroupNode):
             menu.add_command(label="Edit group...", command=self._on_edit_selected)
             menu.add_separator()
             menu.add_command(label="Bulk: update service type", command=self._on_update_service)
-            menu.add_command(label="Bulk: toggle avoid", command=self._on_toggle_avoid)
             menu.add_separator()
             link_info = self._group_link_info(obj)
             if link_info:
@@ -4011,7 +4187,6 @@ class ScannerManagerApp:
             menu.add_command(label="Edit system...", command=self._on_edit_selected)
             menu.add_separator()
             menu.add_command(label="Bulk: update service type", command=self._on_update_service)
-            menu.add_command(label="Bulk: toggle avoid", command=self._on_toggle_avoid)
             menu.add_separator()
             menu.add_command(label="Delete system...", command=self._on_delete_selected)
         else:
@@ -4145,8 +4320,8 @@ class ScannerManagerApp:
             return
         if self._meta is None:
             messagebox.showwarning(
-                "MetaStore",
-                "Group linking requires an HPD with an active MetaStore.",
+                "Change History",
+                "This action needs a loaded SD card with change tracking available.",
             )
             return
 
@@ -4407,40 +4582,6 @@ class ScannerManagerApp:
         self._set_status(
             f"Updated service type to {service_label(new_type)} for {changed} entries ({scope})"
         )
-
-    def _on_toggle_avoid(self):
-        scope, entries = self._collect_entries_for_action()
-        if scope == "none" or not entries:
-            messagebox.showinfo("Info", "Select an entry, group, or system first.")
-            return
-        if scope == "entry":
-            entry = self._selected_entry
-            current = entry.record.get_field(4, "Off")
-            new_avoid = "On" if current == "Off" else "Off"
-            self._do_set_avoid(entry, new_avoid)
-            self._show_entry_details(entry)
-            self._refresh_entry_in_tree(entry)
-            self._set_status("Toggled avoid state")
-            return
-        choice = messagebox.askyesnocancel(
-            "Bulk Avoid",
-            f"Set avoid state for {len(entries)} entries in this {scope}?\n"
-            "Yes = Avoid ON (skip all)\n"
-            "No = Avoid OFF (scan all)\n"
-            "Cancel = do nothing",
-        )
-        if choice is None:
-            return
-        target = "On" if choice else "Off"
-        txn = self._new_txn_id()
-        changed = 0
-        batch_ctx = self._meta.batch() if self._meta is not None else nullcontext()
-        with batch_ctx:
-            for entry in entries:
-                if self._do_set_avoid(entry, target, source="bulk", txn_id=txn):
-                    changed += 1
-                self._refresh_entry_in_tree(entry)
-        self._set_status(f"Set avoid={target} for {changed} entries ({scope})")
 
     def _on_add_type_changed(self):
         if self._add_type_var.get() == "Conventional":
@@ -4906,10 +5047,8 @@ class ScannerManagerApp:
         import_txn = self._new_txn_id()
         added_records: List[Dict[str, Any]] = []
         updated_records: List[Dict[str, Any]] = []
-        avoid_records: List[Dict[str, Any]] = []
         deleted_records: List[Dict[str, Any]] = []
 
-        tgids_avoided = 0
         tgids_deleted = 0
         batch_ctx = self._meta.batch() if self._meta is not None else nullcontext()
         with batch_ctx:
@@ -5018,28 +5157,6 @@ class ScannerManagerApp:
                             tgids_updated += 1
                         except Exception:
                             continue
-                    elif action == "avoid_encrypted":
-                        existing = tg.get("__existing__")
-                        if existing is None:
-                            tgids_skipped += 1
-                            continue
-                        try:
-                            before_avoid = existing.record.get_field(4, "Off")
-                            if self._do_set_avoid(
-                                existing,
-                                "On",
-                                source=source,
-                                txn_id=import_txn,
-                                log=False,
-                            ):
-                                avoid_records.append({
-                                    "id": self._entry_id_for(existing),
-                                    "before": {"avoid": before_avoid},
-                                    "after": {"avoid": "On"},
-                                })
-                                tgids_avoided += 1
-                        except Exception:
-                            continue
                     elif action == "delete_encrypted":
                         existing = tg.get("__existing__")
                         if existing is None:
@@ -5080,7 +5197,6 @@ class ScannerManagerApp:
             if (
                 added_records
                 or updated_records
-                or avoid_records
                 or deleted_records
             ) and self._meta is not None:
                 self._log_event(
@@ -5090,7 +5206,7 @@ class ScannerManagerApp:
                     summary=(
                         f"Trunked import: +{tgids_added} added, ~{tgids_updated} updated, "
                         f"{len(groups_created)} new group(s), "
-                        f"{tgids_avoided} avoided, {tgids_deleted} deleted"
+                        f"{tgids_deleted} encrypted deleted"
                     ),
                     source=source,
                     txn_id=import_txn,
@@ -5098,7 +5214,6 @@ class ScannerManagerApp:
                         "source_url": source_url,
                         "added": added_records,
                         "updated": updated_records,
-                        "avoided": avoid_records,
                         "deleted": deleted_records,
                         "groups_created": groups_created,
                         "entry_type": "TGID",
@@ -5111,14 +5226,13 @@ class ScannerManagerApp:
         self._populate_tree()
         self._set_status(
             f"Trunked import: +{tgids_added} new, ~{tgids_updated} updated, "
-            f"avoided {tgids_avoided}, deleted {tgids_deleted}, skipped {tgids_skipped}."
+            f"deleted {tgids_deleted} encrypted, skipped {tgids_skipped}."
         )
         messagebox.showinfo(
             "Trunked Import",
             f"Created {groups_created} new group(s).\n"
             f"Added {tgids_added} new talkgroups.\n"
             f"Updated {tgids_updated} existing talkgroups.\n"
-            f"Set Avoid=On on {tgids_avoided} now-encrypted entries.\n"
             f"Deleted {tgids_deleted} encrypted entries.\n"
             f"Skipped {tgids_skipped}.",
         )
@@ -5535,10 +5649,7 @@ class ScannerManagerApp:
             repo_root=self._script_dir,
             overrides=self._tool_overrides(),
         )
-        preferred_order = (
-            uniden_tools.TOOL_BT885,
-            uniden_tools.TOOL_SENTINEL,
-        )
+        preferred_order = tuple(ACTIVE_PROFILE.preferred_installer_ids())
         for preferred in preferred_order:
             for tool in tools:
                 if tool.tool_id == preferred and tool.installed:
@@ -5918,7 +6029,6 @@ class ScannerManagerApp:
             f"  Replayed: {report.get('replayed', 0)}\n"
             f"  Missed:   {report.get('missed', 0)}\n"
             f"    deletions={report.get('deletions', 0)}, "
-            f"avoids={report.get('avoids', 0)}, "
             f"services={report.get('services', 0)}, "
             f"edits={report.get('edits', 0)}, "
             f"additions={report.get('additions', 0)}\n\n"
@@ -6149,7 +6259,6 @@ class ScannerManagerApp:
             f" replayed={merge.get('replayed', 0)},"
             f" missed={merge.get('missed', 0)}"
             f" [deletions={merge.get('deletions', 0)},"
-            f" avoids={merge.get('avoids', 0)},"
             f" services={merge.get('services', 0)},"
             f" edits={merge.get('edits', 0)},"
             f" additions={merge.get('additions', 0)}]"
@@ -6323,7 +6432,6 @@ class ScannerManagerApp:
             "entry_type": entry.entry_type,
             "name": entry.name,
             "service_type": entry.service_type,
-            "avoid": rec.get_field(4, "Off"),
             "identity_value": rec.get_field(5, ""),
             "mode": rec.get_field(6, ""),
             "group_id": entry.group_id,
@@ -6387,7 +6495,7 @@ class ScannerManagerApp:
     # --- post-update event replay ---
     #
     # The Uniden updater rewrites HPDs from scratch and wipes every user
-    # customization (deletions, avoids, service types, renames, adds).
+    # customization (deletions, service types, renames, adds).
     # After the file reloads, we walk the MetaStore event log and
     # re-execute every non-reverted reversible event against the fresh
     # tree. Raw `self.hpd.*` mutations are used so we don't double-log.
@@ -6543,7 +6651,6 @@ class ScannerManagerApp:
             "replayed": 0,
             "missed": 0,
             "deletions": 0,
-            "avoids": 0,
             "services": 0,
             "edits": 0,
             "additions": 0,
@@ -6573,6 +6680,14 @@ class ScannerManagerApp:
         payload = evt.payload or {}
         after = payload.get("after") or {}
 
+        # Legacy `set_avoid` events exist in sidecar files written by
+        # v0.9.0a2 and earlier. The Avoid feature was removed in v0.9.0a3
+        # because the BT885 doesn't persist the flag, so there's nothing
+        # to replay; swallow them as "replayed" so they don't pollute the
+        # "missed" count on existing installs.
+        if op == "set_avoid":
+            return True
+
         if op == OP_DELETE_ENTRY:
             entry = self._find_entry_after_update(evt)
             if entry is None:
@@ -6595,18 +6710,6 @@ class ScannerManagerApp:
                 return True
             self.hpd.delete_system(system)
             report["deletions"] += 1
-            return True
-
-        if op == OP_SET_AVOID:
-            entry = self._find_entry_after_update(evt)
-            if entry is None:
-                return False
-            target_avoid = after.get("avoid") or "Off"
-            current = entry.record.get_field(4, "Off")
-            if current != target_avoid:
-                entry.record.set_field(4, target_avoid)
-                self.hpd.has_changes = True
-            report["avoids"] += 1
             return True
 
         if op == OP_SET_SERVICE:
@@ -6637,11 +6740,8 @@ class ScannerManagerApp:
                 mode=after.get("mode"),
                 tone=after.get("tone"),
             )
-            # Also reapply avoid + service_type captured in `after` so a
-            # single edit event restores the full row.
-            if "avoid" in after:
-                entry.record.set_field(4, after.get("avoid") or "Off")
-                self.hpd.has_changes = True
+            # Also reapply service_type captured in `after` so a single
+            # edit event restores the full row.
             if "service_type" in after:
                 try:
                     svc = int(after.get("service_type"))
@@ -6704,9 +6804,7 @@ class ScannerManagerApp:
                         mode=snap.get("mode") or "ALL",
                         service_type=int(snap.get("service_type") or 0),
                     )
-                if snap.get("avoid"):
-                    entry.record.set_field(4, snap.get("avoid"))
-                    self.hpd.has_changes = True
+                _ = entry
             except Exception:
                 return False
             report["additions"] += 1
@@ -6842,33 +6940,6 @@ class ScannerManagerApp:
                 "before": {"service_type": before_stype},
                 "after": {"service_type": new_type},
             },
-        )
-        return True
-
-    def _do_set_avoid(
-        self,
-        entry: FreqEntry,
-        new_avoid: str,
-        *,
-        source: str = "manual",
-        txn_id: Optional[str] = None,
-        log: bool = True,
-    ) -> bool:
-        before = entry.record.get_field(4, "Off")
-        if before == new_avoid:
-            return False
-        entry.record.set_field(4, new_avoid)
-        self.hpd.has_changes = True
-        if not log:
-            return True
-        self._log_event(
-            op=OP_SET_AVOID,
-            target_id=self._entry_id_for(entry),
-            target_name=entry.name,
-            summary=f"Avoid {before} -> {new_avoid}",
-            source=source,
-            txn_id=txn_id,
-            payload={"before": {"avoid": before}, "after": {"avoid": new_avoid}},
         )
         return True
 
@@ -7289,8 +7360,6 @@ class ScannerManagerApp:
         if "name" in snap:
             rec.set_field(3, str(snap["name"] or ""))
             entry.name = str(snap["name"] or "")
-        if "avoid" in snap:
-            rec.set_field(4, str(snap["avoid"] or "Off"))
         if "identity_value" in snap:
             rec.set_field(5, str(snap["identity_value"] or ""))
         if "mode" in snap:
@@ -7347,7 +7416,7 @@ class ScannerManagerApp:
                     mode=str(snap.get("mode") or "ALL"),
                     service_type=int(snap.get("service_type") or 1),
                 )
-            entry.record.set_field(4, str(snap.get("avoid") or "Off"))
+            _ = entry
             self.hpd.has_changes = True
         except Exception:
             return False
@@ -7471,16 +7540,6 @@ class ScannerManagerApp:
                         self.hpd.update_service_type(target, int(before))
                         ok = True
                         msg = f"Service type reverted on {target.name}"
-            elif op == OP_SET_AVOID:
-                target = self._find_entry_by_id(event.target_id)
-                if target is None:
-                    msg = "Could not find the entry."
-                else:
-                    before = (payload.get("before") or {}).get("avoid", "Off")
-                    target.record.set_field(4, before)
-                    self.hpd.has_changes = True
-                    ok = True
-                    msg = f"Avoid reverted on {target.name}"
             elif op == OP_ADD_ENTRY:
                 target = self._find_entry_by_id(event.target_id)
                 if target is None:
@@ -7556,7 +7615,6 @@ class ScannerManagerApp:
     ) -> Tuple[bool, str]:
         removed = 0
         reverted = 0
-        avoid_reverted = 0
         restored = 0
         failed = 0
         for add in payload.get("added") or []:
@@ -7576,18 +7634,6 @@ class ScannerManagerApp:
             try:
                 self._apply_entry_snapshot(target, upd.get("before") or {})
                 reverted += 1
-            except Exception:
-                failed += 1
-        for av in payload.get("avoided") or []:
-            target = self._find_entry_by_id(av.get("id") or "")
-            if target is None:
-                failed += 1
-                continue
-            try:
-                before_avoid = (av.get("before") or {}).get("avoid", "Off")
-                target.record.set_field(4, before_avoid)
-                self.hpd.has_changes = True
-                avoid_reverted += 1
             except Exception:
                 failed += 1
         # Restore encrypted-delete actions by re-inserting into the group
@@ -7644,7 +7690,7 @@ class ScannerManagerApp:
         return True, (
             f"Reverted import: removed {removed} added, "
             f"reverted {reverted} updated, restored {restored} deleted, "
-            f"un-avoided {avoid_reverted}, removed {group_removed} empty groups "
+            f"removed {group_removed} empty groups "
             f"(failures: {failed})"
         )
 
@@ -7918,8 +7964,6 @@ class ScannerManagerApp:
             bool(self._include_others.get()),
         ):
             return False
-        if self._exclude_avoided.get() and entry.record.get_field(4, "Off") == "On":
-            return False
         return True
 
     def _on_export_scan_set(self):
@@ -7937,7 +7981,7 @@ class ScannerManagerApp:
         columns = [
             "Scope", "System", "System Type", "Group", "Entry Type",
             "Name", "Identity Value", "Mode", "Tone", "Service Type",
-            "Service Name", "Avoid", "Lat", "Lon", "Range (mi)",
+            "Service Name", "Lat", "Lon", "Range (mi)",
             "Distance (mi)",
         ]
         fmt = "csv" if target.lower().endswith(".csv") else "txt"
@@ -8003,7 +8047,6 @@ class ScannerManagerApp:
                         identity = ""
                         tone = ""
                     mode = rec.get_field(6, "")
-                    avoid = rec.get_field(4, "Off")
                     service_name = SERVICE_TYPES.get(
                         entry.service_type, f"Type {entry.service_type}"
                     )
@@ -8019,7 +8062,6 @@ class ScannerManagerApp:
                         tone,
                         entry.service_type,
                         service_name,
-                        avoid,
                         lat_s,
                         lon_s,
                         range_s,
@@ -8100,7 +8142,6 @@ class ScannerManagerApp:
             self._detail_labels["tone"].config(text="—")
 
         self._detail_labels["service"].config(text=service_label(entry.service_type))
-        self._detail_labels["avoid"].config(text=rec.get_field(4, "Off"))
 
         group_name = "—"
         for sys_node in self.hpd.systems:
@@ -8122,7 +8163,6 @@ class ScannerManagerApp:
         self._detail_labels["mode"].config(text="—")
         self._detail_labels["tone"].config(text="—")
         self._detail_labels["service"].config(text="—")
-        self._detail_labels["avoid"].config(text="—")
         self._detail_labels["group"].config(text="—")
 
     def _show_system_details(self, sys_node: SystemNode):
@@ -8133,13 +8173,12 @@ class ScannerManagerApp:
         self._detail_labels["mode"].config(text="—")
         self._detail_labels["tone"].config(text="—")
         self._detail_labels["service"].config(text="—")
-        self._detail_labels["avoid"].config(text="—")
         self._detail_labels["group"].config(text="—")
 
     def _clear_details_panel(self) -> None:
         """Blank the detail labels. Used after reverts that may delete the
         currently-selected row."""
-        for key in ("type", "name", "freq", "mode", "tone", "service", "avoid", "group"):
+        for key in ("type", "name", "freq", "mode", "tone", "service", "group"):
             lbl = self._detail_labels.get(key)
             if lbl is not None:
                 lbl.config(text="—")
@@ -8251,7 +8290,12 @@ class ScannerManagerApp:
         color = {"green": "#2a6", "amber": "#b80", "red": "#b33"}.get(
             health, "#666"
         )
-        self._pipeline_health_var.set(f"Pipeline: {health}")
+        display = {
+            "green": "Ready",
+            "amber": "Needs attention",
+            "red": "Blocked",
+        }.get(health, "Unknown")
+        self._pipeline_health_var.set(f"Update pipeline: {display}")
         try:
             label.configure(background=color)
         except Exception:
@@ -8274,11 +8318,11 @@ class ScannerManagerApp:
                      f"unresolved={report.get('unresolved', 0)}")
         lines.append(f"Customizations considered: {len(snapshot)}")
         lines.append("")
-        lines.append("Customization details (entry_type, system, group, identity, service, avoid, user_added):")
+        lines.append("Customization details (entry_type, system, group, identity, service, user_added):")
         for c in snapshot:
             lines.append(
                 f"- {c.entry_type}\t{c.system_name}\t{c.group_name}\t{c.identity_value}\t"
-                f"svc={c.service_type}\tavoid={c.avoid}\tuser_added={c.is_user_added}"
+                f"svc={c.service_type}\tuser_added={c.is_user_added}"
             )
         try:
             audit_path.write_text("\n".join(lines), encoding="utf-8")
@@ -8318,7 +8362,30 @@ class ScannerManagerApp:
         ChangesPanelDialog(self)
 
     def _on_restore_session_snapshot(self):
-        """Restore the single .session.bak safety snapshot for the active HPD."""
+        """Restore the single .session.bak safety snapshot for the active HPD.
+
+        When a workspace profile is active, also offers the user the
+        option to pick from the per-profile snapshot history instead.
+        """
+        active = self._active_profile()
+        has_profile_snaps = bool(
+            active is not None and self._profile_snapshots(active)
+        )
+        if has_profile_snaps:
+            choice = messagebox.askyesnocancel(
+                "Restore",
+                (
+                    "Restore from a per-profile snapshot?\n\n"
+                    "Yes = pick a snapshot from this workspace's history.\n"
+                    "No = restore just this HPD file from the session snapshot.\n"
+                    "Cancel = do nothing."
+                ),
+            )
+            if choice is None:
+                return
+            if choice:
+                self._open_profile_snapshots(active["profile_id"])
+                return
         if not self.hpd.filepath:
             messagebox.showinfo("Restore Session", "No HPD file loaded.")
             return
@@ -8350,9 +8417,6 @@ class ScannerManagerApp:
             self._refresh_sd_space()
         except Exception as exc:
             messagebox.showerror("Restore Session", f"Restore failed:\n{exc}")
-
-    def _on_view_discovery(self):
-        DiscoveryViewerDialog(self)
 
     def _on_view_alerts(self):
         AlertsViewerDialog(self)
@@ -8392,6 +8456,71 @@ class ScannerManagerApp:
     def _on_help_donate(self) -> None:
         DonateDialog(self)
 
+    def _on_help_check_for_updates(self) -> None:
+        """Run a fresh check (ignoring the 24h-debounce and skip-version
+        tracks) and always show a dialog, even when up-to-date.
+        """
+        self._run_update_check(manual=True)
+
+    def _run_update_check(self, *, manual: bool) -> None:
+        """Kick off a background update check.
+
+        ``manual=True`` bypasses the 24h debounce and shows a dialog even
+        if we're up to date (or offline). ``manual=False`` is the silent
+        startup path and only surfaces a dialog when a *newer* release is
+        available that the user hasn't already skipped.
+        """
+        if not manual:
+            if not self._app_settings.get("updater_check_on_startup", True):
+                return
+            last = self._app_settings.get("updater_last_check_at") or 0
+            try:
+                last_ts = float(last)
+            except (TypeError, ValueError):
+                last_ts = 0.0
+            import time as _time
+            if _time.time() - last_ts < 24 * 3600:
+                return
+
+        def worker() -> None:
+            import time as _time
+            try:
+                info = updater.check_for_update(APP_VERSION)
+            except Exception:
+                info = None
+            self._app_settings["updater_last_check_at"] = _time.time()
+            try:
+                self._save_app_settings()
+            except Exception:
+                pass
+            self.root.after(0, self._on_update_check_done, info, manual)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_update_check_done(
+        self,
+        info: Optional["updater.UpdateInfo"],
+        manual: bool,
+    ) -> None:
+        if info is None:
+            if manual:
+                UpdateAvailableDialog(self, info=None, mode="offline")
+            return
+        skipped = self._app_settings.get("updater_skipped_version") or ""
+        if not manual and skipped == info.version:
+            return
+        if not manual:
+            UpdateAvailableDialog(self, info=info, mode="available")
+            return
+        # Manual path: even if the GitHub tag == current, surface the
+        # "you're current" dialog so the user gets feedback.
+        try:
+            is_newer = updater.Version(info.version) > updater.Version(APP_VERSION)
+        except Exception:
+            is_newer = False
+        mode = "available" if is_newer else "current"
+        UpdateAvailableDialog(self, info=info if is_newer else None, mode=mode)
+
     def _on_help_about(self) -> None:
         AboutDialog(self)
 
@@ -8408,7 +8537,7 @@ class ScannerManagerApp:
         frm = ttk.Frame(top, padding=16)
         frm.pack(fill=tk.BOTH, expand=True)
         ttk.Label(
-            frm, text=f"{APP_NAME} v{APP_VERSION} - alpha release",
+            frm, text=f"{APP_NAME} v{APP_VERSION} - beta release",
             font=("TkDefaultFont", 12, "bold"),
         ).pack(anchor=tk.W, pady=(0, 6))
         ttk.Label(
@@ -8927,7 +9056,7 @@ class ConventionalImportSelectionDialog:
             variable=self.update_name_var, command=self._on_policy_changed,
         ).pack(side=tk.LEFT, padx=4)
         ttk.Checkbutton(
-            policy, text="Service type (overwrites user button mapping)",
+            policy, text="Service type (changes which scanner button plays this channel)",
             variable=self.update_service_var, command=self._on_policy_changed,
         ).pack(side=tk.LEFT, padx=4)
 
@@ -9274,9 +9403,20 @@ class TrunkedImportSelectionDialog:
         self.update_mode_var = tk.BooleanVar(value=True)
         self.update_name_var = tk.BooleanVar(value=False)
         self.update_service_var = tk.BooleanVar(value=False)
-        # Existing entries now reported as encrypted by RR: suggest Avoid by default.
-        # "skip" = leave as-is, "avoid" = set Avoid=On, "delete" = remove entry.
-        self.encrypted_policy_var = tk.StringVar(value="avoid")
+        # Existing entries now reported as encrypted by RR are deleted from
+        # the HPD by default (they're unscannable). User can override to
+        # "skip" (leave as-is). We no longer offer an "avoid" path because
+        # the BT885 doesn't honor avoid bits across power cycles.
+        self.encrypted_policy_var = tk.StringVar(value="delete")
+        # New encrypted TGs are excluded from the import by default. The
+        # "force include" override is remembered per-system so users who
+        # do want them (e.g., they're testing their own decoder) don't have
+        # to tick the box every time.
+        sys_key = system.system_id or system.name or ""
+        include_map = app._app_settings.get("rr_import_include_encrypted") or {}
+        self.include_encrypted_var = tk.BooleanVar(
+            value=bool(include_map.get(sys_key, False))
+        )
 
         self._existing_by_tgid: Dict[int, FreqEntry] = {}
         for group in system.groups:
@@ -9303,7 +9443,8 @@ class TrunkedImportSelectionDialog:
             header,
             text=(
                 f"Source: {system_name}    Target trunk: '{system.name}'    "
-                "Click a row to toggle. Encrypted (DE/TE/AE) rows are off by default."
+                "Click a row to toggle. Encrypted talkgroups are skipped by "
+                "default - the BearTracker 885 can't play them."
             ),
             wraplength=980, justify=tk.LEFT,
         ).pack(side=tk.TOP, anchor=tk.W)
@@ -9312,7 +9453,7 @@ class TrunkedImportSelectionDialog:
         policy.pack(fill=tk.X)
         ttk.Label(policy, text="Update fields on existing entries:").pack(side=tk.LEFT)
         ttk.Checkbutton(
-            policy, text="Mode (safe: fixes ALL → DIGITAL / ANALOG; D/T both = DIGITAL)",
+            policy, text="Mode (lock ambiguous talkgroups to DIGITAL or ANALOG)",
             variable=self.update_mode_var, command=self._on_policy_changed,
         ).pack(side=tk.LEFT, padx=4)
         ttk.Checkbutton(
@@ -9320,7 +9461,7 @@ class TrunkedImportSelectionDialog:
             variable=self.update_name_var, command=self._on_policy_changed,
         ).pack(side=tk.LEFT, padx=4)
         ttk.Checkbutton(
-            policy, text="Service type (overwrites user button mapping)",
+            policy, text="Service type (changes which scanner button plays this channel)",
             variable=self.update_service_var, command=self._on_policy_changed,
         ).pack(side=tk.LEFT, padx=4)
 
@@ -9328,18 +9469,26 @@ class TrunkedImportSelectionDialog:
         policy2.pack(fill=tk.X)
         ttk.Label(
             policy2,
-            text="Existing entries now encrypted (RR shows DE/TE/AE):",
+            text="Existing talkgroups RadioReference now lists as encrypted:",
         ).pack(side=tk.LEFT)
         for label, value in (
-            ("Skip", "skip"),
-            ("Set Avoid=On", "avoid"),
-            ("Delete from HPD", "delete"),
+            ("Delete from HPD (default)", "delete"),
+            ("Skip (leave as-is)", "skip"),
         ):
             ttk.Radiobutton(
                 policy2, text=label, value=value,
                 variable=self.encrypted_policy_var,
                 command=self._on_policy_changed,
             ).pack(side=tk.LEFT, padx=4)
+
+        policy3 = ttk.Frame(self.top, padding=(8, 0, 8, 0))
+        policy3.pack(fill=tk.X)
+        ttk.Checkbutton(
+            policy3,
+            text="Include encrypted talkgroups in new entries (not recommended)",
+            variable=self.include_encrypted_var,
+            command=self._on_policy_changed,
+        ).pack(side=tk.LEFT)
 
         tools = ttk.Frame(self.top, padding=(8, 0, 8, 0))
         tools.pack(fill=tk.X)
@@ -9422,7 +9571,6 @@ class TrunkedImportSelectionDialog:
 
                 tgid_val = tg.get("tgid")
                 existing = self._existing_by_tgid.get(int(tgid_val)) if tgid_val else None
-                action = "new"
                 raw_changes: Dict[str, Tuple[Any, Any]] = {}
                 changes: Dict[str, Tuple[Any, Any]] = {}
                 if existing is not None:
@@ -9435,19 +9583,13 @@ class TrunkedImportSelectionDialog:
                         service if isinstance(service, int) else None,
                     )
                     changes = self._filter_changes_by_policy(raw_changes)
-                    action = "update" if changes else "same"
-                if tg.get("encrypted"):
-                    if existing is not None:
-                        policy = self.encrypted_policy_var.get()
-                        if policy == "avoid":
-                            current_avoid = existing.record.get_field(4, "Off")
-                            action = "avoid_encrypted" if current_avoid != "On" else "same_encrypted"
-                        elif policy == "delete":
-                            action = "delete_encrypted"
-                        else:
-                            action = "same_encrypted"
-                    else:
-                        action = "encrypted"
+                action = classify_rr_tg_import_action(
+                    is_encrypted=bool(tg.get("encrypted")),
+                    has_existing=existing is not None,
+                    has_update_diff=bool(changes),
+                    encrypted_policy=self.encrypted_policy_var.get(),
+                    include_encrypted=self.include_encrypted_var.get(),
+                )
 
                 if action == "new":
                     checked = True
@@ -9465,17 +9607,13 @@ class TrunkedImportSelectionDialog:
                     checked = False
                     action_text = "Same (skip)"
                     row_tags = ("same",)
-                elif action == "avoid_encrypted":
-                    checked = True
-                    action_text = "Encrypted - set Avoid=On"
-                    row_tags = ("encrypted_action",)
                 elif action == "delete_encrypted":
                     checked = True
                     action_text = "Encrypted - DELETE"
                     row_tags = ("encrypted_action",)
                 elif action == "same_encrypted":
                     checked = False
-                    action_text = "Encrypted (already avoided or skipped)"
+                    action_text = "Encrypted (skip, leave as-is)"
                     row_tags = ("encrypted",)
                 else:
                     checked = False
@@ -9561,7 +9699,6 @@ class TrunkedImportSelectionDialog:
         total = 0
         new_sel = 0
         update_sel = 0
-        avoid_sel = 0
         delete_sel = 0
         encrypted = 0
         updates_available = 0
@@ -9579,8 +9716,6 @@ class TrunkedImportSelectionDialog:
                     new_sel += 1
                 elif action == "update":
                     update_sel += 1
-                elif action == "avoid_encrypted":
-                    avoid_sel += 1
                 elif action == "delete_encrypted":
                     delete_sel += 1
         xref = getattr(self, "_crossref_counts", {"callsign": 0, "fuzzy": 0})
@@ -9589,7 +9724,7 @@ class TrunkedImportSelectionDialog:
             extra = f"   |  xref: {xref['callsign']} callsign, {xref['fuzzy']} fuzzy"
         self.summary_var.set(
             f"{total} talkgroups; {new_sel} new, {update_sel}/{updates_available} updates, "
-            f"{avoid_sel} avoid-encrypted, {delete_sel} delete-encrypted, "
+            f"{delete_sel} delete-encrypted, "
             f"{encrypted} total encrypted"
             + extra
         )
@@ -9662,7 +9797,6 @@ class TrunkedImportSelectionDialog:
         selection: List[Tuple[str, List[Dict[str, Any]]]] = []
         new_count = 0
         update_count = 0
-        avoid_count = 0
         delete_count = 0
         for cat_id in self.tree.get_children(""):
             cat_name = self.tree.item(cat_id, "text")
@@ -9672,7 +9806,7 @@ class TrunkedImportSelectionDialog:
                 if not meta.get("checked"):
                     continue
                 action = meta.get("action")
-                if action not in ("new", "update", "avoid_encrypted", "delete_encrypted"):
+                if action not in ("new", "update", "delete_encrypted"):
                     continue
                 payload = dict(meta["data"])
                 payload["__action__"] = action
@@ -9683,8 +9817,6 @@ class TrunkedImportSelectionDialog:
                     new_count += 1
                 elif action == "update":
                     update_count += 1
-                elif action == "avoid_encrypted":
-                    avoid_count += 1
                 elif action == "delete_encrypted":
                     delete_count += 1
             if items:
@@ -9699,8 +9831,6 @@ class TrunkedImportSelectionDialog:
             summary_parts.append(f"{new_count} new")
         if update_count:
             summary_parts.append(f"{update_count} updates")
-        if avoid_count:
-            summary_parts.append(f"{avoid_count} avoid-encrypted")
         if delete_count:
             summary_parts.append(f"{delete_count} DELETE encrypted")
         prompt = (
@@ -9711,6 +9841,18 @@ class TrunkedImportSelectionDialog:
             prompt += "\n\nDeletion is permanent once you Save."
         if not messagebox.askyesno("Import Selected", prompt, parent=self.top):
             return
+        # Persist the per-system "include encrypted" preference so the
+        # next import for the same system remembers the user's choice.
+        sys_key = self.system.system_id or self.system.name or ""
+        if sys_key:
+            include_map = self.app._app_settings.setdefault(
+                "rr_import_include_encrypted", {}
+            )
+            include_map[sys_key] = bool(self.include_encrypted_var.get())
+            try:
+                self.app._save_app_settings()
+            except Exception:
+                pass
         self.result = selection
         self.top.destroy()
 
@@ -9974,47 +10116,32 @@ class BulkRemapDialog:
             variable=self.scope_var, value="selected",
         ).grid(row=2, column=3, sticky=tk.W)
 
-        ttk.Label(frm, text="Avoid state filter:").grid(row=3, column=0, sticky=tk.W, pady=4)
-        self.avoid_filter = tk.StringVar(value="any")
-        for i, (label, value) in enumerate(
-            (("Any", "any"), ("Off only", "Off"), ("On only", "On"))
-        ):
-            ttk.Radiobutton(frm, text=label, variable=self.avoid_filter, value=value).grid(
-                row=3, column=1 + i, sticky=tk.W
-            )
-
         ttk.Separator(frm, orient=tk.HORIZONTAL).grid(
-            row=4, column=0, columnspan=4, sticky="ew", pady=6
+            row=3, column=0, columnspan=4, sticky="ew", pady=6
         )
 
-        ttk.Label(frm, text="Action:").grid(row=5, column=0, sticky=tk.W, pady=4)
+        ttk.Label(frm, text="Action:").grid(row=4, column=0, sticky=tk.W, pady=4)
         self.action_var = tk.StringVar(value="remap")
         ttk.Radiobutton(
             frm, text="Remap service type to", variable=self.action_var, value="remap",
-        ).grid(row=5, column=1, sticky=tk.W)
+        ).grid(row=4, column=1, sticky=tk.W)
         self.new_service_var = tk.StringVar()
         ttk.Combobox(
             frm, textvariable=self.new_service_var, state="readonly", width=22,
             values=[s[1] for s in SERVICE_CHOICES],
-        ).grid(row=5, column=2, columnspan=2, sticky=tk.W)
-        ttk.Radiobutton(
-            frm, text="Set avoid On", variable=self.action_var, value="avoid_on",
-        ).grid(row=6, column=1, sticky=tk.W)
-        ttk.Radiobutton(
-            frm, text="Set avoid Off", variable=self.action_var, value="avoid_off",
-        ).grid(row=6, column=2, sticky=tk.W)
+        ).grid(row=4, column=2, columnspan=2, sticky=tk.W)
 
         ttk.Separator(frm, orient=tk.HORIZONTAL).grid(
-            row=7, column=0, columnspan=4, sticky="ew", pady=6
+            row=5, column=0, columnspan=4, sticky="ew", pady=6
         )
 
         self.preview_var = tk.StringVar(value="Preview: (click Preview to count)")
         ttk.Label(frm, textvariable=self.preview_var, foreground="#333333").grid(
-            row=8, column=0, columnspan=4, sticky=tk.W, pady=4
+            row=6, column=0, columnspan=4, sticky=tk.W, pady=4
         )
 
         btns = ttk.Frame(frm)
-        btns.grid(row=9, column=0, columnspan=4, pady=8)
+        btns.grid(row=7, column=0, columnspan=4, pady=8)
         ttk.Button(btns, text="Preview", command=self._on_preview).pack(side=tk.LEFT, padx=4)
         ttk.Button(btns, text="Apply", command=self._on_apply).pack(side=tk.LEFT, padx=4)
         ttk.Button(btns, text="Close", command=self.top.destroy).pack(side=tk.LEFT, padx=4)
@@ -10032,11 +10159,9 @@ class BulkRemapDialog:
                 service_types = {int(x.strip()) for x in svc_text.split(",") if x.strip()}
             except ValueError:
                 service_types = None
-        avoid_state = None if self.avoid_filter.get() == "any" else self.avoid_filter.get()
         return {
             "entry_types": types,
             "service_types": service_types,
-            "avoid_state": avoid_state,
         }
 
     def _iter_candidates(self) -> List[FreqEntry]:
@@ -10070,7 +10195,6 @@ class BulkRemapDialog:
                         flt["service_types"],
                         county_id=None,
                         system_id=None,
-                        avoid_state=flt["avoid_state"],
                     ):
                         continue
                     candidates.append(entry)
@@ -10093,9 +10217,6 @@ class BulkRemapDialog:
                 return
             new_type = int(stype_str.split(" - ")[0])
             desc = f"remap service type to {service_label(new_type)}"
-        elif action in ("avoid_on", "avoid_off"):
-            target = "On" if action == "avoid_on" else "Off"
-            desc = f"set avoid={target}"
         else:
             return
 
@@ -10121,13 +10242,6 @@ class BulkRemapDialog:
                         entry, new_type, source="bulk_remap", txn_id=txn,
                     ):
                         changed += 1
-            else:
-                target = "On" if action == "avoid_on" else "Off"
-                for entry in candidates:
-                    if self.app._do_set_avoid(
-                        entry, target, source="bulk_remap", txn_id=txn,
-                    ):
-                        changed += 1
 
         self.app._populate_tree()
         self.app._set_status(
@@ -10136,168 +10250,11 @@ class BulkRemapDialog:
         self.preview_var.set(f"Applied to {changed} entries.")
 
 
-class DiscoveryViewerDialog:
-    """Viewer for scanner discovery folders (Conventional / Trunk)."""
-
-    def __init__(self, app: "ScannerManagerApp"):
-        self.app = app
-        self.top = tk.Toplevel(app.root)
-        self.top.title("Discovery Logs")
-        self.top.transient(app.root)
-        self.top.geometry("900x600")
-
-        sd_folder = (app._path_var.get() or "").strip()
-        self.discovery_root = Path(sd_folder) / "discovery" if sd_folder else None
-        self.groups = (
-            discover_log_files(self.discovery_root)
-            if self.discovery_root and self.discovery_root.exists()
-            else {"Conventional": [], "Trunk": []}
-        )
-
-        header_frame = ttk.Frame(self.top, padding=(8, 8, 8, 0))
-        header_frame.pack(fill=tk.X)
-        total = sum(len(v) for v in self.groups.values())
-        if not self.discovery_root or not self.discovery_root.exists():
-            summary = "No discovery folder found. Select a valid SD card folder first."
-        elif total == 0:
-            summary = (
-                f"Discovery folder found at {self.discovery_root}, but no logs yet. "
-                "Run Discovery Mode on the scanner to generate logs."
-            )
-        else:
-            summary = (
-                f"Discovery root: {self.discovery_root}    "
-                f"Conventional: {len(self.groups['Conventional'])}    "
-                f"Trunk: {len(self.groups['Trunk'])}"
-            )
-        ttk.Label(header_frame, text=summary, wraplength=860, justify=tk.LEFT).pack(side=tk.LEFT)
-
-        paned = ttk.PanedWindow(self.top, orient=tk.HORIZONTAL)
-        paned.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
-
-        left = ttk.Frame(paned)
-        paned.add(left, weight=1)
-        self.file_tree = ttk.Treeview(
-            left, columns=("name", "size", "modified"), show="tree headings", selectmode="browse"
-        )
-        self.file_tree.heading("name", text="File")
-        self.file_tree.heading("size", text="Size")
-        self.file_tree.heading("modified", text="Modified")
-        self.file_tree.column("#0", width=140, stretch=False)
-        self.file_tree.column("name", width=220)
-        self.file_tree.column("size", width=80, anchor=tk.E)
-        self.file_tree.column("modified", width=160)
-        self.file_tree.pack(fill=tk.BOTH, expand=True)
-        self.file_tree.bind("<<TreeviewSelect>>", self._on_select)
-
-        right = ttk.Frame(paned)
-        paned.add(right, weight=2)
-        self.preview = tk.Text(right, wrap="none")
-        self.preview.configure(state="disabled")
-        self.preview.pack(fill=tk.BOTH, expand=True)
-
-        for kind, files in self.groups.items():
-            kind_id = self.file_tree.insert("", tk.END, text=kind, open=True)
-            for p in files:
-                try:
-                    stat = p.stat()
-                    size_kb = f"{stat.st_size / 1024:.1f} KB"
-                    modified = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-                except Exception:
-                    size_kb = ""
-                    modified = ""
-                self.file_tree.insert(
-                    kind_id, tk.END, text="", values=(p.name, size_kb, modified),
-                    tags=(str(p),),
-                )
-
-        footer = ttk.Frame(self.top, padding=8)
-        footer.pack(fill=tk.X)
-        ttk.Button(footer, text="Export Selected...", command=self._on_export).pack(side=tk.LEFT)
-        ttk.Button(footer, text="Close", command=self.top.destroy).pack(side=tk.RIGHT)
-
-    def _selected_path(self) -> Optional[Path]:
-        sel = self.file_tree.selection()
-        if not sel:
-            return None
-        tags = self.file_tree.item(sel[0], "tags")
-        if not tags:
-            return None
-        return Path(tags[0])
-
-    def _on_select(self, event=None):
-        path = self._selected_path()
-        if not path or not path.exists():
-            return
-        info = parse_discovery_file(path)
-        lines: List[str] = []
-        lines.append(f"File: {info['path']}")
-        lines.append(f"Size: {info['size_bytes']} bytes")
-        lines.append(f"Modified: {info['modified']}")
-        if info["header"]:
-            lines.append("")
-            lines.append("Header:")
-            for k, v in info["header"].items():
-                lines.append(f"  {k}: {v}")
-        if info["counts"]:
-            lines.append("")
-            lines.append("Record counts:")
-            for rt, ct in sorted(info["counts"].items()):
-                lines.append(f"  {rt}: {ct}")
-        if info["records"]:
-            lines.append("")
-            lines.append("Records:")
-            for rec_type, fields in info["records"][:400]:
-                lines.append(
-                    f"  {rec_type}\t" + "\t".join(fields[1:]) if len(fields) > 1 else f"  {rec_type}"
-                )
-            if len(info["records"]) > 400:
-                lines.append(f"... ({len(info['records']) - 400} more)")
-        elif info["raw_preview"]:
-            lines.append("")
-            lines.append("Raw preview (first 2000 bytes as text):")
-            lines.append(info["raw_preview"])
-        self.preview.configure(state="normal")
-        self.preview.delete("1.0", tk.END)
-        self.preview.insert("1.0", "\n".join(lines))
-        self.preview.configure(state="disabled")
-
-    def _on_export(self):
-        path = self._selected_path()
-        if not path or not path.exists():
-            messagebox.showinfo("Export", "Select a discovery file first.", parent=self.top)
-            return
-        target = filedialog.asksaveasfilename(
-            title="Export Discovery Log",
-            defaultextension=".txt",
-            initialfile=f"{path.name}.txt",
-            filetypes=[("Text", "*.txt"), ("All Files", "*.*")],
-        )
-        if not target:
-            return
-        info = parse_discovery_file(path)
-        try:
-            with open(target, "w", encoding="utf-8") as f:
-                f.write(f"File: {info['path']}\n")
-                f.write(f"Size: {info['size_bytes']} bytes\n")
-                f.write(f"Modified: {info['modified']}\n\n")
-                for k, v in info["header"].items():
-                    f.write(f"{k}\t{v}\n")
-                for _, fields in info["records"]:
-                    f.write("\t".join(fields) + "\n")
-                if not info["records"] and info["raw_preview"]:
-                    f.write("\n[RAW PREVIEW]\n")
-                    f.write(info["raw_preview"])
-        except Exception as exc:
-            messagebox.showerror("Export", f"Failed to export:\n{exc}", parent=self.top)
-
-
 class AlertsViewerDialog:
     """Viewer for the SD card ``alert/`` folder.
 
-    Mirrors ``DiscoveryViewerDialog`` - file list on the left, contents
-    on the right - but uses the simpler flat-folder layout of alert
-    payloads (no Conventional/Trunk split).
+    A file list on the left, file contents on the right, using the
+    flat-folder layout of the ``alert/`` payloads.
     """
 
     MAX_PREVIEW_BYTES = 8192
@@ -10474,17 +10431,108 @@ class AlertsViewerDialog:
             )
 
 
-class CoverageHeatmapDialog:
-    """Pure-Python coverage heatmap around the active ZIP/City coordinate.
+class TowerClusterDialog:
+    """Popup that breaks down every system/group sharing a tower location.
 
-    Renders a 200x200 grid on a Tk canvas. Each pixel's intensity is the
-    count of group/site coverage circles that overlap the pixel's real-
-    world location. No external deps; uses the existing
-    ``lat``/``lon``/``range_miles`` data on groups and sites.
+    The coverage map and heatmap collapse co-located repeaters into a
+    single marker so labels don't stack on top of each other. When the
+    user clicks the marker, this dialog expands the cluster as a tree:
+    one node per system, children are the individual groups or sites
+    with their advertised coverage range.
     """
 
-    GRID = 200
+    def __init__(
+        self,
+        parent: tk.Misc,
+        cluster: "coverage_maps.TowerCluster",
+    ):
+        self.cluster = cluster
+        self.top = tk.Toplevel(parent)
+        self.top.title("Tower site")
+        self.top.transient(parent)
+        self.top.geometry("480x360")
+        try:
+            self.top.grab_set()
+        except Exception:
+            pass
+
+        header = ttk.Frame(self.top, padding=(10, 8, 10, 4))
+        header.pack(fill=tk.X)
+        ttk.Label(
+            header,
+            text=(
+                f"{cluster.lat:.4f}, {cluster.lon:.4f}    "
+                f"{cluster.size} channel group"
+                + ("s" if cluster.size != 1 else "")
+            ),
+        ).pack(side=tk.LEFT)
+        ttk.Button(header, text="Close", command=self.top.destroy).pack(
+            side=tk.RIGHT
+        )
+
+        body = ttk.Frame(self.top, padding=(10, 0, 10, 10))
+        body.pack(fill=tk.BOTH, expand=True)
+        tree = ttk.Treeview(
+            body,
+            columns=("detail",),
+            show="tree headings",
+            selectmode="browse",
+        )
+        tree.heading("#0", text="System / group")
+        tree.heading("detail", text="Coverage")
+        tree.column("#0", width=260, anchor=tk.W)
+        tree.column("detail", width=160, anchor=tk.W)
+        tree.pack(fill=tk.BOTH, expand=True)
+
+        by_system: Dict[str, List["coverage_maps.TowerClusterMember"]] = {}
+        order: List[str] = []
+        for m in cluster.members:
+            if m.system not in by_system:
+                by_system[m.system] = []
+                order.append(m.system)
+            by_system[m.system].append(m)
+
+        for system_name in order:
+            members = by_system[system_name]
+            max_r = max((m.range_mi for m in members), default=0.0)
+            parent_id = tree.insert(
+                "",
+                tk.END,
+                text=system_name or "(unnamed system)",
+                values=(f"~{max_r:.0f} mi" if max_r else "",),
+                open=True,
+            )
+            for m in members:
+                kind_label = "site" if m.kind == "site" else "group"
+                tree.insert(
+                    parent_id,
+                    tk.END,
+                    text=m.child or f"(unnamed {kind_label})",
+                    values=(
+                        f"{m.range_mi:.0f} mi {kind_label}"
+                        if m.range_mi
+                        else kind_label,
+                    ),
+                )
+
+
+class CoverageHeatmapDialog:
+    """Coverage heatmap overlaid on real-world map tiles.
+
+    Each group/site with ``lat``/``lon``/``range_miles`` contributes a
+    coverage circle; overlapping circles raise the intensity of the
+    underlying grid cell. The grid is then drawn as a stack of small
+    filled polygons on top of an OSM / Google tile layer so the user can
+    see *where* the hotspots sit relative to real geography.
+
+    If ``tkintermapview`` is not installed, the dialog falls back to the
+    legacy pure-Tk canvas renderer so headless installs still work.
+    """
+
     DEFAULT_SPAN_MI = 50.0
+    DEFAULT_GRID = 36
+    HEAT_BUCKETS = 6
+    LEGACY_GRID = 200
 
     def __init__(self, app: "ScannerManagerApp"):
         self.app = app
@@ -10496,9 +10544,21 @@ class CoverageHeatmapDialog:
             )
             return
         self.center_lat, self.center_lon = app._active_coords
+        self._tile_mode = coverage_maps.have_map_support()
+        self._map_module = None
+        if self._tile_mode:
+            try:
+                import tkintermapview  # type: ignore
+
+                self._map_module = tkintermapview
+            except Exception:
+                self._tile_mode = False
+
         self.top = tk.Toplevel(app.root)
         self.top.title("Coverage Heatmap")
         self.top.transient(app.root)
+        if self._tile_mode:
+            self.top.geometry("900x700")
 
         header = ttk.Frame(self.top, padding=(8, 8, 8, 4))
         header.pack(fill=tk.X)
@@ -10512,6 +10572,43 @@ class CoverageHeatmapDialog:
         self.span_var = tk.StringVar(value=str(int(self.DEFAULT_SPAN_MI)))
         entry = ttk.Entry(header, textvariable=self.span_var, width=6)
         entry.pack(side=tk.LEFT, padx=4)
+        entry.bind("<Return>", lambda _e: self._render())
+        entry.bind("<FocusOut>", lambda _e: self._render())
+
+        if self._tile_mode:
+            ttk.Label(header, text="Tile server:").pack(side=tk.LEFT, padx=(10, 2))
+            self.tile_var = tk.StringVar(value="OpenStreetMap")
+            tile_cb = ttk.Combobox(
+                header,
+                textvariable=self.tile_var,
+                width=22,
+                state="readonly",
+                values=tuple(coverage_maps.tile_provider_labels()),
+            )
+            tile_cb.pack(side=tk.LEFT)
+            tile_cb.bind(
+                "<<ComboboxSelected>>",
+                lambda _e: coverage_maps.apply_tile_server(
+                    self.map, self.tile_var.get()
+                ),
+            )
+
+            self.markers_var = tk.BooleanVar(value=True)
+            ttk.Checkbutton(
+                header,
+                text="Show tower markers",
+                variable=self.markers_var,
+                command=self._render,
+            ).pack(side=tk.LEFT, padx=8)
+
+            self.circles_var = tk.BooleanVar(value=False)
+            ttk.Checkbutton(
+                header,
+                text="Show coverage circles",
+                variable=self.circles_var,
+                command=self._render,
+            ).pack(side=tk.LEFT, padx=8)
+
         ttk.Button(header, text="Render", command=self._render).pack(
             side=tk.LEFT, padx=4
         )
@@ -10519,26 +10616,92 @@ class CoverageHeatmapDialog:
             side=tk.RIGHT
         )
 
-        # A square canvas sized to the grid. Each grid cell is one pixel.
-        self.canvas = tk.Canvas(
-            self.top, width=self.GRID, height=self.GRID,
-            background="#101010", highlightthickness=0,
-        )
-        self.canvas.pack(padx=8, pady=4)
+        if self._tile_mode:
+            # Second row: scanner button simulation + deleted-tower toggle.
+            # Defaults mirror whatever the main app currently has selected,
+            # so the heatmap opens showing "what the scanner sees" rather
+            # than dumping every raw tower on the user.
+            filters = ttk.Frame(self.top, padding=(8, 0, 8, 4))
+            filters.pack(fill=tk.X)
+            ttk.Label(filters, text="Scanner buttons:").pack(side=tk.LEFT)
+            self.btn_police = tk.BooleanVar(
+                value=bool(app._button_police.get())
+            )
+            self.btn_fire = tk.BooleanVar(value=bool(app._button_fire.get()))
+            self.btn_ems = tk.BooleanVar(value=bool(app._button_ems.get()))
+            self.btn_dot = tk.BooleanVar(value=bool(app._button_dot.get()))
+            self.btn_multi = tk.BooleanVar(
+                value=bool(app._button_multi.get())
+            )
+            self.btn_others = tk.BooleanVar(
+                value=bool(app._include_others.get())
+            )
+            for label, var in (
+                ("Police", self.btn_police),
+                ("Fire", self.btn_fire),
+                ("EMS", self.btn_ems),
+                ("DOT", self.btn_dot),
+                ("Multi (1/14)", self.btn_multi),
+                ("Other types", self.btn_others),
+            ):
+                ttk.Checkbutton(
+                    filters, text=label, variable=var, command=self._render
+                ).pack(side=tk.LEFT, padx=2)
+
+            # Deleted-tower visibility: off by default so the heatmap
+            # matches the live SD card. Turn on to see grayed-out ghosts
+            # of towers the user removed since the last baseline.
+            self.show_deleted_var = tk.BooleanVar(value=False)
+            ttk.Checkbutton(
+                filters,
+                text="Show removed towers (grayed)",
+                variable=self.show_deleted_var,
+                command=self._render,
+            ).pack(side=tk.LEFT, padx=(12, 2))
+
+        body = ttk.Frame(self.top)
+        body.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
+
+        if self._tile_mode:
+            self.map = self._map_module.TkinterMapView(
+                body, width=880, height=600, corner_radius=0
+            )
+            self.map.pack(fill=tk.BOTH, expand=True)
+            coverage_maps.apply_tile_server(self.map, "OpenStreetMap")
+            self.map.set_position(self.center_lat, self.center_lon)
+            self.map.set_zoom(9)
+            self._heat_polygons: List[Any] = []
+            self._coverage_polygons: List[Any] = []
+            self._markers: List[Any] = []
+        else:
+            ttk.Label(
+                body,
+                text=(
+                    "Install the optional 'tkintermapview' package to see the "
+                    "heatmap on real map tiles (pip install tkintermapview)."
+                ),
+                foreground="#888888",
+                wraplength=520,
+            ).pack(anchor=tk.W, pady=(0, 4))
+            self.canvas = tk.Canvas(
+                body,
+                width=self.LEGACY_GRID,
+                height=self.LEGACY_GRID,
+                background="#101010",
+                highlightthickness=0,
+            )
+            self.canvas.pack()
+
         self.legend = ttk.Label(self.top, text="", padding=(8, 0, 8, 8))
         self.legend.pack(fill=tk.X)
 
         self._render()
 
     def _iter_coverage_circles(self):
-        """Yield (lat, lon, range_miles) for every group/site with geo."""
-        for sys_node in self.app.hpd.systems:
-            for site in sys_node.sites:
-                if site.lat is not None and site.lon is not None and site.range_miles:
-                    yield site.lat, site.lon, site.range_miles
-            for group in sys_node.groups:
-                if group.lat is not None and group.lon is not None and group.range_miles:
-                    yield group.lat, group.lon, group.range_miles
+        for (lat, lon, rng, _label) in coverage_maps.iter_coverage_circles(
+            self.app.hpd.systems
+        ):
+            yield lat, lon, rng
 
     def _render(self):
         try:
@@ -10547,102 +10710,329 @@ class CoverageHeatmapDialog:
             span = self.DEFAULT_SPAN_MI
         span = max(5.0, min(span, 500.0))
 
-        circles = list(self._iter_coverage_circles())
+        circles = list(coverage_maps.iter_coverage_circles(self.app.hpd.systems))
         if not circles:
-            self.canvas.delete("all")
-            self.canvas.create_text(
-                self.GRID / 2, self.GRID / 2,
-                text="No geo data", fill="#888888",
-            )
             self.legend.configure(text="No group/site has lat/lon + range.")
+            if self._tile_mode:
+                self._clear_overlays()
+            else:
+                self.canvas.delete("all")
+                self.canvas.create_text(
+                    self.LEGACY_GRID / 2,
+                    self.LEGACY_GRID / 2,
+                    text="No geo data",
+                    fill="#888888",
+                )
             return
 
-        # Build the intensity grid: for each pixel, count circles that
-        # contain it. Precompute each cell's real-world lat/lon.
-        mi_per_cell = (span * 2.0) / self.GRID
-        # 1 mile in lat direction ~= 1/69.172 degrees
-        mi_per_deg_lat = 69.172
-        # longitude degree length varies with latitude
-        import math
-        mi_per_deg_lon = max(1.0, 69.172 * math.cos(math.radians(self.center_lat)))
+        if self._tile_mode:
+            self._render_tiles(circles, span)
+        else:
+            self._render_canvas(circles, span)
 
-        half = span
-        # Grid cell (row=0 at top = north). Counts saved sparsely by row.
-        counts = [[0] * self.GRID for _ in range(self.GRID)]
-        max_count = 0
-        for (clat, clon, crange) in circles:
-            # Pre-filter: skip circles clearly outside the grid bounding box
-            dlat_mi = (clat - self.center_lat) * mi_per_deg_lat
-            dlon_mi = (clon - self.center_lon) * mi_per_deg_lon
-            if abs(dlat_mi) - crange > span or abs(dlon_mi) - crange > span:
+    def _clear_overlays(self) -> None:
+        for poly in getattr(self, "_heat_polygons", []):
+            try:
+                poly.delete()
+            except Exception:
+                pass
+        self._heat_polygons = []
+        for poly in getattr(self, "_coverage_polygons", []):
+            try:
+                poly.delete()
+            except Exception:
+                pass
+        self._coverage_polygons = []
+        for marker in getattr(self, "_markers", []):
+            try:
+                marker.delete()
+            except Exception:
+                pass
+        self._markers = []
+
+    def _session_snapshot_path(self) -> Optional[str]:
+        """Path to the session-snapshot copy of the currently-loaded HPD,
+        if one exists on disk. Used by the comprehensive deleted-tower
+        diff so the heatmap can tell the difference between "was there
+        at load time and removed since" vs "never existed"."""
+        hpd_path = getattr(self.app.hpd, "filepath", None)
+        if not hpd_path:
+            return None
+        try:
+            snap = session_snapshot_path(hpd_path)
+        except Exception:
+            return None
+        try:
+            if not snap.exists():
+                return None
+        except Exception:
+            return None
+        return str(snap)
+
+    def _active_button_types(self) -> Set[int]:
+        active: Set[int] = set()
+        if getattr(self, "btn_police", None) and self.btn_police.get():
+            active.add(2)
+        if getattr(self, "btn_fire", None) and self.btn_fire.get():
+            active.add(3)
+        if getattr(self, "btn_ems", None) and self.btn_ems.get():
+            active.add(4)
+        if getattr(self, "btn_dot", None) and self.btn_dot.get():
+            active.add(14)
+        if getattr(self, "btn_multi", None) and self.btn_multi.get():
+            active.add(1)
+        return active
+
+    def _render_tiles(self, circles, span: float) -> None:
+        self._clear_overlays()
+
+        # Build the full cluster list first, so both the heat grid and
+        # the marker/circle overlays use the exact same "in-scope" set.
+        # This is what lets the Span box actually reduce the number of
+        # tower icons the user sees (previously it only affected the
+        # heat grid).
+        include_deleted = bool(
+            getattr(self, "show_deleted_var", tk.BooleanVar(value=False)).get()
+        )
+        all_clusters = coverage_maps.cluster_tower_points(
+            self.app.hpd.systems,
+            metastore=getattr(self.app, "_meta", None),
+            include_deleted=include_deleted,
+            session_snapshot_path=self._session_snapshot_path(),
+        )
+        active_buttons = self._active_button_types()
+        include_others = bool(
+            getattr(self, "btn_others", tk.BooleanVar(value=True)).get()
+        )
+        scannable = set(ACTIVE_PROFILE.scannable_service_types())
+        filtered_clusters = [
+            c
+            for c in all_clusters
+            if coverage_maps.cluster_passes_button_filter(
+                c, active_buttons, include_others, scannable
+            )
+        ]
+        span_clusters = coverage_maps.clusters_within_span(
+            filtered_clusters, self.center_lat, self.center_lon, span
+        )
+
+        live_clusters = [c for c in span_clusters if not c.deleted]
+        deleted_clusters = [c for c in span_clusters if c.deleted]
+
+        # The heat grid only ever reflects *live* coverage; deleted
+        # towers are annotations, not part of what the scanner will
+        # actually scan tonight.
+        heat_source = []
+        for c in live_clusters:
+            for m in c.members:
+                heat_source.append((c.lat, c.lon, m.range_mi))
+
+        result = coverage_maps.heat_cells(
+            heat_source,
+            self.center_lat,
+            self.center_lon,
+            span,
+            grid=self.DEFAULT_GRID,
+        )
+        rectangles: List[coverage_maps.HeatRectangle] = []
+        if result.max_count > 0:
+            rectangles = coverage_maps.heat_rectangles(
+                result, buckets=self.HEAT_BUCKETS
+            )
+            for rect in rectangles:
+                pts = coverage_maps.rectangle_polygon(
+                    rect,
+                    self.center_lat,
+                    self.center_lon,
+                    span,
+                    result.grid,
+                )
+                try:
+                    poly = self.map.set_polygon(
+                        pts,
+                        outline_color=rect.color,
+                        fill_color=rect.color,
+                        border_width=0,
+                    )
+                    self._heat_polygons.append(poly)
+                except Exception:
+                    pass
+
+        # Per-tower coverage circles (optional - off by default since
+        # they clutter the view when there are many towers).
+        if (
+            getattr(self, "circles_var", None)
+            and self.circles_var.get()
+        ):
+            self._draw_coverage_circles(live_clusters, deleted=False)
+            if include_deleted:
+                self._draw_coverage_circles(deleted_clusters, deleted=True)
+
+        try:
+            you_marker = self.map.set_marker(
+                self.center_lat,
+                self.center_lon,
+                text="(you)",
+                marker_color_circle="red",
+            )
+            self._markers.append(you_marker)
+        except Exception:
+            pass
+        if getattr(self, "markers_var", None) and self.markers_var.get():
+            self._add_cluster_markers(live_clusters, deleted=False)
+            if include_deleted:
+                self._add_cluster_markers(deleted_clusters, deleted=True)
+
+        live_member_count = sum(c.size for c in live_clusters)
+        deleted_note = ""
+        if include_deleted:
+            deleted_note = (
+                f"    {len(deleted_clusters)} removed tower"
+                f"{'s' if len(deleted_clusters) != 1 else ''} shown in gray"
+            )
+        if result.max_count == 0:
+            self.legend.configure(
+                text=(
+                    "No coverage circles intersect this span. "
+                    f"{len(live_clusters)} tower(s) within +/-{span:.0f} mi."
+                    + deleted_note
+                )
+            )
+            return
+        self.legend.configure(
+            text=(
+                f"{result.circles_considered} coverage circles across "
+                f"{len(live_clusters)} tower site(s) "
+                f"({live_member_count} groups), "
+                f"{len(rectangles)} heat rectangles. "
+                f"Brightest = {result.max_count} overlapping systems. "
+                f"Span = {span:.0f} mi."
+                + deleted_note
+            )
+        )
+
+    def _draw_coverage_circles(
+        self,
+        clusters: List["coverage_maps.TowerCluster"],
+        *,
+        deleted: bool,
+    ) -> None:
+        """Outline each cluster's advertised coverage radius.
+
+        Deleted towers render in a muted gray so the user can see what
+        they've removed against the active footprint without the two
+        sets visually fighting each other.
+        """
+        if deleted:
+            outline = "#888888"
+            fill = "#cccccc"
+        else:
+            outline = "#0a84ff"
+            fill = "#0a84ff"
+        for cluster in clusters:
+            radius = cluster.max_range_mi
+            if not radius or radius <= 0:
                 continue
-            for r in range(self.GRID):
-                pixel_lat_mi = half - (r + 0.5) * mi_per_cell
-                lat_diff_mi = pixel_lat_mi - dlat_mi
-                if abs(lat_diff_mi) > crange:
-                    continue
-                dx_max = (crange * crange - lat_diff_mi * lat_diff_mi) ** 0.5
-                min_x_mi = dlon_mi - dx_max
-                max_x_mi = dlon_mi + dx_max
-                col_lo = int(((min_x_mi + half) / mi_per_cell))
-                col_hi = int(((max_x_mi + half) / mi_per_cell))
-                col_lo = max(0, col_lo)
-                col_hi = min(self.GRID - 1, col_hi)
-                for c in range(col_lo, col_hi + 1):
-                    counts[r][c] += 1
-                    if counts[r][c] > max_count:
-                        max_count = counts[r][c]
+            try:
+                pts = coverage_maps.miles_circle_polygon(
+                    cluster.lat, cluster.lon, float(radius), sides=48
+                )
+                poly = self.map.set_polygon(
+                    pts,
+                    outline_color=outline,
+                    fill_color=fill,
+                    border_width=1,
+                )
+                self._coverage_polygons.append(poly)
+            except Exception:
+                pass
 
-        # Render
+    def _add_cluster_markers(
+        self,
+        clusters: List["coverage_maps.TowerCluster"],
+        *,
+        deleted: bool = False,
+    ) -> None:
+        """Drop one map marker per unique tower location.
+
+        Co-located repeaters collapse into a single marker; the user
+        clicks through to :class:`TowerClusterDialog` to see the full
+        list of systems / groups at that site. Removed towers use a
+        gray marker circle so they read as "ghosts" on top of the live
+        heat.
+        """
+        for cluster in clusters:
+            label = cluster.short_label()
+            try:
+                kwargs: Dict[str, Any] = dict(
+                    text=label,
+                    command=self._make_cluster_click_handler(cluster),
+                )
+                if deleted:
+                    kwargs["marker_color_circle"] = "#888888"
+                    kwargs["marker_color_outside"] = "#bdbdbd"
+                    kwargs["text_color"] = "#707070"
+                marker = self.map.set_marker(
+                    cluster.lat, cluster.lon, **kwargs
+                )
+                self._markers.append(marker)
+            except Exception:
+                pass
+
+    def _make_cluster_click_handler(
+        self, cluster: "coverage_maps.TowerCluster"
+    ):
+        def _open(_marker=None, _cluster=cluster):
+            TowerClusterDialog(self.top, _cluster)
+        return _open
+
+    def _render_canvas(self, circles, span: float) -> None:
+        grid = self.LEGACY_GRID
+        result = coverage_maps.heat_cells(
+            ((lat, lon, rng) for (lat, lon, rng, _l) in circles),
+            self.center_lat,
+            self.center_lon,
+            span,
+            grid=grid,
+        )
         self.canvas.delete("all")
-        if max_count == 0:
+        if result.max_count == 0:
             self.canvas.create_text(
-                self.GRID / 2, self.GRID / 2,
+                grid / 2,
+                grid / 2,
                 text="(no coverage overlaps this span)",
                 fill="#888888",
             )
-            self.legend.configure(text="No coverage circles intersect this span.")
+            self.legend.configure(
+                text="No coverage circles intersect this span."
+            )
             return
-
-        # Use an image for fast per-pixel rendering.
-        img = tk.PhotoImage(width=self.GRID, height=self.GRID)
-        self._img = img  # keep reference so GC doesn't drop it
-        for r in range(self.GRID):
+        img = tk.PhotoImage(width=grid, height=grid)
+        self._img = img
+        for r in range(grid):
             row_colors: List[str] = []
-            for c in range(self.GRID):
-                n = counts[r][c]
+            for c in range(grid):
+                n = result.counts[r][c]
                 if n == 0:
                     row_colors.append("#101010")
                 else:
-                    t = n / max_count
-                    # Blue (cold) -> green -> yellow -> red gradient
-                    if t < 0.5:
-                        g = int(t * 2 * 255)
-                        b = 255 - g
-                        col = f"#{0:02x}{g:02x}{b:02x}"
-                    else:
-                        u = (t - 0.5) * 2
-                        r_c = int(u * 255)
-                        g = 255 - int(u * 128)
-                        col = f"#{r_c:02x}{g:02x}{0:02x}"
-                    row_colors.append(col)
+                    row_colors.append(
+                        coverage_maps.heat_color(n / result.max_count)
+                    )
             img.put("{" + " ".join(row_colors) + "}", to=(0, r))
         self.canvas.create_image(0, 0, anchor=tk.NW, image=img)
-
-        # Center cross-hair
-        half_px = self.GRID // 2
+        half_px = grid // 2
         self.canvas.create_line(
             half_px - 6, half_px, half_px + 6, half_px, fill="#ffffff"
         )
         self.canvas.create_line(
             half_px, half_px - 6, half_px, half_px + 6, fill="#ffffff"
         )
-
         self.legend.configure(
             text=(
-                f"{len(circles)} coverage circles — "
-                f"darkest = no overlap, brightest = {max_count} overlapping "
-                f"systems. Span = {span:.0f} mi on each axis."
+                f"{result.circles_considered} coverage circles — "
+                f"darkest = no overlap, brightest = {result.max_count} "
+                f"overlapping systems. Span = {span:.0f} mi on each axis."
             )
         )
 
@@ -10680,7 +11070,7 @@ class CoverageMapDialog:
         self.tile_var = tk.StringVar(value="OpenStreetMap")
         tile_cb = ttk.Combobox(
             header, textvariable=self.tile_var, width=24, state="readonly",
-            values=("OpenStreetMap", "Google (normal)", "Google (satellite)"),
+            values=tuple(coverage_maps.tile_provider_labels()),
         )
         tile_cb.pack(side=tk.LEFT, padx=4)
         tile_cb.bind("<<ComboboxSelected>>", lambda _e: self._apply_tile())
@@ -10696,9 +11086,11 @@ class CoverageMapDialog:
             self.top, width=880, height=580, corner_radius=0
         )
         self.map.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
+        # The widget's constructor picks an uncustomised default tile URL;
+        # explicitly apply our chosen provider so what the combobox says
+        # matches what the user actually sees.
+        self._apply_tile()
 
-        # Default center: active coords, else the first group/site with
-        # geo, else Washington, DC as a harmless fallback.
         center = self._pick_center()
         self.map.set_position(center[0], center[1])
         self.map.set_zoom(8)
@@ -10708,49 +11100,26 @@ class CoverageMapDialog:
         self._redraw()
 
     def _pick_center(self) -> Tuple[float, float]:
-        if self.app._active_coords is not None:
-            return self.app._active_coords
+        candidates: List[Tuple[Optional[float], Optional[float]]] = []
         for sys_node in self.app.hpd.systems:
             for site in sys_node.sites:
-                if site.lat is not None and site.lon is not None:
-                    return (site.lat, site.lon)
+                candidates.append((site.lat, site.lon))
             for group in sys_node.groups:
-                if group.lat is not None and group.lon is not None:
-                    return (group.lat, group.lon)
-        return (38.9072, -77.0369)
+                candidates.append((group.lat, group.lon))
+        return coverage_maps.pick_default_center(
+            self.app._active_coords, candidates
+        )
 
     def _apply_tile(self):
-        choice = self.tile_var.get()
-        if choice == "Google (normal)":
-            self.map.set_tile_server(
-                "https://mt0.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}",
-                max_zoom=22,
-            )
-        elif choice == "Google (satellite)":
-            self.map.set_tile_server(
-                "https://mt0.google.com/vt/lyrs=s&hl=en&x={x}&y={y}&z={z}",
-                max_zoom=22,
-            )
-        else:
-            self.map.set_tile_server(
-                "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
-                max_zoom=19,
-            )
+        coverage_maps.apply_tile_server(self.map, self.tile_var.get())
 
     @staticmethod
     def _circle_points(
         lat: float, lon: float, range_miles: float, sides: int = 48
     ) -> List[Tuple[float, float]]:
-        import math
-        mi_per_deg_lat = 69.172
-        mi_per_deg_lon = max(1.0, 69.172 * math.cos(math.radians(lat)))
-        pts: List[Tuple[float, float]] = []
-        for i in range(sides):
-            theta = (i / sides) * 2.0 * math.pi
-            dlat = (range_miles * math.sin(theta)) / mi_per_deg_lat
-            dlon = (range_miles * math.cos(theta)) / mi_per_deg_lon
-            pts.append((lat + dlat, lon + dlon))
-        return pts
+        return coverage_maps.miles_circle_polygon(
+            lat, lon, float(range_miles), sides=sides
+        )
 
     def _redraw(self):
         for p in self._polygons:
@@ -10766,23 +11135,12 @@ class CoverageMapDialog:
         self._polygons.clear()
         self._markers.clear()
 
+        clusters = coverage_maps.cluster_tower_points(self.app.hpd.systems)
         drawn = 0
-        for sys_node in self.app.hpd.systems:
-            items = []
-            for site in sys_node.sites:
-                if site.lat is not None and site.lon is not None and site.range_miles:
-                    items.append(
-                        (site.lat, site.lon, site.range_miles,
-                         f"{sys_node.name} - {site.name}".strip(" -"))
-                    )
-            for group in sys_node.groups:
-                if group.lat is not None and group.lon is not None and group.range_miles:
-                    items.append(
-                        (group.lat, group.lon, group.range_miles,
-                         f"{sys_node.name} - {group.name}".strip(" -"))
-                    )
-            for (lat, lon, r_mi, label) in items:
-                pts = self._circle_points(lat, lon, float(r_mi))
+        for cluster in clusters:
+            radius = cluster.max_range_mi
+            if radius and radius > 0:
+                pts = self._circle_points(cluster.lat, cluster.lon, float(radius))
                 poly = self.map.set_polygon(
                     pts,
                     outline_color="#0a84ff",
@@ -10791,9 +11149,17 @@ class CoverageMapDialog:
                 )
                 # tkintermapview polygons default to ~40% opacity fill.
                 self._polygons.append(poly)
-                marker = self.map.set_marker(lat, lon, text=label)
+            try:
+                marker = self.map.set_marker(
+                    cluster.lat,
+                    cluster.lon,
+                    text=cluster.short_label(),
+                    command=self._make_cluster_click_handler(cluster),
+                )
                 self._markers.append(marker)
-                drawn += 1
+            except Exception:
+                pass
+            drawn += cluster.size
 
         if self.app._active_coords is not None:
             clat, clon = self.app._active_coords
@@ -10801,7 +11167,17 @@ class CoverageMapDialog:
                 self.map.set_marker(clat, clon, text="(you)", marker_color_circle="red")
             )
 
-        self.top.title(f"Coverage Map - {drawn} coverage circles")
+        self.top.title(
+            f"Coverage Map - {drawn} coverage circles across "
+            f"{len(clusters)} unique towers"
+        )
+
+    def _make_cluster_click_handler(
+        self, cluster: "coverage_maps.TowerCluster"
+    ):
+        def _open(_marker=None, _cluster=cluster):
+            TowerClusterDialog(self.top, _cluster)
+        return _open
 
 
 class EntryEditDialog:
@@ -10855,9 +11231,13 @@ class EntryEditDialog:
         if entry.entry_type == "TGID":
             ttk.Label(
                 frame,
-                text="(D) = P25 Phase I FDMA    (T) = P25 Phase II TDMA\n"
-                     "The scanner auto-detects D vs T from the trunk system type,\n"
-                     "so DIGITAL covers both. TDMA on BT885 has no separate mode.",
+                text=(
+                    "Pick DIGITAL for any P25 talkgroup - the BearTracker\n"
+                    "handles the two P25 flavors automatically.\n"
+                    "Pick ANALOG for conventional analog voice.\n"
+                    "Pick ALL when you aren't sure, and let the scanner\n"
+                    "figure it out at play time."
+                ),
                 foreground="#555555", justify=tk.LEFT,
             ).grid(row=row, column=2, sticky=tk.W, padx=8)
 
@@ -11385,8 +11765,9 @@ class RadioReferencePullDialog:
         ttk.Label(
             outer,
             text=(
-                "Numeric IDs: find a county on radioreference.com and look for "
-                "'cid=123' in the URL; states likewise use 'sid'."
+                "You can also paste the full RadioReference page URL for a "
+                "county, state, or trunked system - the app will read the "
+                "numeric ID out of it for you."
             ),
             foreground="#666",
         ).pack(fill=tk.X, pady=(2, 6))
@@ -11709,6 +12090,132 @@ class DonateDialog:
         self.app._set_status(f"Copied {label} to clipboard.")
 
 
+class UpdateAvailableDialog:
+    """Shown when a newer Scanner Manager release is available on GitHub.
+
+    The dialog can be driven in three modes:
+
+    - **available**: newer version found — offers Update Now, Skip, Later,
+      and Open Release Page.
+    - **current**: user triggered the check manually and we're up to date.
+    - **offline**: the background check couldn't reach GitHub; surfaced
+      only for manual checks so startup remains silent on flaky networks.
+    """
+
+    def __init__(
+        self,
+        app: "ScannerManagerApp",
+        *,
+        info: Optional["updater.UpdateInfo"],
+        mode: str = "available",
+    ) -> None:
+        self.app = app
+        self.info = info
+        self.mode = mode
+        self.top = tk.Toplevel(app.root)
+        self.top.title("Scanner Manager update")
+        self.top.transient(app.root)
+        self.top.geometry("560x440")
+        self.top.resizable(True, True)
+
+        frm = ttk.Frame(self.top, padding=12)
+        frm.pack(fill=tk.BOTH, expand=True)
+
+        if mode == "current":
+            headline = f"You're on the latest version, v{APP_VERSION}."
+        elif mode == "offline":
+            headline = "Couldn't reach GitHub to check for updates."
+        else:
+            assert info is not None
+            headline = f"Update available: v{APP_VERSION} → v{info.version}"
+        ttk.Label(
+            frm, text=headline, font=("TkDefaultFont", 11, "bold"),
+        ).pack(anchor=tk.W, pady=(0, 6))
+
+        body_text = tk.Text(frm, wrap="word", height=12)
+        body_text.pack(fill=tk.BOTH, expand=True)
+        if mode == "available" and info is not None:
+            body_text.insert(
+                "1.0",
+                (info.body or "Release notes unavailable.").strip() + "\n",
+            )
+        elif mode == "current":
+            body_text.insert(
+                "1.0",
+                "No newer release is published on GitHub.\n\n"
+                "You can always grab the source or a fresh build from\n"
+                f"{APP_RELEASES_URL}\n",
+            )
+        else:
+            body_text.insert(
+                "1.0",
+                "Scanner Manager couldn't contact GitHub. Your network "
+                "may be offline, proxied, or the service may be "
+                "temporarily unavailable.\n\n"
+                "You can download updates manually from\n"
+                f"{APP_RELEASES_URL}\n",
+            )
+        body_text.configure(state="disabled")
+
+        btns = ttk.Frame(frm)
+        btns.pack(fill=tk.X, pady=(8, 0))
+
+        if mode == "available" and info is not None:
+            ttk.Button(
+                btns, text="Update Now",
+                command=self._on_update_now,
+            ).pack(side=tk.LEFT)
+            ttk.Button(
+                btns, text="Open Release Page",
+                command=self._on_open_release,
+            ).pack(side=tk.LEFT, padx=6)
+            ttk.Button(
+                btns, text="Skip This Version",
+                command=self._on_skip,
+            ).pack(side=tk.LEFT, padx=6)
+            ttk.Button(
+                btns, text="Remind Me Later",
+                command=self.top.destroy,
+            ).pack(side=tk.RIGHT)
+        else:
+            ttk.Button(
+                btns, text="Open Release Page",
+                command=self._on_open_release,
+            ).pack(side=tk.LEFT)
+            ttk.Button(
+                btns, text="Close", command=self.top.destroy,
+            ).pack(side=tk.RIGHT)
+
+    def _on_update_now(self) -> None:
+        if self.info is None:
+            self.top.destroy()
+            return
+        # On mac/linux we simply route the user to the release page; the
+        # in-place swap implementation targets Windows frozen EXEs.
+        if sys.platform != "win32" or not getattr(sys, "frozen", False):
+            self._on_open_release()
+            return
+        webbrowser.open(self.info.html_url or APP_RELEASES_URL)
+        messagebox.showinfo(
+            "Manual update",
+            "In-place updates for this build aren't wired up yet. "
+            "Download the new EXE from the release page and replace "
+            "this one.",
+            parent=self.top,
+        )
+        self.top.destroy()
+
+    def _on_open_release(self) -> None:
+        target = (self.info.html_url if self.info else "") or APP_RELEASES_URL
+        webbrowser.open(target)
+
+    def _on_skip(self) -> None:
+        if self.info is not None:
+            self.app._app_settings["updater_skipped_version"] = self.info.version
+            self.app._save_app_settings()
+        self.top.destroy()
+
+
 class UnidenInstallerDownloadDialog:
     """Downloads a Uniden installer from the pinned manifest URL, verifies
     its SHA-256, and returns the cached path ready for ``install_tool``.
@@ -11835,6 +12342,8 @@ class UnidenInstallerDownloadDialog:
                 self.top.after(0, self._on_download_ok, str(path))
             except KeyboardInterrupt:
                 self.top.after(0, self._on_cancelled)
+            except uniden_tools.InstallerHashMismatch as exc:
+                self.top.after(0, self._on_hash_mismatch, exc)
             except Exception as exc:
                 self.top.after(0, self._on_download_failed, str(exc))
 
@@ -11871,6 +12380,29 @@ class UnidenInstallerDownloadDialog:
         self.status_var.set("Download failed.")
         messagebox.showerror(
             "Download failed", message, parent=self.top
+        )
+
+    def _on_hash_mismatch(self, exc: "uniden_tools.InstallerHashMismatch") -> None:
+        """Surface a hash-verification failure with both hashes visible
+        so the user (or a forum reporter) can file an actionable bug.
+        """
+        self.download_btn.configure(state=tk.NORMAL)
+        self.status_var.set("Hash verification failed.")
+        self.progress["value"] = 0
+        body = (
+            "Hash verification failed for this installer. This usually "
+            "means Uniden has rotated the installer on their side and "
+            "Scanner Manager's pinned hash is stale.\n\n"
+            f"Tool: {exc.tool_id or self.descriptor.get('display_name', '?')}\n"
+            f"URL: {exc.url}\n\n"
+            f"Expected SHA-256:\n  {exc.expected or '(not pinned)'}\n\n"
+            f"Got SHA-256:\n  {exc.got or '(could not compute)'}\n\n"
+            "Please file an issue with these values so the manifest can "
+            "be re-pinned:\n"
+            "https://github.com/disturbedkh/scanner-manager/issues"
+        )
+        messagebox.showerror(
+            "Installer hash mismatch", body, parent=self.top
         )
 
     def _on_cancelled(self) -> None:
@@ -12222,6 +12754,12 @@ class WorkspaceManagerDialog:
         ttk.Button(btns, text="Open Selected", command=self._on_open).pack(
             side=tk.LEFT, padx=4
         )
+        ttk.Button(
+            btns, text="Activate on SD card...", command=self._on_activate
+        ).pack(side=tk.LEFT, padx=4)
+        ttk.Button(btns, text="Snapshots...", command=self._on_snapshots).pack(
+            side=tk.LEFT, padx=4
+        )
         ttk.Button(btns, text="Clone from current SD...",
                    command=self._on_clone).pack(side=tk.LEFT, padx=4)
         ttk.Button(btns, text="Remove Selected", command=self._on_remove).pack(
@@ -12266,6 +12804,30 @@ class WorkspaceManagerDialog:
             messagebox.showinfo("Open", "Select a profile first.", parent=self.top)
             return
         self.result = {"action": "open", "profile_id": pid}
+        self.top.destroy()
+
+    def _on_activate(self) -> None:
+        pid = self._selected_profile_id()
+        if not pid:
+            messagebox.showinfo(
+                "Activate",
+                "Select a profile to copy onto the SD card.",
+                parent=self.top,
+            )
+            return
+        self.result = {"action": "activate", "profile_id": pid}
+        self.top.destroy()
+
+    def _on_snapshots(self) -> None:
+        pid = self._selected_profile_id()
+        if not pid:
+            messagebox.showinfo(
+                "Snapshots",
+                "Select a profile to see its snapshots.",
+                parent=self.top,
+            )
+            return
+        self.result = {"action": "snapshots", "profile_id": pid}
         self.top.destroy()
 
     def _on_remove(self) -> None:
@@ -12336,6 +12898,237 @@ class WorkspaceManagerDialog:
             "workspace_dir": workspace_dir,
         }
         self.top.destroy()
+
+
+class ProfileSnapshotsDialog:
+    """Browse, take, restore, and delete snapshots for one workspace profile.
+
+    Snapshots are per-profile content backups stored under
+    ``<workspace>/.snapshots/<id>/``. Each row shows the created time,
+    why the snapshot was taken, a short note, the file count, and the
+    disk usage. Manual snapshots are pinned - the retention pruner
+    never removes them.
+    """
+
+    def __init__(
+        self,
+        parent: tk.Misc,
+        app: "ScannerManagerApp",
+        profile_id: str,
+    ):
+        self.app = app
+        self.profile_id = profile_id
+        self.result: Optional[Dict[str, Any]] = None
+        profile = app._global_meta.get_profile(profile_id) or {}
+        name = profile.get("name") or profile_id
+        self.top = tk.Toplevel(parent)
+        self.top.title(f"Snapshots - {name}")
+        self.top.transient(parent)
+        self.top.grab_set()
+        self.top.geometry("820x440")
+
+        frame = ttk.Frame(self.top, padding=10)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(
+            frame,
+            text=(
+                "Each snapshot is a full copy of the workspace at a "
+                "point in time. Manual snapshots are kept forever; "
+                "pre-swap and auto snapshots are pruned by the profile's "
+                "retention rule."
+            ),
+            wraplength=760,
+            justify=tk.LEFT,
+            foreground="#444",
+        ).pack(fill=tk.X, pady=(0, 8))
+
+        columns = ("created", "reason", "note", "files", "size", "kept")
+        self.tree = ttk.Treeview(
+            frame, columns=columns, show="headings", height=12, selectmode="browse"
+        )
+        headings = {
+            "created": "Created",
+            "reason": "Reason",
+            "note": "Note",
+            "files": "Files",
+            "size": "Size",
+            "kept": "Kept",
+        }
+        widths = {
+            "created": 170, "reason": 100, "note": 260,
+            "files": 60, "size": 90, "kept": 60,
+        }
+        for col in columns:
+            self.tree.heading(col, text=headings[col])
+            self.tree.column(col, width=widths[col], anchor=tk.W, stretch=True)
+        self.tree.pack(fill=tk.BOTH, expand=True)
+
+        self.usage_var = tk.StringVar(value="")
+        ttk.Label(
+            frame, textvariable=self.usage_var, foreground="#555"
+        ).pack(anchor=tk.W, pady=(6, 0))
+
+        btns = ttk.Frame(frame)
+        btns.pack(fill=tk.X, pady=(8, 0))
+        ttk.Button(
+            btns, text="Take Snapshot Now...", command=self._on_take
+        ).pack(side=tk.LEFT, padx=4)
+        ttk.Button(btns, text="Restore", command=self._on_restore).pack(
+            side=tk.LEFT, padx=4
+        )
+        ttk.Button(btns, text="Edit Note...", command=self._on_edit_note).pack(
+            side=tk.LEFT, padx=4
+        )
+        ttk.Button(btns, text="Pin / Unpin", command=self._on_toggle_keep).pack(
+            side=tk.LEFT, padx=4
+        )
+        ttk.Button(btns, text="Delete", command=self._on_delete).pack(
+            side=tk.LEFT, padx=4
+        )
+        ttk.Button(btns, text="Close", command=self.top.destroy).pack(
+            side=tk.RIGHT, padx=4
+        )
+
+        self._populate()
+        parent.wait_window(self.top)
+
+    def _snapshots(self) -> List["sdcard.Snapshot"]:
+        profile = self.app._global_meta.get_profile(self.profile_id) or {}
+        return self.app._profile_snapshots(profile)
+
+    def _format_size(self, n: int) -> str:
+        if n <= 0:
+            return "0 B"
+        units = ["B", "KB", "MB", "GB", "TB"]
+        val = float(n)
+        i = 0
+        while val >= 1024 and i < len(units) - 1:
+            val /= 1024
+            i += 1
+        return f"{val:.1f} {units[i]}" if i else f"{int(val)} {units[i]}"
+
+    def _populate(self) -> None:
+        for item_id in self.tree.get_children():
+            self.tree.delete(item_id)
+        snapshots = self._snapshots()
+        snapshots_sorted = sorted(
+            snapshots, key=lambda s: s.created_at or "", reverse=True
+        )
+        total = 0
+        for snap in snapshots_sorted:
+            total += snap.size_bytes
+            kept = "yes" if (snap.keep or snap.reason == sdcard.SNAP_REASON_MANUAL) else ""
+            self.tree.insert(
+                "", "end",
+                iid=snap.id,
+                values=(
+                    snap.created_at,
+                    snap.reason,
+                    snap.note,
+                    snap.file_count,
+                    self._format_size(snap.size_bytes),
+                    kept,
+                ),
+            )
+        profile = self.app._global_meta.get_profile(self.profile_id) or {}
+        ws = profile.get("workspace_dir") or ""
+        on_disk = sdcard.snapshot_disk_usage(ws) if ws else 0
+        self.usage_var.set(
+            f"Snapshots on disk: {self._format_size(on_disk)}  "
+            f"({len(snapshots)} total)"
+        )
+
+    def _selected_id(self) -> Optional[str]:
+        sel = self.tree.selection()
+        return sel[0] if sel else None
+
+    def _on_take(self) -> None:
+        from tkinter import simpledialog
+        note = simpledialog.askstring(
+            "Take Snapshot",
+            "Optional note for this snapshot:",
+            parent=self.top,
+        )
+        if note is None:
+            return
+        self.result = {"action": "take_manual", "note": note.strip()}
+        self.top.destroy()
+
+    def _on_restore(self) -> None:
+        sid = self._selected_id()
+        if not sid:
+            messagebox.showinfo(
+                "Restore", "Select a snapshot to restore.", parent=self.top
+            )
+            return
+        self.result = {"action": "restore", "snap_id": sid}
+        self.top.destroy()
+
+    def _on_edit_note(self) -> None:
+        sid = self._selected_id()
+        if not sid:
+            return
+        profile = self.app._global_meta.get_profile(self.profile_id)
+        if not profile:
+            return
+        snaps = self.app._profile_snapshots(profile)
+        target = next((s for s in snaps if s.id == sid), None)
+        if target is None:
+            return
+        from tkinter import simpledialog
+        new_note = simpledialog.askstring(
+            "Edit Note",
+            "Note for this snapshot:",
+            initialvalue=target.note,
+            parent=self.top,
+        )
+        if new_note is None:
+            return
+        target.note = new_note.strip()
+        self.app._set_profile_snapshots(profile, snaps)
+        self.app._global_meta.upsert_profile(profile)
+        self.app._global_meta.save()
+        self._populate()
+
+    def _on_toggle_keep(self) -> None:
+        sid = self._selected_id()
+        if not sid:
+            return
+        profile = self.app._global_meta.get_profile(self.profile_id)
+        if not profile:
+            return
+        snaps = self.app._profile_snapshots(profile)
+        target = next((s for s in snaps if s.id == sid), None)
+        if target is None:
+            return
+        target.keep = not target.keep
+        self.app._set_profile_snapshots(profile, snaps)
+        self.app._global_meta.upsert_profile(profile)
+        self.app._global_meta.save()
+        self._populate()
+
+    def _on_delete(self) -> None:
+        sid = self._selected_id()
+        if not sid:
+            return
+        if not messagebox.askyesno(
+            "Delete Snapshot",
+            "Delete this snapshot? The payload files will be removed from disk.",
+            parent=self.top,
+        ):
+            return
+        profile = self.app._global_meta.get_profile(self.profile_id)
+        if not profile:
+            return
+        snaps = [s for s in self.app._profile_snapshots(profile) if s.id != sid]
+        self.app._set_profile_snapshots(profile, snaps)
+        self.app._global_meta.upsert_profile(profile)
+        self.app._global_meta.save()
+        ws = profile.get("workspace_dir") or ""
+        if ws:
+            sdcard.delete_snapshot_payload(ws, sid)
+        self._populate()
 
 
 class SyncConflictDialog:
@@ -12443,7 +13236,6 @@ class ChangesPanelDialog:
         OP_DELETE_ENTRY: "Delete entry",
         OP_DELETE_GROUP: "Delete group",
         OP_DELETE_SYSTEM: "Delete system",
-        OP_SET_AVOID: "Avoid",
         OP_SET_SERVICE: "Service type",
         OP_IMPORT_APPLY: "Import",
         OP_LINK_RR: "Link RR",

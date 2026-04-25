@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "beartracker-885-scanner-manager"
-version = "0.9.0a2"
+version = "0.9.0b2"
 description = "Desktop GUI for managing Uniden BearTracker 885 HPD files, ZIP/coverage simulation, RadioReference imports, and Uniden Sentinel/Updater integration."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -23,7 +23,7 @@ keywords = [
     "ham-radio",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Environment :: Win32 (MS Windows)",
     "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: MIT License",
@@ -64,11 +64,14 @@ scanner-manager = "scanner_manager:main"
 [tool.setuptools]
 py-modules = [
     "scanner_manager",
+    "coverage_maps",
     "metastore",
     "rr_api",
     "sdcard",
     "uniden_tools",
+    "updater",
 ]
+packages = ["scanner_profiles"]
 
 [tool.setuptools.package-data]
 "*" = ["data/*.json"]

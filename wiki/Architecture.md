@@ -26,7 +26,7 @@ HpdFile
   └── SystemNode (conventional or trunked)
         └── GroupNode
               └── FreqEntry  (name, freq or TGID, service_type,
-                              avoid, lat, lon, range, extras)
+                              lat, lon, range, extras)
 ```
 
 Every node carries a stable `uid` field so the MetaStore can reference
@@ -42,8 +42,9 @@ singleton backed by a sidecar JSON file (`<hpdname>.meta.json`).
 - `OP_ADD_GROUP`, `OP_ADD_CFREQ`, `OP_ADD_TGID` - additions.
 - `OP_EDIT_ENTRY`, `OP_EDIT_GROUP`, `OP_EDIT_SYSTEM` - in-place edits.
 - `OP_DELETE_ENTRY`, `OP_DELETE_GROUP`, `OP_DELETE_SYSTEM` - removals.
-- `OP_SET_SERVICE`, `OP_SET_AVOID` - low-level field mutations the
-  bulk ops route through.
+- `OP_SET_SERVICE` - low-level field mutation the bulk ops route
+  through. (An older `set_avoid` op exists in v0.9.0a2 sidecars; the
+  replayer silently skips it for forward compatibility.)
 - `OP_IMPORT_APPLY` - **composite** event summarising a whole import
   so it reverts in one click.
 - `OP_EXTERNAL_CHANGE` - wraps a Uniden-updater pass; the replayer
@@ -84,7 +85,7 @@ counter-mutation. The UI never re-derives revert logic; it just calls
 1. Open a `MetaStore.batch()`.
 2. For each row in the diff:
    - `_do_add_cfreq(..., log=False)` / `_do_add_tgid(..., log=False)`.
-   - Or edit / set-avoid / delete as needed, all `log=False`.
+   - Or edit / delete as needed, all `log=False`.
 3. Build an `OP_IMPORT_APPLY` payload capturing enough state to
    reverse the whole operation.
 4. `self._meta.record(payload)` once.
@@ -94,8 +95,8 @@ counter-mutation. The UI never re-derives revert logic; it just calls
 
 `_run_update_pipeline` wraps Uniden tool runs in an
 `OP_EXTERNAL_CHANGE` event and uses `_replay_events_after_update` to
-re-apply pre-existing user events (avoids, renames, service-type
-overrides, deletions) on top of whatever the tool wrote.
+re-apply pre-existing user events (renames, service-type overrides,
+deletions) on top of whatever the tool wrote.
 
 ## Session snapshot
 

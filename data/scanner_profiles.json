@@ -1,0 +1,11 @@
+{
+  "manifest_version": 1,
+  "profiles": [
+    {
+      "id": "uniden_bt885",
+      "display": "Uniden BearTracker 885",
+      "family": "uniden_beartracker",
+      "match_target_model": ["Beartracker885", "BearTracker885", "BT885"]
+    }
+  ]
+}

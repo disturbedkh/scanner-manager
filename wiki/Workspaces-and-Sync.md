@@ -47,14 +47,14 @@ or after a second machine has edited the card directly.
    - **Conflicts** (both sides edited the same entity).
 3. For each conflict, pick workspace, card, or merge.
 4. The workspace's event log is re-played on top of the pulled file so
-   your customizations (avoids, renames, service-type overrides) stick.
+   your customizations (renames, service-type overrides, deletions)
+   stick.
 
 ## Conflict resolution
 
 Conflict rules follow the same logic as the reconciliation replay used
 by the RadioReference update pipeline:
 
-- **Avoid flags** from the workspace always win.
 - **Deleted entries** from the workspace stay deleted unless you ask
   otherwise.
 - **Service-type overrides** from the workspace win.

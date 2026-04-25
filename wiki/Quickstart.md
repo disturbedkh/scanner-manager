@@ -24,8 +24,8 @@ The folder is remembered across runs. Next time you launch, just click
   summary.
 - Expand a system to see **Groups**; expand a group to see **Entries**
   (conventional frequencies or TGIDs).
-- Right-click any node for quick actions (Edit, Toggle Avoid, Delete,
-  bulk operations where applicable).
+- Right-click any node for quick actions (Edit, Delete, bulk
+  operations where applicable).
 
 ## 3. Try the ZIP simulator
 
@@ -57,8 +57,8 @@ undo path works.
 3. Let the diff dialog load; pick the entries you want.
 4. Click **Apply**.
 
-The whole import is logged as **one** composite event, so one **Revert**
-click rolls everything back.
+The whole import is recorded as **one** entry in the Change History,
+so one **Revert** click rolls everything back.
 
 ## Next steps
 

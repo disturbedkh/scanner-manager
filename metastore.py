@@ -125,8 +125,13 @@ OP_ADD_GROUP = "add_group"
 OP_DELETE_ENTRY = "delete_entry"
 OP_DELETE_GROUP = "delete_group"
 OP_DELETE_SYSTEM = "delete_system"
-OP_SET_AVOID = "set_avoid"
 OP_SET_SERVICE = "set_service"
+
+# Legacy op — v0.9.0a2 and earlier wrote `set_avoid` events when the user
+# toggled the Avoid bit. The BT885 ignores that bit across power cycles,
+# so the feature was removed in v0.9.0a3. We keep this constant as a
+# sentinel so the replayer can gracefully skip old sidecar files.
+OP_SET_AVOID_LEGACY = "set_avoid"
 OP_IMPORT_APPLY = "import_apply"
 OP_LINK_RR = "link_rr"
 OP_UNLINK_RR = "unlink_rr"
@@ -139,7 +144,7 @@ REVERSIBLE_OPS = {
     OP_EDIT_ENTRY, OP_EDIT_GROUP,
     OP_ADD_ENTRY, OP_ADD_GROUP,
     OP_DELETE_ENTRY, OP_DELETE_GROUP,
-    OP_SET_AVOID, OP_SET_SERVICE,
+    OP_SET_SERVICE,
     OP_IMPORT_APPLY,
     OP_LINK_RR, OP_UNLINK_RR,
     OP_BULK_REVERT, OP_REVERT,
@@ -618,8 +623,9 @@ class GlobalMetaStore:
         self.licensee_index: Dict[str, List[str]] = {}
         self.recent_rr_urls: List[str] = []
         # profile_id -> dict with {name, workspace_dir, card_volume_serial,
-        # content_fingerprint, target_model, created_at, last_sync_at,
-        # last_synced_card_path, file_state}
+        # content_fingerprint, target_model, scanner_profile_id, created_at,
+        # last_sync_at, last_synced_card_path, file_state, snapshots[],
+        # retention{max_snapshots, keep_manual}}.
         self.profiles: Dict[str, Dict[str, Any]] = {}
         self.active_profile_id: Optional[str] = None
         self.load()
@@ -685,8 +691,41 @@ class GlobalMetaStore:
         stored = dict(profile)
         stored["profile_id"] = pid
         stored.setdefault("created_at", _utc_now_iso())
+        stored.setdefault("snapshots", [])
+        stored.setdefault(
+            "retention",
+            {"max_snapshots": 10, "keep_manual": True},
+        )
+        # Scanner profile ID. Nullable so older sidecars don't need a
+        # migration; callers resolve ``None`` to the default scanner
+        # profile via :func:`scanner_profiles.get_profile`.
+        stored.setdefault("scanner_profile_id", None)
         self.profiles[pid] = stored
         return stored
+
+    def profile_snapshots(self, profile_id: str) -> List[Dict[str, Any]]:
+        """Return the raw snapshot dicts for a profile (empty if missing)."""
+        p = self.profiles.get(profile_id)
+        if not p:
+            return []
+        snaps = p.get("snapshots") or []
+        return [dict(s) for s in snaps if isinstance(s, dict)]
+
+    def set_profile_snapshots(
+        self, profile_id: str, snapshots: List[Dict[str, Any]]
+    ) -> None:
+        p = self.profiles.get(profile_id)
+        if not p:
+            return
+        p["snapshots"] = [dict(s) for s in snapshots]
+
+    def profile_retention(self, profile_id: str) -> Dict[str, Any]:
+        p = self.profiles.get(profile_id) or {}
+        ret = p.get("retention") or {}
+        return {
+            "max_snapshots": int(ret.get("max_snapshots") or 10),
+            "keep_manual": bool(ret.get("keep_manual", True)),
+        }
 
     def remove_profile(self, profile_id: str) -> bool:
         if profile_id in self.profiles:

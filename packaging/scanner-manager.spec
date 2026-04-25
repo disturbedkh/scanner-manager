@@ -47,6 +47,7 @@ else:
 # Files that must be bundled into the EXE so runtime lookups work.
 datas = [
     (str(REPO_ROOT / "data" / "uniden_installers.json"), "data"),
+    (str(REPO_ROOT / "data" / "scanner_profiles.json"), "data"),
     (str(REPO_ROOT / "LICENSE"), "."),
     (str(REPO_ROOT / "DISCLAIMER.md"), "."),
     (str(REPO_ROOT / "THIRD_PARTY_NOTICES.md"), "."),
@@ -64,6 +65,13 @@ hiddenimports = [
     "zeep",
     "keyring",
     "qrcode",
+    "scanner_profiles",
+    "scanner_profiles.base",
+    "scanner_profiles.registry",
+    "scanner_profiles.bt885",
+    "scanner_profiles.compat",
+    "coverage_maps",
+    "updater",
 ]
 
 block_cipher = None
@@ -137,10 +145,10 @@ if IS_MACOS:
             "CFBundleName": "Scanner Manager",
             "CFBundleDisplayName": "Scanner Manager",
             "CFBundleShortVersionString": os.environ.get(
-                "SCANNER_MANAGER_VERSION", "0.9.0a2"
+                "SCANNER_MANAGER_VERSION", "0.9.0b2"
             ),
             "CFBundleVersion": os.environ.get(
-                "SCANNER_MANAGER_VERSION", "0.9.0a2"
+                "SCANNER_MANAGER_VERSION", "0.9.0b2"
             ),
             "NSHighResolutionCapable": True,
             # We read removable SD cards; declare the usage description

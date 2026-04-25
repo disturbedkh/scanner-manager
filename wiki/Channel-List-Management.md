@@ -18,11 +18,11 @@ from the level you're acting on down to entries.
 
 ## Quick actions (right-click menu)
 
-- **Entry:** Edit, Toggle Avoid, Delete.
-- **Group:** Edit, Bulk update service type, Bulk toggle avoid,
-  Refresh from RadioReference (when the group is linked), Delete.
+- **Entry:** Edit, Delete.
+- **Group:** Edit, Bulk update service type, Refresh from
+  RadioReference (when the group is linked), Delete.
 - **System:** Edit, macro-level bulk ops (update service type on all
-  entries, toggle avoid on all entries), Delete.
+  entries), Delete.
 
 ## Add panel (below the tree)
 
@@ -32,38 +32,45 @@ presence before committing.
 
 ## Bulk remap
 
-**Bulk: update service type** on a group or system opens the
-**BulkRemapDialog**, a two-column mapping: for every service type that
-currently appears in the selection, pick a replacement. All changes run
-under a single MetaStore batch, producing one revertable event per
-bulk action.
+**Bulk: update service type** on a group or system opens a two-column
+mapping dialog: for every service type that currently appears in the
+selection, pick a replacement. The whole remap is recorded as a single
+entry in the Change History, so you can undo the entire bulk operation
+with one click.
 
 ## Filters
 
-- **Show scannable only** - hides entries with `Avoid=1` and systems
-  containing only avoided entries.
-- **Exclude avoided** - orthogonal filter that also excludes anything
-  flagged Avoid regardless of the scannable check.
 - **Button filters** (Police/EMS/Fire/DOT/Multi) - see
   [Scanner Button Service Types](Scanner-Button-Service-Types).
 - **Location filter** - see
   [ZIP & GPS Simulation](ZIP-and-GPS-Simulation).
 
-## The Changes dialog
+## The Change History dialog
 
-**Changes...** opens the MetaStore change log. Each row is one event:
+**Changes...** opens the Change History. Each row is one edit:
 
-- Timestamp, operation (`ADD_CFREQ`, `SET_AVOID`, `IMPORT_APPLY`, ...),
-  target path, and a human-readable summary.
-- **Revert** button to undo just that event.
+- Timestamp, a plain-language summary (e.g. "Added frequency",
+  "Changed service type", "Applied RadioReference import"),
+  and the group or entry it touched.
+- **Revert** button to undo just that change.
 
-Events applied during a bulk op or import share a `txn_id` and revert
-together. Composite import events roll back every row the import
-touched in one click.
+Edits made together during a bulk operation or an import are grouped
+so you can undo the entire operation in one click instead of reverting
+each row.
 
 ## Session safety net
 
-Every save also writes `<hpdname>.session.bak` next to the HPD file.
+Every save also writes a recovery copy next to the HPD file.
 If everything goes sideways, **Tools → Restore session snapshot...**
-reloads from the backup (the change log is preserved so you can pick
-up where you left off).
+reloads from the backup. The Change History is preserved so you can
+pick up where you left off.
+
+---
+
+## Internals
+
+- Change events are stored by the `MetaStore` as typed opcodes
+  (`ADD_CFREQ`, `SET_SERVICE`, `IMPORT_APPLY`, etc.) with a shared
+  `txn_id` for bulk operations.
+- Session snapshots are written to `<hpdname>.session.bak` alongside
+  the HPD file.

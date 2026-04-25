@@ -31,6 +31,7 @@ of every change.
 
 1. [Install](Install)
 2. [Quickstart](Quickstart)
+3. [Updating](Updating)
 3. Pick what's next from the sidebar:
    - [ZIP & GPS Simulation](ZIP-and-GPS-Simulation)
    - [Coverage Tools](Coverage-Tools)
@@ -40,7 +41,7 @@ of every change.
    - [Channel List Management](Channel-List-Management)
    - [CityTable & Custom Locations](CityTable-and-Custom-Locations)
    - [Scanner Button Service Types](Scanner-Button-Service-Types)
-   - [Alerts & Discovery](Alerts-and-Discovery)
+   - [Alerts](Alerts)
 
 ## For contributors
 
