@@ -610,12 +610,15 @@ def _items_from_record_stream(
             "deleted": True,
         }
 
+    def _field_at(fields: List[str], idx: int, default: str = "") -> str:
+        return fields[idx] if len(fields) > idx else default
+
     for rec in records:
         rt = rec.get("record_type") or ""
         fields = rec.get("fields") or []
 
-        def _field(idx: int, default: str = "") -> str:
-            return fields[idx] if len(fields) > idx else default
+        def _field(idx: int, default: str = "", _f: List[str] = fields) -> str:
+            return _field_at(_f, idx, default)
 
         if rt in ("Conventional", "Trunk"):
             for it in flush():

@@ -31,8 +31,6 @@ import coverage_maps
 import sdcard
 import uniden_tools
 import updater
-from scanner_profiles import DEFAULT_PROFILE_ID, get_profile
-from scanner_profiles.registry import profiles_for_target_model
 from metastore import (
     OP_ADD_ENTRY,
     OP_ADD_GROUP,
@@ -58,6 +56,7 @@ from metastore import (
     system_id_for,
     write_session_snapshot,
 )
+from scanner_profiles import DEFAULT_PROFILE_ID, get_profile
 
 # ---------------------------------------------------------------------------
 # Project-level constants (single source of truth for version + URLs)

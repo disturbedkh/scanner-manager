@@ -27,6 +27,7 @@ scanner itself writes), use
 
 from __future__ import annotations
 
+from . import bt885 as _bt885_module  # noqa: F401  (side-effect import: registers Bt885Profile)
 from .base import ScannerProfile
 from .registry import (
     DEFAULT_PROFILE_ID,
@@ -35,8 +36,6 @@ from .registry import (
     profiles_for_target_model,
     register_profile,
 )
-
-from . import bt885 as _bt885_module
 
 __all__ = [
     "ScannerProfile",
