@@ -1,0 +1,17 @@
+# COM6 listen-only probe @ 2026-04-27T14:42:59
+# Port=COM6 Baud=4800 Seconds=4.0
+# Output: C:\Users\khutt\OneDrive\Desktop\Projects\scanner-manager-20260420T171611Z-3-001\scanner-manager\AI\Dev\RE\sessions\com6_listen_20260427T144259.txt
+
+--- attempt @ baud=4800 ---
+(silent)
+
+--- attempt @ baud=9600 ---
+(silent)
+
+--- attempt @ baud=38400 ---
+(silent)
+
+--- attempt @ baud=115200 ---
+(silent)
+
+# done; saw_data=False

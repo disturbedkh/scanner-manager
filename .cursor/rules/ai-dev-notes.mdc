@@ -1,0 +1,38 @@
+---
+description: Cross-worker / cross-machine project notes for scanner-manager. Always load AI/Dev on session start.
+alwaysApply: true
+---
+
+# AI / Dev Notes - read first
+
+This repo keeps a shared notebook for AI agents and humans at
+`AI/Dev/`. Read it before doing real work.
+
+## On every new session, read in this order
+
+1. `AI/Dev/README.md` - index and ground rules.
+2. `AI/Dev/PROJECT_STATE.md` - current snapshot (commit, layout, run cmds).
+3. `AI/Dev/WORKSTREAMS.md` - what's active, who owns it.
+4. `AI/Dev/MULTI_SCANNER_BACKEND.md` - **required** before touching
+   `scanner_profiles/` or `ACTIVE_PROFILE`.
+5. `AI/Dev/RE/README.md` plus the per-scanner RE doc relevant to
+   your task (e.g. `AI/Dev/RE/SDS100.md` for SDS100/SDS200 work).
+   **Required** before adding or editing any `ScannerProfile`
+   subclass - the RE notes are the canonical record of what the
+   scanner actually writes to disk.
+6. `AI/Dev/MACHINES.md` - desktop-specific quirks; check your hostname.
+7. `AI/Dev/WORKER_LOG.md` - last few entries to see what just happened.
+8. `AI/Dev/CONVENTIONS.md` - house rules (lint, tests, commits).
+
+## On session end
+
+- Append a new entry to `AI/Dev/WORKER_LOG.md` (newest on top).
+- Update any topic doc your changes invalidated.
+
+## Hard rules
+
+- Don't import `scanner_manager` from inside `scanner_profiles/*` -
+  circular import.
+- `tests/test_bt885_parity.py` is the canary for BT885 profile vs.
+  `scanner_manager.py` module-level constants. Keep it green.
+- Don't commit unless the user explicitly asks.
