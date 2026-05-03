@@ -49,4 +49,29 @@ of every change.
   semantics.
 - [Troubleshooting](Troubleshooting) - crash logs, session snapshots,
   and how to recover a mangled card.
-- [Glossary](Glossary) - all the acronyms.
+- [Glossary](Glossary) - all the acronyms (including the RE
+  vocabulary).
+
+## RE / Development
+
+How the SDS100 (and the wider BCDx36HP scanner family) actually
+works on the inside, written for **contributors who want to extend
+this work**. Start with [Reverse Engineering](Reverse-Engineering)
+- it's the consolidated narrative for the whole tree.
+
+- [Overview](Reverse-Engineering) - the synthesis: two USB modes,
+  what each gives us, why our app exceeds Sentinel.
+- [Architecture](RE-Architecture) - two MCUs, three buses, mermaid.
+- [USB Modes](RE-USB-Modes) - Mass Storage vs Serial.
+- [SD Card](RE-SD-Card) - FAT32 layout, BCDx36HP family file
+  shapes.
+- [Serial Protocol](RE-Serial-Protocol) - SUB + MAIN command
+  catalogs.
+- [Inter-MCU Bus](RE-Inter-MCU-Bus) - USART2 between SUB and MAIN.
+- [Firmware](RE-Firmware) - Sub container, MAIN encryption,
+  firmware-update flow.
+- [Sentinel](RE-Sentinel) - what Sentinel actually does over USB.
+- [Toolchain](RE-Toolchain) - every script and tool grouped.
+- [Workflows](RE-Workflows) - recipe playbooks.
+- [Virtual Scanner Roadmap](Virtual-Scanner-Roadmap) - SDR-backed
+  software scanner plan that builds on everything above.
