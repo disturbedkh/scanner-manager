@@ -145,10 +145,34 @@ See [CHANGELOG.md](CHANGELOG.md) for details. Please file
 [issues](https://github.com/disturbedkh/scanner-manager/issues) — that
 is the most useful thing testers can do right now.
 
+## Community
+
+Talk to other users and contributors on
+[**GitHub Discussions**](../../discussions). The forum is split into
+nine categories - the full guide lives at
+[`.github/DISCUSSIONS.md`](.github/DISCUSSIONS.md). Quick map:
+
+| If you want to... | Post in |
+|---|---|
+| Show off a setup, recording, or favorites build | [Show and Tell](../../discussions/categories/show-and-tell) |
+| Ask "how do I X?" with an accepted answer | [Q&A](../../discussions/categories/q-a) |
+| Get help with install / setup / "scanner won't show up" | [Help](../../discussions/categories/help) |
+| Brainstorm a half-formed feature idea | [Ideas](../../discussions/categories/ideas) |
+| Talk through a refactor / RE-tool proposal | [Tooling / Development](../../discussions/categories/tooling-development) |
+| Share a finding about firmware/protocol | [Reverse Engineering](../../discussions/categories/reverse-engineering) |
+| Talk antennas, mods, jigs, hardware | [Hardware](../../discussions/categories/hardware) |
+
+The **wiki** is the long-form companion: human-readable feature
+tours, the [reverse-engineering narrative](../../wiki/Reverse-Engineering),
+and the [virtual scanner roadmap](../../wiki/Virtual-Scanner-Roadmap).
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, test commands,
 lint rules, and PR expectations. Security issues: see [SECURITY.md](SECURITY.md).
+For RE / firmware / protocol contributions specifically, start at
+[`AI/Dev/RE/tools/README.md`](AI/Dev/RE/tools/README.md) and the
+[RE wiki](../../wiki/Reverse-Engineering).
 
 ## License
 
