@@ -1,17 +1,20 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Q&A - "How do I X?"
-    url: https://github.com/disturbedkh/scanner-manager/discussions/categories/q-a
-    about: Ask a usage / configuration question. Faster than an issue and gets a selectable answer.
-  - name: Help - install / setup / "scanner won't show up"
+  - name: Help - "How do I X?" / install / setup / "scanner won't show up"
     url: https://github.com/disturbedkh/scanner-manager/discussions/categories/help
-    about: Troubleshoot before opening a bug. Once we have a reproducer we'll graduate it to an Issue.
+    about: Ask in Discussions before opening an Issue. Once we have a reproducer we'll graduate it to a real bug report.
   - name: Ideas - half-formed feature suggestions
     url: https://github.com/disturbedkh/scanner-manager/discussions/categories/ideas
     about: Brainstorm a feature in Discussions before formalising it as a feature request.
   - name: Reverse Engineering - findings + protocol talk
     url: https://github.com/disturbedkh/scanner-manager/discussions/categories/reverse-engineering
     about: Share captures, decoded protocols, firmware analysis. Conversational counterpart to the RE wiki.
+  - name: Hardware - antennas, mods, jigs, USB cabling
+    url: https://github.com/disturbedkh/scanner-manager/discussions/categories/hardware
+    about: Scanner hardware talk - SDS100/SDS200/BCDx36HP, Bearcat models, antenna recipes, PCB photos.
+  - name: Tooling / Development
+    url: https://github.com/disturbedkh/scanner-manager/discussions/categories/tooling-development
+    about: CI, build system, refactors, code-style debates, contributor onboarding, RE tooling architecture.
   - name: Wiki
     url: https://github.com/disturbedkh/scanner-manager/wiki
     about: Tutorials, feature tours, architecture notes, full RE narrative.
