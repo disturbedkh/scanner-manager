@@ -145,16 +145,17 @@ The user reported "HPDB database up to date" before clicking
 "Get HPDB Update". The capture confirms what that means at the USB
 layer: **Sentinel does not query the SD card at all** during the
 version check. It performs the check entirely **out-of-band over
-HTTP** to Uniden's HPDB service, decides the local copy is current,
-and exits. The 297 frames are just keep-alive housekeeping while
-the HTTP round-trip happens.
+FTP** to `ftp.homepatrol.com/BCDx36HP/`, decides the local copy is
+current, and exits. The 297 frames are just keep-alive housekeeping
+while the FTP round-trip happens. Endpoint, credentials, and full
+flow documented in [RE-Update-Endpoints](RE-Update-Endpoints).
 
 **Implication for our app**: the "is HPDB current?" check is *not*
 a USB question. It's `(read DateModified field from hpdb.cfg) ==
-(HTTP-fetched current version)`. If outdated, Sentinel would then
-WRITE_10 the new `s_*.hpd` records - we don't have a capture of
-that yet, but the format is identical to the records already
-documented in [RE-SD-Card](RE-SD-Card).
+(latest MasterHpdb_*.gz date on FTP)`. If outdated, Sentinel would
+then WRITE_10 the new HPDB blob - we don't have a capture of that
+yet, but the format is identical to the records already documented
+in [RE-SD-Card](RE-SD-Card).
 
 ### Op 4: Firmware Update - "already up to date" path (DONE)
 
@@ -186,7 +187,10 @@ So Sentinel's firmware-update check is:
 2. Parse out the `.bin` and `.firm` filenames; the version is
    embedded in the name (`SDS-100_V1_05.bin` = MAIN v1.05;
    `_V1_03_05.firm` = SUB v1.03.05).
-3. HTTP-fetch the latest version from Uniden's firmware service.
+3. FTP-fetch the latest version from `ftp.homepatrol.com/BCDx36HP/`
+   (filename pattern `<MODEL>_V*.bin` for MAIN, `<MODEL>-SUB_V*.firm`
+   for SUB; full inventory in
+   [RE-Update-Endpoints](RE-Update-Endpoints)).
 4. If outdated, would WRITE_10 the new file. We don't see writes
    in this capture because the firmware was current.
 
