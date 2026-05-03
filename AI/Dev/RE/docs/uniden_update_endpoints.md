@@ -432,10 +432,36 @@ class FirmwareLibrary:
    into local cache for later use.
 5. **Confirm `MasterHpdb_*.gz` differs between the two endpoints.**
    The Sentinel server's HPDB blobs are ~12 MB gzipped; BT885's are
-   ~5.5 MB. Either the BT885 HPDB is genuinely a smaller subset, or
-   it's compressed differently. Worth a one-time diff to understand
-   what BT885 strips out (probably encoded modes the BT885 doesn't
-   support).
+   ~5.5 MB; the `/Extreme/` path's are ~10 MB. Three different
+   per-product subsets. Worth a one-time diff to understand what
+   each one strips out (probably encoded modes the BT885 / older
+   HomePatrol-1 don't support).
+6. **Watch the engineering directories** (`/internal/`, `/uaceng/`,
+   `/ujeng/`, `/updates/` on `ftp.uniden.com`). They're listable in
+   the root but currently 550-on-enter; if Uniden ever loosens an
+   ACL, the contents become readable. We do not attempt to bypass.
+
+## Beyond canonical updates: deeper inventory
+
+A separate goodies-hunt pass covered the wider FTP topology and
+hunted for any RE-actionable plaintext. See
+[`uniden_firmware_inventory.md`](uniden_firmware_inventory.md) for:
+
+- Full directory map across both servers including HomePatrol-1
+  paths and the ACL-blocked engineering dirs.
+- Cross-version / cross-model entropy + byte-diff analysis confirming
+  BCDx36HP MAIN encryption is uniform and randomized-IV across all
+  12 years and 4+ model lines.
+- **BC-WF1 Wi-Fi adapter firmware** is fully plaintext (Cortex-M3 +
+  Broadcom BCM43362 + WiCED + Express Logic NetX). Direct USB-CDC
+  surface to the scanner; potentially RE-able for the WiFi-streaming
+  protocol.
+- **HomePatrol-1 firmware** is Motorola SREC transport with a clean
+  Cortex-M memory map, but the app content is wrapped in a custom
+  Uniden obfuscation (entropy 7.43 even after SREC decode). Not a
+  plaintext-predecessor leverage point.
+- Confirmation that **no beta / debug / plaintext-MAIN variant
+  exists** anywhere we can read.
 
 ## Cross-references
 
