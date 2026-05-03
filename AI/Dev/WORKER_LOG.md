@@ -19,6 +19,53 @@ that doc from your log entry.
 
 ---
 
+## 2026-05-03 13:50 ET - <HOST> - Cursor agent (Opus 4.7)
+- Branch: `main`
+- HEAD: `8f6a7df` (RE notes + design refresh; no app code changes)
+- What changed:
+  - **Discovered Uniden's actual update infrastructure.** Static-extracted
+    FTP credentials from both Sentinel and BT885 Update Manager .NET
+    installers, then live-listed both servers for the inventory:
+    - Sentinel: `ftp://homepatrolftp:green7Corn@ftp.homepatrol.com/BCDx36HP/`
+      → 105+ firmware blobs (BCD436HP, BCD536HP, SDS-100, SDS200, SDS150,
+      SDS100E, SDS200E, USDS100, BC-WF1, etc.) + 161 weekly HPDB snapshots
+      + Sentinel installer + `.app` marker files for version pointers +
+      `archive/` for downgrades.
+    - BT885: `ftp://BT885ftp2:89jZ53Ba@ftp.uniden.com/BT885/` → HPDB only,
+      no firmware (so far).
+    - Both apps use plain FTP with `NLST`/`SIZE`/`MDTM`/`RETR`. No HTTP
+      manifest API. The `.app` files are 0-2 byte version-pointer markers.
+  - **Confirmed prior assumption was wrong**: the TWiki at
+    `info.uniden.com/twiki/...` is a *publication* site (changelogs,
+    downgrade ZIPs), not the source Sentinel checks. Update discovery is
+    pure FTP directory listing + filename parsing.
+  - **Wrote `AI/Dev/RE/docs/uniden_update_endpoints.md`** with full
+    methodology, inventory, reconstructed update-check algorithm, sample
+    `UnidenFtpClient` skeleton, and risk/etiquette notes.
+  - **Wrote `wiki/RE-Update-Endpoints.md`** as the canonical wiki page;
+    cross-linked from `wiki/Reverse-Engineering.md` (sub-page list +
+    status table) and `wiki/RE-Sentinel.md` (replaced "out-of-band HTTP"
+    guesses with the now-known FTP truth).
+  - **Updated `AI/Dev/FIRMWARE_UPDATER.md`** to ground Phase 1 in FTP
+    discovery instead of TWiki scraping; demoted the hand-curated
+    `firmware_manifest.json` from source-of-truth to enrichment-only
+    (changelogs, `requires_sub_min`, withdrawn flags).
+  - **Updated `AI/Dev/WORKSTREAMS.md`** firmware-updater row + added a
+    new "Uniden update endpoint RE" stream marking it done.
+- Decisions:
+  - Skip full ilspycmd / dnSpy decompilation. The string-extraction +
+    live FTP listing path produced everything we needed in <1h vs. the
+    multi-hour decompiler-tooling install + analysis. Re-open if a
+    future question requires actual control-flow analysis (e.g., HPDB
+    blob format if it turns out not to be just gzipped text).
+  - Treat the FTP creds as documented-but-respected: cache listings,
+    don't poll, keep the manual-import fallback path warm.
+- Blockers / next:
+  - None blocking. Firmware updater Phase 1 (FTP listing → version list)
+    is now ready to implement when prioritized.
+
+---
+
 ## 2026-04-29 16:55 ET - <HOST> - Cursor agent (Opus 4.7)
 - Branch: `main`
 - HEAD: `c34585e` (RE tooling + notes only; no app code changes)

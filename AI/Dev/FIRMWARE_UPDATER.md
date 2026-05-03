@@ -1,10 +1,18 @@
 # In-App Firmware Updater - Design
 
 > Status: design only (not implemented). Drafted 2026-04-27 EDT.
+> Updated 2026-05-03 to ground the discovery layer in the actual
+> Uniden FTP endpoints (see
+> [`AI/Dev/RE/docs/uniden_update_endpoints.md`](RE/docs/uniden_update_endpoints.md))
+> instead of the TWiki - the TWiki turns out to be Uniden's
+> *publication and downgrade-archive* site, **not** the source
+> Sentinel actually checks.
+>
 > Driven by RE finding that Uniden firmware updates are pure
 > SD-card file-drops with no proprietary USB protocol involved.
-> Reference: `AI/Dev/RE/SDS100.md` "Firmware update mechanism"
-> section, plus the readmes inside the Uniden firmware ZIPs.
+> References: `AI/Dev/RE/SDS100.md` "Firmware update mechanism"
+> section, the readmes inside Uniden firmware ZIPs, and the
+> live-listed FTP inventory in `uniden_update_endpoints.md`.
 
 ## Why we can ship this
 
@@ -28,7 +36,10 @@ checks, and auto-detection of which firmware to fetch.**
 ## Goals
 
 1. **Show the user "you're on X, latest is Y"** at app open, without
-   them having to look it up on Uniden's TWiki.
+   them having to look it up on Uniden's TWiki. We can answer this
+   directly by listing
+   [`ftp.homepatrol.com/BCDx36HP/`](RE/docs/uniden_update_endpoints.md)
+   - the same source Sentinel uses.
 2. **One-click update** that handles backup + download + verify +
    copy + reboot prompt + post-flash verification.
 3. **Multi-version aware backups** - snapshot the SD card before
@@ -36,7 +47,9 @@ checks, and auto-detection of which firmware to fetch.**
    firmware introduces an incompatibility.
 4. **Cross-scanner**: SDS100, SDS200, SDS150 share the same scheme.
    Beartracker 885 (same BCDx36HP family but different firmware
-   track) follows the same procedure with its own .bin filename.
+   track) follows the same procedure with its own .bin filename
+   *if and when* Uniden publishes BT885 firmware - currently the
+   BT885 FTP path (`ftp.uniden.com/BT885/`) carries HPDB only.
 
 ## Out of scope (for the first cut)
 
@@ -53,10 +66,52 @@ checks, and auto-detection of which firmware to fetch.**
 
 ## Phase 1: Firmware library (data plumbing, no scanner contact)
 
-### `data/firmware_manifest.json`
+### Discovery layer: live FTP, no hand-curation
 
-Hand-curated catalogue of every published firmware version per
-scanner family. Schema:
+Sentinel itself does not maintain a hand-curated manifest. Instead it
+lists `ftp.homepatrol.com/BCDx36HP/` and parses filenames - that
+directory is the source of truth. Our Phase 1 follows the same
+approach: a thin `UnidenFtpClient` that LISTs the directory, parses
+filenames into `FirmwareVersion` records, and caches the listing for
+~1 hour.
+
+This eliminates the previously-planned TWiki scraper and the
+hand-curated `firmware_manifest.json` discovery loop. The TWiki is
+still useful as a *secondary* source - for changelog text, downgrade
+ZIPs in `archive/`, and human-readable release notes - but it is not
+on the critical path for "what versions exist?".
+
+Implementation sketch (full version in
+[`uniden_update_endpoints.md`](RE/docs/uniden_update_endpoints.md)):
+
+```python
+SENTINEL_FTP = FtpEndpoint(
+    host="ftp.homepatrol.com",
+    path="/BCDx36HP/",
+    user="homepatrolftp",
+    password="green7Corn",
+)
+
+class UnidenFtpClient:
+    def listing(self) -> list[FtpEntry]: ...
+    def download(self, filename: str, dst: Path) -> None: ...
+
+class FirmwareLibrary:
+    def discover(self, family: str, kind: str) -> list[FirmwareVersion]:
+        """List available firmware blobs at the FTP server, parse versions."""
+        listing = self._ftp_for(family).listing()
+        return [parse_filename_to_version(f) for f, _, _ in listing
+                if matches_glob(family.glob(kind), f)]
+
+    def latest(self, family: str, kind: str) -> FirmwareVersion:
+        return max(self.discover(family, kind), key=lambda v: v.tuple)
+```
+
+A small **optional** `data/firmware_manifest.json` lives alongside
+this for *enrichment* only - changelog excerpts, `requires_sub_min`
+constraints, withdrawn-firmware flags, and SHA-256 baselines for
+files we've already verified. The manifest is no longer the source
+of "what exists"; it's annotation on top of FTP discovery. Schema:
 
 ```json
 {
@@ -110,12 +165,16 @@ scanner family. Schema:
 }
 ```
 
-**Note on URL=null entries.** Sub 1.03.15 is not a public TWiki
-attachment - Uniden distributes it via Sentinel only. Our manifest
-records it but flags `url: null`; users who already ran a Sentinel
-update have it in `C:\ProgramData\Uniden\BCDx36HP_Sentinel\Updater\`,
-and we can offer to import from there. Future versions may switch
-to public URLs and we update the manifest accordingly.
+**Note on URL=null entries.** With FTP discovery this is rarely
+needed - the FTP server holds every published Sub firmware
+(`SDS-100-SUB_V*.firm`) as well as Main. The `url: null` fallback
+is reserved for two cases: (a) versions that have never been
+published to FTP (none observed to date), and (b) future scenarios
+where Uniden migrates to a different distribution mechanism. The
+"import from Sentinel cache" path
+(`%PROGRAMDATA%\Uniden\BCDx36HP_Sentinel\Updater\`) remains a
+backup ingestion route for users without internet access at update
+time.
 
 ### `firmware_cache/` directory
 
@@ -138,12 +197,21 @@ User-app local cache. Layout:
 
 ### Manifest refresh
 
-A small scraper that reads
-`https://info.uniden.com/twiki/bin/view/UnidenMan4/SDS100FirmwareUpdate`
-and similar pages, extracts the changelog table and attachment
-list, and proposes manifest additions for human review. Don't
-auto-promote - human-in-the-loop for changelog accuracy and to
-catch any model/family confusion.
+Two complementary refresh paths:
+
+1. **Primary (automatic):** the FTP listing is the source of truth
+   for "what exists". `FirmwareLibrary.discover()` runs on demand
+   and is cheap (~1-2s for a fresh listing).
+2. **Annotation (human-in-the-loop):** a small scraper reads
+   `https://info.uniden.com/twiki/bin/view/UnidenMan4/SDS100FirmwareUpdate`
+   and similar pages, extracts the changelog table, and proposes
+   `changelog_excerpt` / `requires_sub_min` additions to the
+   enrichment manifest for human review. Don't auto-promote -
+   human-in-the-loop for changelog accuracy and to catch any
+   model/family confusion. Note that the TWiki has a known habit of
+   serving mislabeled files (e.g., a "1.24" page hosting a 1.26
+   ZIP), so the FTP server is where we go for the actual blobs;
+   TWiki is for the prose.
 
 ### "Firmware Library" GUI panel
 
@@ -198,12 +266,15 @@ Before showing the "Update Firmware" button, verify:
     |
     v
 2. Resolve the firmware file
-   - If in firmware_cache: verify SHA-256, use it.
-   - Else if URL available in manifest: download, verify, cache.
-   - Else if Sentinel cache exists locally: copy + verify.
-   - Else: error out with a useful message ("This version isn't
-     publicly hosted by Uniden. Run a Sentinel update first to
-     pull it down, then come back.")
+   - If in firmware_cache: verify SHA-256 (if we have one), use it.
+   - Else: download from FTP (`ftp.homepatrol.com/BCDx36HP/`),
+     verify reported size matches `SIZE` from the listing, cache.
+   - Else if Sentinel local cache exists
+     (`%PROGRAMDATA%\Uniden\BCDx36HP_Sentinel\Updater\`):
+     copy + verify.
+   - Else: error out with a useful message ("Uniden update server
+     unreachable; you can manually drop the .bin onto the SD card
+     yourself and we'll detect it.")
     |
     v
 3. Validate the SD card pre-state
@@ -275,23 +346,42 @@ Before showing the "Update Firmware" button, verify:
 ## Open questions to resolve before implementation
 
 1. **What about the BT885 (Beartracker)?** The BT885 is also
-   BCDx36HP-family but uses different firmware filenames. Does
-   our "drop file in BCDx36HP/firmware/" workflow apply? We need
-   to read a BT885 firmware ZIP readme to confirm. Likely yes.
-2. **Are the .bin SHA-256 values stable across re-uploads?**
-   Uniden has historically re-uploaded ZIPs with the same name
-   (we saw the SDS200_V1.24.00_Main.zip dated 2026-03-27 which
-   is the 1.26.01 release date - they may overwrite). Verify
-   that today's .bin is the same as yesterday's before locking
-   in checksums.
+   BCDx36HP-family. The BT885 Update Manager UI exposes a
+   firmware-update flow, but its FTP path
+   (`ftp.uniden.com/BT885/`) currently carries *only* HPDB blobs
+   - no `.bin` or `.firm` files. So either Uniden has not shipped
+   firmware updates for the BT885 in the lifetime of the product,
+   or they ship through a different mechanism we haven't seen
+   yet. **For now: BT885 support = HPDB sync only.** Watch the
+   FTP path; if firmware appears, our existing `FirmwareLibrary`
+   picks it up automatically using the same algorithm.
+2. **Are the .bin SHA-256 values stable on FTP?** The FTP server
+   serves the canonical blob. Uniden has occasionally re-uploaded
+   files with the same name, so when we cache a .bin we record
+   the FTP `MDTM` (modification timestamp) alongside the SHA-256.
+   On every later update check we re-verify `MDTM` matches; a
+   change triggers a re-download.
 3. **What does Uniden do with revoked firmware?** If a release
    gets pulled (security issue, brick risk), how do we surface
-   that? We need a manifest field for `withdrawn: true`.
+   that? Two signals: the file disappears from the live FTP
+   listing (we detect this on next `discover()`), and the TWiki
+   page typically gets a "this version was withdrawn" note (we
+   surface that via the enrichment scraper). We need a manifest
+   field `withdrawn: true` for the latter.
 4. **Charger detection** - we want to require charger-attached
    for updates. `GCS` would tell us; `GCS` ERRs on FW 1.26.01.
    `<Property Battery>` in GSI is our fallback, but it's 0.0-3.3
    (a coarse 4-step indicator). Good enough for "low battery
    warn", not great for "is charger attached".
+5. **FTP credential rotation.** If Uniden ever changes the FTP
+   credentials, our discovery layer fails. Handling: explicit
+   error path → "Uniden update server unavailable; please update
+   the app". Our app's `data/uniden_installers.json` already
+   pins SHA-256 of the current Sentinel installer, so we can
+   detect when Uniden ships a new Sentinel and prompt the user
+   (or our maintainer) to re-extract creds. See
+   [`uniden_update_endpoints.md`](RE/docs/uniden_update_endpoints.md)
+   "Risks / etiquette".
 
 ## Code-level sketch
 

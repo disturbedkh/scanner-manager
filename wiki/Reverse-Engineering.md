@@ -119,8 +119,8 @@ live under
 |---|---|---|
 | Read From Scanner | `READ_10` of `_*.hpd` records + `scanner.inf` + `profile.cfg` | Read the same files when SDS100 is mounted |
 | Write to Scanner | `READ_10` existing files for diff, `WRITE_10` modified copies + FAT/dir updates | Same; the FAT mirroring is automatic when Windows owns the mount |
-| Get HPDB Update | **Out-of-band HTTP version check**, then `WRITE_10` of new `s_*.hpd` records *only if* outdated | Read `hpdb.cfg`'s `DateModified`, compare to HTTP, drop new HPDs. **Zero USB traffic when up-to-date** (confirmed in capture). |
-| Update Firmware | One `READ_10` of the `BCDx36HP/firmware/` directory entry (4 KB at LBA 0x4280), then HTTP version check, then `WRITE_10` of new `.bin` (MAIN) or `.firm` (SUB) *only if* outdated | Walk `BCDx36HP/firmware/`, parse version-encoded filenames (`SDS-100_V1_05.bin` = MAIN v1.05; `_V1_03_05.firm` = SUB v1.03.05), HTTP-check, drop new file. Bootloader picks it up at next reboot. See [RE-Firmware](RE-Firmware). |
+| Get HPDB Update | **Out-of-band FTP version check** ([RE-Update-Endpoints](RE-Update-Endpoints)), then `WRITE_10` of new HPDB blob *only if* outdated | List `ftp.homepatrol.com/BCDx36HP/`, find latest `MasterHpdb_*.gz`, compare to `hpdb.cfg`'s `DateModified`, drop new HPDs. **Zero USB traffic when up-to-date** (confirmed in capture). |
+| Update Firmware | One `READ_10` of the `BCDx36HP/firmware/` directory entry (4 KB at LBA 0x4280), then **FTP version check** ([RE-Update-Endpoints](RE-Update-Endpoints)), then `WRITE_10` of new `.bin` (MAIN) or `.firm` (SUB) *only if* outdated | Walk `BCDx36HP/firmware/`, parse version-encoded filenames (`SDS-100_V1_05.bin` = MAIN v1.05; `_V1_03_05.firm` = SUB v1.03.05), FTP-check, drop new file. Bootloader picks it up at next reboot. See [RE-Firmware](RE-Firmware). |
 | Backup (alias) | Same as Read From Scanner | Workspace snapshot |
 | Restore (alias) | Same as Write to Scanner | Workspace push |
 
@@ -197,7 +197,8 @@ already exceed Sentinel structurally.
 | SUB firmware Ghidra import + analysis | DONE for SUB-side dispatch | [RE-Firmware](RE-Firmware) |
 | Inter-MCU USART2 protocol | Layers 0-2 DONE; Layer 3 needs MAIN | [RE-Inter-MCU-Bus](RE-Inter-MCU-Bus) |
 | Sentinel ops 1-2 captured + decoded | DONE (full read/write traces) | [RE-Sentinel](RE-Sentinel) |
-| Sentinel ops 3-4 captured + decoded | DONE ("up-to-date" path - reveals out-of-band HTTP version check + 4 KB FAT-dir read for firmware enumeration) | [RE-Sentinel](RE-Sentinel) |
+| Sentinel ops 3-4 captured + decoded | DONE ("up-to-date" path - reveals out-of-band FTP version check + 4 KB FAT-dir read for firmware enumeration) | [RE-Sentinel](RE-Sentinel) |
+| Update-check endpoints (Sentinel + BT885) | DONE - both apps use plain FTP with hardcoded creds; full inventory captured | [RE-Update-Endpoints](RE-Update-Endpoints) |
 | Sentinel ops 5-6 (Backup/Restore) | DONE - **feature absent in user's Sentinel build**; backup/restore are aliases of read/write | [RE-Sentinel](RE-Sentinel) |
 | Sentinel actual-update WRITE_10 traces | OPEN - need to capture during a real HPDB or firmware update | [RE-Sentinel](RE-Sentinel) |
 | MAIN MCU firmware static RE | INFEASIBLE (encrypted) | [RE-Firmware](RE-Firmware) |
@@ -220,6 +221,9 @@ already exceed Sentinel structurally.
   status, version diffs.
 - [RE-Sentinel](RE-Sentinel) - Sentinel = FAT32 editor. Op-by-op
   decoded behaviour and the API surface we replicate.
+- [RE-Update-Endpoints](RE-Update-Endpoints) - Where Sentinel and the
+  BT885 Update Manager actually fetch updates from (plain FTP, not
+  the TWiki, not an HTTP API).
 - [RE-Toolchain](RE-Toolchain) - Every script and Java post-script,
   grouped by purpose.
 - [RE-Workflows](RE-Workflows) - Recipe playbooks for common RE

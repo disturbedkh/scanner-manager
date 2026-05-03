@@ -83,3 +83,11 @@ AI/Dev/RE/sentinel_pcaps/*.commands.jsonl
 AI/Dev/RE/automation/.ghidra_env.ps1
 AI/Dev/RE/tools/automation/.ghidra_env.ps1
 ghidra_env/
+
+# Sentinel / BT885 Update Manager decompile scratch. Reproducible from
+# Uniden's publicly-distributed installers; the canonical findings are
+# committed to AI/Dev/RE/docs/uniden_update_endpoints.md. We ignore the
+# raw extracted installers and string dumps so we don't (a) re-host
+# Uniden's binaries, (b) bloat the repo with ~50 MB of vendor archives,
+# or (c) make trivially-extractable creds even more searchable on GH.
+AI/Dev/RE/sentinel_decompile/
