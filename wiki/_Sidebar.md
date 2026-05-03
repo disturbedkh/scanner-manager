@@ -25,3 +25,17 @@
 - [Architecture](Architecture)
 - [Troubleshooting](Troubleshooting)
 - [Glossary](Glossary)
+
+**RE / Development**
+
+- [Overview](Reverse-Engineering)
+- [Architecture](RE-Architecture)
+- [USB Modes](RE-USB-Modes)
+- [SD Card](RE-SD-Card)
+- [Serial Protocol](RE-Serial-Protocol)
+- [Inter-MCU Bus](RE-Inter-MCU-Bus)
+- [Firmware](RE-Firmware)
+- [Sentinel](RE-Sentinel)
+- [Toolchain](RE-Toolchain)
+- [Workflows](RE-Workflows)
+- [Virtual Scanner Roadmap](Virtual-Scanner-Roadmap)
