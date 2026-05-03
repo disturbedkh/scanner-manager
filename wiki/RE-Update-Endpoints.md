@@ -188,6 +188,43 @@ client lists HPDB blobs, picks the latest, downloads, and writes to
   trivially extractable by anyone who installs the publicly-shipped
   apps.
 
+## Beyond the canonical surface: hidden directories and goodies
+
+The published Sentinel + BT885 paths only scratch the top of the
+servers we have access to. Cross-referencing both servers turns up
+a handful of additional directories of varying usefulness:
+
+| Server | Path | Status | Notes |
+| --- | --- | --- | --- |
+| `ftp.homepatrol.com` | `/Extreme/` | accessible | HomePatrol-1 firmware (`.scn`), HomePatrol-1 HPDB (~10 MB), one stray `UBCD436-PT_V1_06_02C.bin` |
+| `ftp.homepatrol.com` | `/HomePatrol/Test/` | accessible | Four very old (2010-2011) MasterHpdb blobs |
+| `ftp.homepatrol.com` | `/HomePatrol/Updater/` | accessible | HomePatrol-1 firmware + 2011 weekly HPDBs |
+| `ftp.uniden.com` | `/internal/`, `/uaceng/`, `/ujeng/`, `/updates/` | **list-but-no-enter** (550) | engineering staging dirs; ACL-blocked |
+
+A separate "RE goodies hunt" pass (`AI/Dev/RE/docs/uniden_firmware_inventory.md`)
+went deeper on what's downloadable. Highlights:
+
+- **BC-WF1 Wi-Fi adapter firmware is fully plaintext** (entropy 3.54)
+  and is a **Broadcom BCM43362 + STM32 USB bridge running NetX +
+  WiCED**. It enumerates as USB CDC ACM to the scanner, so the
+  WiFi-streaming protocol is potentially capturable with the same
+  tooling we use for serial mode.
+- **HomePatrol-1 firmware uses Motorola SREC transport** (`.scn`)
+  with a clear Cortex-M memory map (low-flash code + `0x20700000`
+  RAM init), but the application content is itself wrapped in a
+  Uniden-specific obfuscation - even the 2010-era firmware is not
+  trivially plaintext.
+- **BCDx36HP MAIN encryption has been bulletproof since 2014** - we
+  verified across 12 years of releases, 4 model lines, and govt /
+  regional variants. No exploitable plaintext segment, no header
+  signature, no bootloader gap. Static RE of MAIN remains
+  infeasible.
+- **No beta firmware, no plaintext SDS100-compatible variant**
+  exists in any directory we can read.
+
+Full methodology + entropy tables + BC-WF1 string mining live in
+`AI/Dev/RE/docs/uniden_firmware_inventory.md`.
+
 ## Cross-references
 
 - [RE-Firmware](RE-Firmware) - on-card update mechanism (file drop +
@@ -199,3 +236,6 @@ client lists HPDB blobs, picks the latest, downloads, and writes to
 - [Reverse Engineering](Reverse-Engineering) - high-level overview.
 - Lab notebook: `AI/Dev/RE/docs/uniden_update_endpoints.md` with the
   raw bytes, hex dumps, and reproduction steps.
+- Goodies hunt: `AI/Dev/RE/docs/uniden_firmware_inventory.md` covers
+  the wider FTP topology, encryption analysis across the family, and
+  the BC-WF1 RE win.

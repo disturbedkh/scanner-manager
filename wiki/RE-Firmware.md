@@ -17,23 +17,34 @@
 ### Evidence
 
 We applied the standard "is this thing encrypted?" battery to two
-MAIN images (`SDS-100_V1_23_07.bin`, `SDS-100_V1_26_01.bin`):
+MAIN images (`SDS-100_V1_23_07.bin`, `SDS-100_V1_26_01.bin`), then
+on 2026-05-03 expanded the test across the **entire BCDx36HP family,
+12 years of releases, and every accessible variant** (govt / fleet /
+EU / regional). Findings held uniformly:
 
 - Whole-file Shannon entropy: **7.9999 / 8.0** (essentially maximum)
-- All 528 of 528 4-KiB chunks score >= 7.5 bits/byte. **No
-  unencrypted region anywhere in the file.**
-- First 64 and last 64 bytes look statistically random. No plaintext
-  header, no plaintext footer, no length field, no obvious magic
-  bytes, no signature block, no metadata.
-- String extraction: 3,301 "strings" in 1.23.07 and 3,562 in
-  1.26.01 with **zero overlap** between the two files. Real
+  on every blob from BCD436HP V1.03 (2014) to SDS-100 V1.26.01 (2026).
+- All 33 of 33 64-KiB chunks score 7.9965-7.9978 bits/byte. **No
+  unencrypted region anywhere in any file.**
+- First 64 and last 64 bytes look statistically random across all
+  samples. No plaintext header, footer, length field, magic bytes,
+  signature block, or metadata - in any version.
+- String extraction: thousands of "strings" per file with **zero
+  overlap** between any two files (same model different versions,
+  same version different models, civilian vs government). Real
   firmware versions of the same product share thousands of strings
-  (error messages, format strings, command names). Zero overlap
-  is the signature of strong encryption with version-specific
-  keys/IVs.
-- Byte-level diff: **99.61% of bytes changed** between 1.23.07 and
-  1.26.01, distributed across 8,429 changed runs with no large
+  (error messages, format strings, command names); zero overlap is
+  the signature of strong encryption with version-specific keys/IVs.
+- Byte-level diff: **~99.6% of bytes changed** across every pair we
+  tested - same-version cross-model, consecutive versions, civilian
+  vs government, oldest vs newest. Distribution is uniform; no large
   unchanged region.
+
+Encryption was already in place on the very first BCDx36HP firmware
+(BCD536HP V1.02.03 from 2014-01-18). There is no "earlier-era
+plaintext" loophole; Uniden's MAIN-side opacity has been continuous
+across the entire product line. Full inventory and per-pair diffs in
+`AI/Dev/RE/docs/uniden_firmware_inventory.md`.
 
 ### Conclusion
 
