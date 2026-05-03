@@ -1,0 +1,1766 @@
+BCD436HP(UB376Z)
+BCD536HP(UB375Z)
+Remote Command Specification
+Version 1.05
+2017/11/13
+Date Version Contents
+2015/03/09 1.00
+2015/03/18 1.01 ・Added description to JPM command.
+・Added description to DTM command.
+・Added description to URC command.
+・Added description to AST command 　（ACTIVITY LOG).
+2015/07/15 1.02 ・Added description MNU
+・Added description MSI
+・Added description MSV
+・Added description MSB
+・Added sheet MSI. It is detail of MSI response.
+2015/10/29 1.03 ・Changed description TGID format of EDACS for Activity Log in "Analyze Command" sheet
+2016/07/13 1.04 ・Changed description of GLT command
+・Added attribute for DMR/MotoTRBO to PSI, GSI Attribute
+・Added command for DMR/MotoTRBO to Analyze Command
+・Changed sheet name to CTCSS,DCS,P25NAC,ColorCode
+・Added color code for DMR/MotoTRBO to CTCSS,DCS,P25NAC,ColorCode
+2017/11/13 1.05 ・Changed description of GLT command
+・Added attribute for NXDN to PSI, GSI Attribute
+・Added command for NXDN to Analyze Command
+・Changed sheet name to Sub Audio
+・Added RAN and Area for NXDN to Sub Audio
+UB375Z Menu Tree Specification
+History For Internal Use Only 2/38
+No. Command Function
+Program
+Mode
+Only
+1 MDL Get Model Info
+2 VER Get Firmware Version
+3 KEY Push KEY
+4 QSH Go to quick search hold mode
+5 STS Get Current Status
+6 JNT Jump Number tag
+7 NXT Next
+8 PRV Previous
+9 FQK Get/Set Favorites List Quick Keys Status
+10 SQK Get/Set System Quick Keys Status
+11 DQK Get/Set Department Quick Keys Status
+12 PSI Push Scanner Information
+13 GSI Get Scanner Information
+14 GLT Get xxx list
+15 HLD Hold
+16 AVD Set Avoid Option
+17 SVC Get/Set Service Type Settings
+18 JPM Jump Mode
+19 DTM Get/Set Date and Time.
+20 LCR Get/Set Location and range.
+21 AST Analize Start
+22 APR Analize Pauze/Resume
+23 URC User Record Control
+24 MNU Menu Mode command
+25 MSI Menu Status Info
+26 MSV Menu Set Value
+27 MSB Menu Structure Back
+Command List 3/38
+---------------------------------------------------------------------------------------------------------------------------------------
+MDL Get Model Info
+---------------------------------------------------------------------------------------------------------------------------------------
+Controller → Radio
+(1) MDL[\r]
+Radio → Controller
+(1) MDL,[MODEL_NAME][\r]
+[MODEL_NAME] BCD536HP
+BCD436HP
+---------------------------------------------------------------------------------------------------------------------------------------
+VER Get Firmware Version
+---------------------------------------------------------------------------------------------------------------------------------------
+Controller → Radio
+(1) VER[\r]
+Radio → Controller
+(1) VER,[VERSION][\r]
+[VERSION] Version x.xx.xx
+---------------------------------------------------------------------------------------------------------------------------------------
+KEY Push KEY
+---------------------------------------------------------------------------------------------------------------------------------------
+Controller → Radio
+(1) KEY,[KEY_CODE],[KEY_MODE][\r]
+Radio → Controller
+(1) KEY,OK[\r]
+See "key code for KEY Command" sheet for KEY_CODE.
+---------------------------------------------------------------------------------------------------------------------------------------
+QSH Go to quick search hold mode
+---------------------------------------------------------------------------------------------------------------------------------------
+Controller → Radio
+(1) QSH,[FRQ][\r]
+Radio → Controller
+(1) QSH,OK[\r]
+This command is invalid when the scanner is in Menu Mode, 
+during Direct Entry operation, during Quick Save operation.
+---------------------------------------------------------------------------------------------------------------------------------------
+STS Get Current Status
+---------------------------------------------------------------------------------------------------------------------------------------
+Controller → Radio
+(1) STS[\r]
+Radio → Controller
+Remote Command 4/38
+(1) STS,[DSP_FORM],[L1_CHAR],[L1_MODE],[L2_CHAR],[L2_MODE],
+[L3_CHAR],[L3_MODE],････,[L20_CHAR],[L20_MODE],
+[RSV],[RSV],[RSV],[RSV],[RSV],
+[RSV],[RSV],[BK_COLOR],[BK_DIMMER][\r]
+Note:
+STS Command is compatible with old scanner.
+PSI is better than STS.
+See "Font Data Specification" for not ascii character code.
+---------------------------------------------------------------------------------------------------------------------------------------
+JNT Jump Number tag
+---------------------------------------------------------------------------------------------------------------------------------------
+Controller → Radio
+(1) JNT,[FL_TAG],[SYS_TAG],[CHAN_TAG][\r]
+[FL_TAG] Favorites List Number Tag (0-99)
+[SYS_TAG] System Number Tag (0-99)
+[CHAN_TAG] Channel Number Tag (0-999)
+Radio → Controller
+(1) JNT,OK[\r]
+---------------------------------------------------------------------------------------------------------------------------------------
+NXT Next
+---------------------------------------------------------------------------------------------------------------------------------------
+Controller → Radio
+(1) NXT,[tkw],[xxx1],[xxx2],[COUNT][\r]
+Radio → Controller
+(2) NXT,OK\r
+[tkw] see sheet "tkd and 1st,2nd opt"
+[xxx1] see sheet "tkd and 1st,2nd opt"
+[xxx2] see sheet "tkd and 1st,2nd opt"
+[COUNT] slide counts (1-8)
+---------------------------------------------------------------------------------------------------------------------------------------
+PRV Previous
+---------------------------------------------------------------------------------------------------------------------------------------
+Controller → Radio
+(1) PRV,[tkw],[xxx1],[xxx2],[COUNT][\r]
+Radio → Controller
+(2) PRV,OK\r
+[tkw] see sheet "tkd and 1st,2nd opt"
+[xxx1] see sheet "tkd and 1st,2nd opt"
+[xxx2] see sheet "tkd and 1st,2nd opt"
+[COUNT] slide counts (1-8)
+---------------------------------------------------------------------------------------------------------------------------------------
+Remote Command 5/38
+FQK Get/Set Favorites List Quick Keys Status
+---------------------------------------------------------------------------------------------------------------------------------------
+Controller → Radio
+(1) FQK[\r]
+(2) FQK,[S0],[S1],......[S99][\r]
+Radio → Controller
+(1) FQK,[S0],[S1],......[S99][\r]
+(2) FQK,OK\r
+[Quick Key Status (S0-S99)]
+ 0 : FLQK does not exist 
+ 1 : FLQK exists and is disabled 
+ 2 : FLQK exists and is enabled 
+If controller sends 0 (QK does not exist), radiowill ignore 0.
+---------------------------------------------------------------------------------------------------------------------------------------
+SQK Get/Set System Quick Keys Status
+---------------------------------------------------------------------------------------------------------------------------------------
+Controller → Radio
+(1) SQK,[FAV_QK][\r]
+(2) SQK,[FAV_QK],[S0],[S1],......[S99][\r]
+Radio → Controller
+(1) SQK,[FAV_QK],[SYS_QK],[S0],[S1],......[S99][\r]
+(2) SQK,OK[\r]
+[Quick Key Status (S0-S99)]
+ 0 : SQK does not exist 
+ 1 : SQK exists and is disabled 
+ 2 : SQK exists and is enabled 
+If controller sends 0 (QK does not exist), radiowill ignore 0.
+---------------------------------------------------------------------------------------------------------------------------------------
+DQK Get/Set Department Quick Keys Status
+---------------------------------------------------------------------------------------------------------------------------------------
+Controller → Radio
+(1) DQK,[FAV_QK],[SYS_QK][\r]
+(2) DQK,[FAV_QK],[SYS_QK],[S0],[S1],......[S99][\r]
+Radio → Controller
+(1) DQK,[FAV_QK],[SYS_QK],[S0],[S1],......[S99][\r]
+(2) DQK,OK[\r]
+[Quick Key Status (S0-S99)]
+ 0 : DQK does not exist 
+ 1 : DQK exists and is disabled 
+ 2 : DQK exists and is enabled 
+If controller sends 0 (QK does not exist), radiowill ignore 0.
+---------------------------------------------------------------------------------------------------------------------------------------
+Remote Command 6/38
+PSI Push Scanner Information
+---------------------------------------------------------------------------------------------------------------------------------------
+format will be XML.
+See PSI,GSI tab
+---------------------------------------------------------------------------------------------------------------------------------------
+GSI Get Scanner Information
+---------------------------------------------------------------------------------------------------------------------------------------
+format will be XML.
+See PSI,GSI tab
+---------------------------------------------------------------------------------------------------------------------------------------
+GLT Get xxx list
+---------------------------------------------------------------------------------------------------------------------------------------
+GLT is command which PC get xx list form scanner.
+See "GLT command" sheet to detail.
+---------------------------------------------------------------------------------------------------------------------------------------
+HLD Hold
+---------------------------------------------------------------------------------------------------------------------------------------
+HLD is command to hold system, department, channel.
+It can't hold favorites list and site frequency.
+Controller → Radio
+HLD,[tkw],[xxx1],[xxx2][\r]
+tkw: see sheet "tkd and 1st,2nd opt"
+xxx1 see sheet "tkd and 1st,2nd opt"
+xxx2 see sheet "tkd and 1st,2nd opt"
+Radio → Controller
+HLD,OK[\r]
+---------------------------------------------------------------------------------------------------------------------------------------
+AVD Set Avoid Option
+---------------------------------------------------------------------------------------------------------------------------------------
+AVD is command to avoid or unavoid.
+It can't avoid favorites list and site frequency.
+Controller → Radio
+AVD,[tkw],[xxx1],[xxx2][STATUS][\r]
+tkw: see sheet "tkd and 1st,2nd opt"
+xxx1 see sheet "tkd and 1st,2nd opt"
+xxx2 see sheet "tkd and 1st,2nd opt"
+[STATUS]1:Permanent Avoid
+2:Temporary Avoid
+3:Stop Avoiding
+Radio → Controller
+AVD,OK[\r]
+Remote Command 7/38
+Note:Please use the GSI or GLT command if you need to get avoid status
+---------------------------------------------------------------------------------------------------------------------------------------
+SVC Get/Set Service Type Settings
+---------------------------------------------------------------------------------------------------------------------------------------
+Controller → Radio
+(1) SVC[\r]
+(2) SVC,[PST1],[PST2],...,[PST37],[CST1],...,[CST10][\r]
+Radio → Controller
+(1) SVC,[PST1],[PST2],...,[PST37],[CST1],...,[CST10][\r]
+(2) SVC,OK[\r]
+[PSTx] 0: Off (Not Scan)
+1: On (Scan)
+---------------------------------------------------------------------------------------------------------------------------------------
+JPM Jump Mode
+---------------------------------------------------------------------------------------------------------------------------------------
+Controller → Radio
+(1) JPM,[JUMP_MODE],[INDEX][\r] 
+[JUMP_MODE] SCN_MODE
+CTM_MODE
+QSH_MODE
+CC_MODE
+WX_MODE
+FTO_MODE
+IREC_MODE
+UREC_MODE
+TDIS_MODE
+CDIS_MODE
+[INDEX] SCN_MODE : Chanel Index
+CTM_MODE : Reserve
+QSH_MODE : Reserve
+CC_MODE : Reserve
+WX_MODE : NORMAL
+A_ONLY
+SAME_1
+SAME_2
+SAME_3
+SAME_4
+SAME_5
+ALL_FIPS
+FTO_MODE : Reserve
+IREC_MODE : Reserve
+UREC_MODE : Folder Name
+TDIS_MODE : Session Name
+CDIS_MODE : Session Name
+※When you send the channel index of 0xFFFFFFFF,
+Remote Command 8/38
+ scanner start to scan from top channel
+※If temporary clock was set and go to discovery mode, scanner sends NG response.
+※If temporary clock was set and go to wx alert mode, scanner sends NG response.
+Radio → Controller
+(1) JPM,OK[\r]
+---------------------------------------------------------------------------------------------------------------------------------------
+DTM Get/Set Date and Time.
+---------------------------------------------------------------------------------------------------------------------------------------
+Controller → Radio
+(1) DTM[\r]
+(2) DTM,[DayLightSaving],[YYYY],[MM],[DD],[hh],[mm],[ss][\r]
+Radio → Controller
+(1) DTM,[DayLightSaving],[YYYY],[MM],[DD],[hh],[mm],[ss],[RTC Status][\r]
+(2) DTM,OK[\r]
+[RTC Status]: 0:RTC NG
+1:RTC OK
+---------------------------------------------------------------------------------------------------------------------------------------
+LCR Get/Set Location and range.
+---------------------------------------------------------------------------------------------------------------------------------------
+Controller → Radio
+(1) LCR[\r]
+(2) LCR,[LATITUDE],[LONGITUDE],[RANGE][\r]
+Radio → Controller
+(1) LCR,[LATITUDE],[LONGITUDE],[RANGE][\r]
+(2) LCR,OK[\r]
+LATITUDE and LONGITUDE is degree format.
+---------------------------------------------------------------------------------------------------------------------------------------
+AST Analize Start
+---------------------------------------------------------------------------------------------------------------------------------------
+See Analize Command Tab
+---------------------------------------------------------------------------------------------------------------------------------------
+APR Analize Pauze/Resume
+---------------------------------------------------------------------------------------------------------------------------------------
+See Analize Command Tab
+---------------------------------------------------------------------------------------------------------------------------------------
+URC User Record Control
+---------------------------------------------------------------------------------------------------------------------------------------
+Controller → Radio
+(1) URC[\r]
+(2) URC,[STATUS][\r]
+Remote Command 9/38
+Radio → Controller
+(1) URC,[STATUS][\r]
+(2) URC,OK[\r]
+URC,ERR,[ERROR CODE][\r] 
+[ERROR CODE] :
+0001: FILE ACCESS ERROR
+0002: LOW BATTERY
+0003: SESSION OVER LIMIT
+0004: RTC LOST
+[STATUS] ：0:Stop, 1:Start
+---------------------------------------------------------------------------------------------------------------------------------------
+BFH Band Scope Frequency Hold
+---------------------------------------------------------------------------------------------------------------------------------------
+Controller → Radio
+BFH,[Frequency][/r]
+Radio → Controller
+BFH,OK[\r]
+---------------------------------------------------------------------------------------------------------------------------------------
+MNU Menu Mode 
+---------------------------------------------------------------------------------------------------------------------------------------
+Controller → Radio
+(1) MNU,[MENU_ID],[INDEX][\r] 
+Radio → Controller
+(1) MNU,OK[\r] 
+MENU_ID INDEX Menu Position
+TOP - Top (Main) Menu
+MONITOR_LIST - Select Lists to Monitor menu
+SCAN_SYSTEM Syetm Index System Menu
+SCAN_DEPARTMENT Department Index Department Menu
+SCAN_SITE Site Index Site Menu
+SCAN_CHANNEL Channel Index Channel Menu
+SRCH_RANGE Custom Bank Index Custom Search Bank Menu
+SRCH_OPT - Search/Close Call Opt menu
+CC - Close Call Menu
+CC_BAND - Clsoe Call Band Menu
+WX - WX Operation Menu
+FTO_CHANNEL FTO Channel Index Tone out Channel Menu
+SETTINGS - Settings Menu
+BRDCST_SCREEN - Broadcast screen Menu
+---------------------------------------------------------------------------------------------------------------------------------------
+MSI Menu Status Info
+---------------------------------------------------------------------------------------------------------------------------------------
+Controller → Radio
+(1) MSI[\r] 
+Remote Command 10/38
+Radio → Controller
+(1) MSI,<XML>,[\r]
+<?xml version="1.0" encoding="utf-8"?>[\r]
+<MSI Name=" Title  " Index="xxxxxx " >[\r]
+   :
+   :
+</MSI>[\r]
+format is XML.
+See sheet MSI tab
+---------------------------------------------------------------------------------------------------------------------------------------
+MSV Menu Set Value
+---------------------------------------------------------------------------------------------------------------------------------------
+Controller → Radio
+(1) MSV,[RSV],[VALUE][\r] 
+Radio → Controller
+(1) MSV,OK[\r] 
+VALUE select type menu : selected item index
+input type menu : inputted string
+Note
+Replace comma(,) to tab(\t), if value contain ,(comma).
+---------------------------------------------------------------------------------------------------------------------------------------
+MSB Menu Structure Back
+---------------------------------------------------------------------------------------------------------------------------------------
+Controller → Radio
+(1) MSB,[RSV],[RET_LEVEL][\r] 
+Radio → Controller
+(1) MSB,OK[\r] 
+RET_LEVEL "RETURN_PREVOUS_MODE" exit menu mode
+"" 1 level back
+Remote Command 11/38
+GLT is command which PC get xx list form scanner.
+Controller → Radio
+(1) GLT,FL Favorites List
+(2) GLT,SYS,[fl_index] System
+(3) GLT,DEPT,[system_index] Department
+(4) GLT,SITE,[system_index] Site
+(5) GLT,CFREQ,[dept_index] Conventional Frequency
+(6) GLT,TGID,[dept_index] TGID
+(7) GLT,SFREQ,[site_index] Site Frequency
+(8) GLT,AFREQ Search Avoding Frequencies
+(9) GLT,ATGID,[system_index] Search Avoiding TGID
+(10) GLT,FTO Fire Tone Out
+(11) GLT,CS_BANK Custom Search Bank
+(12) GLT,UREC User Record
+(13) GLT,IREC_FILE Inner Record File
+(14) GLT,UREC_FILE,[folder_index] User Record File
+(15) GLT,TRN_DISCOV Trunk Discovery
+(16) GLT,CNV_DISCOV Conventional Discovery
+Radio → Controller
+(1) GLT FL Index Name Monitor Q_Key N_Tag
+(2) GLT SYS Index MyId Name Avoid Type Q_Key N_Tag
+(3) GLT DEPT Index MyId Name Avoid Q_Key
+(4) GLT SITE Index MyId Name Avoid Q_Key
+(5) GLT CFREQ Index MyId Name Avoid Freq Mod SAS SAL SvcType N_Tag
+(6) GLT TGID Index MyId Name Avoid TGID Audio Type SvcType N_Tag
+(7) GLT SFREQ Index Freq
+(8) GLT AFREQ Freq Avoid
+(9) GLT ATGID TGID Avoid index Name DeptName DeptIndex
+(10) GLT FTO Index Freq Mod Name ToneA ToneB
+(11) GLT CS_BANK Index Name Lower Upper Mod Step
+(12) GLT UREC Index Name ※Name = Folder Name
+(13) GLT IREC_FILE Index Name Time ※Name = File Name
+(14) GLT UREC_FILE Index Name Time ※Name = File Name
+(15) GLT TRN_DISCOV Name Delay Logging Duration CompareDB SystemName SystemType SiteName TimeOutTimer AutoStore ※Name = Session Name
+(16) GLT CNV_DISCOV Name Lower Upper Mod Step Delay Logginig CompareDB Duration TimeOutTimer AutoStore ※Name = Session Name
+The Index is kind of handle. PC uses index to Hold  and Avoid.
+MyId is like RRDB ID. 
+Short word means:
+Q_Key : Quick Key
+N_Tag : Number Tag
+Freq : Frequency
+Mod : Modulation
+SAS : Sub Audio Setting  (CTCSS/DCS/P25NAC/Color 
+Code/RAN, Area)
+SAL : Sub Audio Lockout  (Tone L/O)Lower Upper
+Avoid
+Off
+T-Avoid
+GLT command 12/38
+format will be XML.
+ex
+GLT,FL¥r
+GLT,<XML>,¥r
+<?xml version="1.0" encoding="utf-8"?>¥r
+<GLT>¥r
+<FL Index="0" Name="Favorites List 1" Monitor="On" Q_Key="1" N_Tag="None" />¥r
+<FL Index="1" Name="Favorites List 2" Monitor="On" Q_Key="2" N_Tag="2" />¥r
+<FL Index="2" Name="Favorites List 3" Monitor="Off" Q_Key="3" N_Tag="999" />¥r
+</GLT>¥r
+GLT command 13/38
+GLT NXT/PRV HLD AVD
+1st 2nd 1st 2nd 1st 2nd 1st 2nd
+Favorites List FL [none]  --- --- ---
+System SYS [Parent FL Index]  Sys Index [none] Sys Index [none] Sys Index [none]
+Department DEPT [Parent Sys Index]  Dept Index [Parent Sys Index] Dept Index [Parent Sys Index] Dept Index [none]
+Site SITE [Parent Sys Index]  Site Index [none] Site Index [none] Site Index [none]
+Conventional frequency CFREQ [Parent Dept Index]  Chan Index [none] Chan Index [none] Chan Index [none]
+TGID in ID Scan TGID [Parent Dept Index]  Chan Index [none] Chan Index [none] Chan Index [none]
+TGID in ID Search STGID ---  TGID [Site Index] TGID [Site Index] --- (Use ATGID)
+Site frequency SFREQ [Parent Sit Index]  --- --- ---
+Avoiding TGID in ID Search ATGID [Parent Sys Index]  --- --- TGID Parent sys index
+Search Avoiding frequency AFREQ [none]  --- --- [Frequency] [none]
+Close Call CC ---  [none] [none] [none] [none] --- (Use AFREQ)
+WX WX [none]  WX Chan Index [none] WX Chan Index [none] ---
+Tone-Out mode FTO [none]  FTO Chan Index [none] FTO Chan Index [none] ---
+Search with scan frequency SWS_FREQ ---  Frequency [Parent Dept Index] Frequency [Parent Dept Index] --- (Use AFREQ)
+CC Hits Channel CCHIT [Parent Dept Index]  CC Chan Index [none] CC Chan Index [none] CC Chan Index [none]
+Custom Search Bank CS_BANK [none]  --- --- ---
+Custom Search frequency CS_FREQ ---  Frequency Parent Bank index Frequency Parent Bank index --- (Use AFREQ)
+Quick Search frequency QS_FREQ ---  Frequency [none] Frequency [none] --- (Use AFREQ)
+Repeater Find frequency RPTR_FREQ ---  Frequency [none] Frequency [none] --- (You can't avoid Repeater Frequency)
+ 
+IREC_FILE [none] [none] File Index [none] --- (You can't avoid)
+UREC_FOLDER [none]  --- (You can't select folder) --- (You can't select folder) --- (You can't avoid)
+UREC_FILE Folder Index File Index [none] File Index [none] --- (You can't avoid)
+TRN_DISCOV [none]  --- --- TGID [none]
+CNV_DISCOV [none]  --- --- Frequency [none]
+BAND_SCOPE ---  Frequency [none] Frequency [none] ---
+[none] means Parameter is none.
+'--- means invarild command
+Note 1 If you want ot avoid 406.0MHz in Quick Search mode, 
+"AVD,AFREQ,4060000,,1\r" is right.
+"AVD,QS_FREQ,4060000,,1\r" is bad command.
+Note 2 If App sends "HLD","NXT" or "PRV"in Repeater Find mod, the scanner cancels Repeater Find mod 
+and returns to previous mode(Custom Search/Quick Search/ Close Call)
+Note 3 "Unkown" department in ID Search is virtual department. You can hold, next and previous "Unkown" department but can't avoid it.
+"Unkown" department needs parent system index. Another department doesn't need parent system index. Both is OK that you set blank or system index for 2nd parameter.
+comand
+Target Key Word
+tkd and 1st,2nd opt 14/38
+PC/Tablet App need scanner internal information to show.
+If the scanner recvies GSI command, it will send scanner internal information.
+Scaner internal information is like XML.
+If the scanner receive PSI command, it outputs information periodically. 
+User can change interval by parameter. 
+[ Ex .scan mode ]
+<?xml version="1.0" encoding="utf-8"?>
+<ScannerInfo Mode="Trunk Scan Hold" V_Screen="trunk_scan">
+<MonitorList Name="Full Database" Index="4294967295" ListType="FullDb" Q_Key="None" N_Tag="None" DB_Counter="3" />
+<System Name="Calcasieu" Index="283" Avoid="Off" SystemType="Conventional" Q_Key="None" N_Tag="None" Hold="On" />
+<Department Name="Calcasieu Parish - Parish Fire &amp; Medical" Index="286" Avoid="Off" Q_Key="None" Hold="Off" />
+<ConvFrequency Name="DeQuincy Fire Department" Index="290" Avoid="Off" Freq=" 154.4150MHz" 
+Mod="NFM" N_Tag="None" Hold="On" SvcType="Fire Dispatch" P_Ch="Off" SAS="All" SAD="None" LVL="0" IFX="Off" />
+<AGC A_AGC="Off" D_AGC="Off" />
+<DualWatch PRI="Off" CC="Off" WX="Off" />
+<Property 
+VOL="0" SQL="9" Sig="0"
+WiFi="3" Att="Off" Rec="Off"
+KeyLock="Off" P25Status="None"
+Mute="Mute" Backlight="100"
+Rssi="0.377"
+/>
+<ViewDescription>
+<InfoArea1 Text="F0:01234-6*789" />
+<InfoArea2 Text="S3:01234-6*---" />
+<PopupScreen Text="Quick Save?\n"/>
+</ViewDescription>
+see PSI, GSI Elemen
+PSI, GSI Attribute
+Attribute (ViewDescription)
+System xxxxxx
+Department xxxxxx
+Channel xxxxxx
+PSI, GSI command Summary 15/38
+All mode Elements
+ScannerInfo
+Property
+AGC
+DispFormat
+ViewDescription (when the radio is wiewing override area )
+ReplayDescription (when the radio is in REPLAY mode)
+ScannerInfo is the root node.
+PSI, GSI Elemen 16/38
+Depend on mode elements
+Scan mode Search  Signal Temporary discovery Analyze
+conventional_scan
+trunk_scan
+custom_with_scan
+cchits_with_scan
+custom_search
+quick_search
+close_call
+cc_searching
+tone_out
+wx_alert
+reverse_frequency
+repeater_find
+discovery_conventional
+discovery_trunking
+analyze_system_status
+rf_power_plot
+analyze
+band_scope
+MonitorList ○ ○ ○ ○ - - - - - - - - - - - - - -
+System ○ ○ ○ ○ - - - - - - - - - - - - - -
+Department ○ ○ ○ ○ - - - - - - - - - - - - - -
+Site - ○ - - - - - - - - - - - - - - - -
+ConvFrequency ○ - - - - - - - - - - - - - - - - -
+TGID - ○ - - - - - - - - - - - - - - - -
+SiteFrequency - ○ - - - - - - - - - - - - - -
+SrchFrequency - - ○ - ○ ○ ○ - - ○ ○ ○ - - - - - -
+CcHitsChannel - - - ○ - - - - - - - - - - - - - -
+DualWatch ○ ○ ○ ○ ○ ○ ○ ○ - - ○ ○ - - - - - -
+SearchRange - - ○ - ○ ○ - - - - - - - - - - - -
+SearchBanks - - - - ○ - - - - - - - - - - - - -
+CC_Bands - - - - - - - ○ - - - - - - - - - -
+CC_Counters - - - - - - - ○ - - - - - - - - - -
+ToneOutChannel - - - - - - - - ○ - - - - - - - - -
+WxChannel - - - - - - - - - ○ - - - - - - - -
+WxMode - - - - - - - - - ○ - - - - - - - -
+ConventionalDiscovery - - - - - - - - - - - - ○ - - - - -
+TrunkingDiscovery - - - - - - - - - - - - - ○ - - - -
+SystemStatus - - - - - - - - - - - - - - ○ - - -
+RfPowerPlot - - - - - - - - - - - - - - - ○ - -
+Analyze - - - - - - - - - - - - - - - - ○ -
+BandScope - - - - - - - - - - - - - - - - - ○
+BandScopeRange - - - - - - - - - - - - - - - - - ○
+PSI, GSI Elemen 17/38
+Elements in ViewDescription
+InfoArea1
+InfoArea2
+OverWrite
+PopupScreen
+PlainText 
+Elements in ReplayDescription
+File
+ReplayMode
+PSI, GSI Elemen 18/38
+ScannerInfo
+Attribute Name Value
+Mode
+V_Screen
+Property
+Attribute Name Value
+F Off/On
+VOL 0-29 or 0-15
+SQL 0-19 or 0-15
+Sig 0-4
+WiFi Off / 0-3 / AP
+Battery 0.0-3.3
+Att Off/On/G-Att
+Rec Off/On
+KeyLock Off/On
+P25Status None/Data/P25/DMR/CAP/CON/DT3/XPT
+/NX9/NX4/ND9/ND4/IDS/NXD
+Mute Unmute/Mute
+A_Led Off/Blue/Red/Magenta/Green/Cyan/Yellow/White
+Dir Up/Down
+Rssi 0-
+AGC
+Attribute Name Value
+A_AGC Off/On
+D_AGC Off/On
+DualWatch
+Attribute Name Value
+PRI Off/DND/Priority
+CC Off/DND/Priority
+WX Off/Priority
+MonitorList
+Attribute Name Value
+Name ASCII code , Max length 64
+Index 0-
+ListType FullDb/FL/SWS
+Q_Key 0-99/None
+N_Tag 0-99/None
+DB_Counter 0-65535, if counter overs 65535, counter will be 0.
+System
+Name ASCII code , Max length 64
+Index 0-
+Avoid Off/T-Avoid/Avoid
+SystemType
+Q_Key 0-99/None
+N_Tag 0-99/None
+Hold Off/On
+Department
+Name ASCII code , Max length 64
+Index 0-
+Avoid Off/T-Avoid/Avoid
+Q_Key 0-99/None
+Hold Off/On
+Site
+Conventional
+Motorola
+EDACS    
+LTR
+P25 Trunk
+P25 One Frequency
+MotoTRBO Trunk
+DMR One Frequency
+NXDN Trunk
+NXDN One Frequency
+plain_text
+conventional_scan
+trunk_scan
+custom_with_scan 
+cchits_with_scan 
+custom_search
+quick_search 
+close_call
+cc_searching 
+tone_out 
+wx_alert 
+discovery_conventional
+discovery_trunking
+reverse_frequency
+repeater_find
+direct_entry 
+menu_selection
+menu_input
+analyze_system_status
+rf_power_plot
+analyze
+Scan Mode
+Scan Hold
+Tone-Out
+Custom Search
+Custom Search Hold
+Quick Search
+Quick Search Hold
+Service Scan
+Service Scan Hold
+Trunk Scan
+Trunk Scan Hold
+Close Call Only
+Close Call
+Menu tree
+PSI, GSI Attribute 19/38
+Name ASCII code , Max length 64
+Index 0-
+Avoid Off/T-Avoid/Avoid
+Q_Key 0-99/None
+Hold Off/On
+Mod Auto/NFM/FM
+ConvFrequency
+Name ASCII code , Max length 64
+Index 0-
+Avoid Off/T-Avoid/Avoid
+Freq xxxx.xxxxMHz
+Mod Auto/AM/NFM/FM/WFM/FMB
+N_Tag 0-999/None
+Hold Off/On
+SvcType See Sheet : "Service type"
+P_Ch Off/On
+SAS See Sheet : "Sub Audio"
+SAL Off/On
+SAD See Sheet : "Sub Audio"
+RecSlot Slot 1/2/None
+LVL -3/-2-/-1/0/1/2/3
+IFX Off/On
+TGID TGID xxxx/None
+U_Id UID xxxx/None
+TGID
+Name ASCII code , Max length 64
+Index 0-
+Avoid Off/T-Avoid/Avoid
+TGID TGID:xxxx
+SetSlot Slot 1/2/Any
+RecSlot Slot 1/2/None
+N_Tag 0-999/None
+Hold Off/On
+SvcType See Sheet : "Service type"
+P_Ch Off/On
+LVL -3/-2-/-1/0/1/2/3
+SiteFrequency
+Freq xxxx.xxxxMHz
+SAS See Sheet : "Sub Audio"
+SAD See Sheet : "Sub Audio"
+IFX Off/On
+SearchBanks
+Attribute Name Value
+Index 0-9
+BankStatus xxxxxxxxxx : 0=Off/ 1=On  order=0123456789
+Name ASCII code , Max length 64
+BankNo 0-9
+CC_Bands
+Attribute Name Value
+BandStatus xxxxxxx : 0=Off/ 1=On order=0123456
+SrchFrequency
+Attribute Name Value
+Avoid Off/T-Avoid/Avoid
+Freq xxxx.xxxxMHz
+Mod Auto/AM/NFM/FM/WFM/FMB
+Hold Off/On
+SAD See Sheet : "Sub Audio"
+RecSlot Slot 1/2/None
+TGID TGID xxxx/None
+PSI, GSI Attribute 20/38
+U_Id UID xxxx/None
+IFX Off/On
+CcHitsChannel
+Attribute Name Value
+Name ASCII code , Max length 64
+Index 0-
+Avoid Off/T-Avoid/Avoid
+CH_No 0-9
+Freq xxxx.xxxxMHz
+Mod Auto/AM/NFM/FM/WFM/FMB
+Hold Off/On
+SAD See Sheet : "Sub Audio"
+LVL -3/-2-/-1/0/1/2/3
+IFX Off/On
+SearchRange
+Lower xxxx.xxxxMHz
+Upper xxxx.xxxxMHz
+Mod Auto/AM/NFM/FM/WFM/FMB
+Step
+ToneOutChannel
+Name ASCII code , Max length 64
+Index 1-
+CH_No 0-31
+Freq xxxx.xxxxMHz
+Mod Auto/AM/NFM/FM/WFM/FMB
+Hold Off/On
+LVL -3/-2-/-1/0/1/2/3
+IFX Off/On
+ToneA xxxxHz
+ToneB xxxxHz
+WxMode
+Mode "Monitor Weather" or "Weather Alert"
+SAME "Alert Only" or SAME group name
+WxChannel
+Name ASCII code , Max length 64
+Index 0-
+CH_No 1-7
+Freq xxxx.xxxxMHz
+Mod FM
+Hold Off/On
+LVL -3/-2-/-1/0/1/2/3
+IFX Off/On
+ConventionalDiscovery
+Lower xxxx.xxxxMHz
+Upper xxxx.xxxxMHz
+Mod Auto/AM/NFM/FM/WFM/FMB
+Step
+Freq xxxx.xxxxMHz
+SAD See Sheet : "Sub Audio"
+RecSlot Slot 1/2/None
+PastTime
+HitCount
+TGID TGID xxxx/None
+U_Id UID xxxx/None
+IFX Off/On
+TrunkingDiscovery
+SystemName ASCII code , Max length 64
+SiteName ASCII code , Max length 64
+TGID
+TgidName
+PSI, GSI Attribute 21/38
+SAD See Sheet : "Sub Audio"
+RecSlot Slot 1/2/None
+PastTime
+HitCount
+U_Id UID xxxx/None
+SystemStatus
+SystemName ASCII code , Max length 64
+SiteName ASCII code , Max length 64
+Signal 0-100
+Quality 0-100
+Activity 0-100
+SystemID 0-0x1FFFF
+SystemSubID 0-99
+SiteID 0-4095
+WacnID 0-0xFFFFF
+NAC 0-0xFFF
+Color 0-15
+RAN 0-63
+Area 0-1
+Att Off/G-Att
+Freqs 0-16
+P25Status None/Data/P25/DMR/CAP/CON/DT3/XPT
+/NX9/NX4/ND9/ND4/IDS/NXD
+RfPowerPlot
+Frequency xxxx.xxxxMHz
+Modulation Auto/AM/NFM/FM/WFM/FMB
+SampleRate 100ms/200ms/400ms/800ms
+Att Off/G-Att
+B01 0 - 100
+B02 0 - 100
+B03 0 - 100
+B04 0 - 100
+B05 0 - 100
+B06 0 - 100
+B07 0 - 100
+B08 0 - 100
+B09 0 - 100
+B10 0 - 100
+B11 0 - 100
+B12 0 - 100
+B13 0 - 100
+B14 0 - 100
+B15 0 - 100
+B16 0 - 100
+B17 0 - 100
+B18 0 - 100
+B19 0 - 100
+B20 0 - 100
+B21 0 - 100
+B22 0 - 100
+B23 0 - 100
+B24 0 - 100
+B25 0 - 100
+B26 0 - 100
+B27 0 - 100
+B28 0 - 100
+B29 0 - 100
+B30 0 - 100
+B31 0 - 100
+B32 0 - 100
+B33 0 - 100
+B34 0 - 100
+Analyze
+Msg1 ASCII code , Max length 64
+Msg2 ASCII code , Max length 64
+SystemName ASCII code , Max length 64
+PSI, GSI Attribute 22/38
+SiteName ASCII code , Max length 64
+Att Off/G-Att
+※Used by following mode
+LCN Finder
+Current Activity
+LCN Monitor
+Activity Log
+BandScope
+Msg1 ASCII code , Max length 64
+Msg2 ASCII code , Max length 64
+Span 0.2MHz/0.4MHz/0.6MHz/0.8MHz/1MHz/2MHz/
+4MHz/6MHz/8MHz/10MHz/20MHz/40MHz/
+60MHz/80MHz/100MHz/200MHz
+Hold On/Off
+Att Off/G-Att
+BandScopeRange
+Lower xxxx.xxxxMHz
+Upper xxxx.xxxxMHz
+Mod Auto/AM/NFM/FM/WFM/FMB
+Step 5kHz/6.25kHz/7.5kHz/833kHz/10kHz/12.5kHz/
+15kHz/20kHz/25kHz/50kHz/100kHz
+PSI, GSI Attribute 23/38
+<<Info Area and Override>>
+Scanner has special view area on main screen.
+Info Area 1 and Info Area 2 are diplayed Quick keys status in scan mode or Banks status in 
+custum search mode.
+Over Write Area is displayed error message or scanning message on channel name area.
+<ViewDescription>
+<InfoArea1 Text="F0:01234-6*789" />
+<InfoArea2 Text="S3:01234-6*---" />
+<OverWrite Text="No thing to scan">
+</ViewDescription>
+<<Popup Screen>>
+Scanner has popup screen. It shows temporary view for 1-2 seconds.
+The popup screen is shown on main screen.
+It is like toaster in Android OS.
+<ViewDescription>
+<PopupScreen Text="Global ATT\nOn"/>
+</ViewDescription>
+Popup screen has a few buttons.
+This popup screen is not cleared automatically.
+Scanner waits pressed button by user.
+Fx:0123456789
+Sx:0123456789
+channel name
+BCD536HP image
+Fx:0123456789
+Sx:0123456789
+channel name
+BCD436HP image
+Over Write Area
+Info Area 1 
+Info Area 2
+Global ATT
+On
+Attribute (ViewDescription) 24/38
+It is like Dialog box.
+<ViewDescription>
+<PopupScreen Text="USB Cable Detected&#xD;
+Select USB mode&#xD;&#xD;Mass Storage=&quot;E&quot; / Serial Port=&quot;.&quot;">
+<Button Text="&quot;E&quot; (Yes)" KeyCode="E" />
+<Button Text="&quot;.&quot; (No)" KeyCode="." />
+</PopupScreen>
+In this case Popup screen has 2 buttons.
+If 'E' (Yes) button is pressed, App shoud send "KEY,E,P".
+E is KeyCode.
+<<PlainText view>>
+Plain Text view is kind of view mode in main screen. 
+ex.
+<ViewDescription>
+<PlainText Text="Copyright 2014"/>
+<PlainText Text="Uniden America Corp."/>
+<PlainText Text="All Rights Reserved."/>
+<PlainText Text=""/>
+</ViewDescription>
+System xxxxxx
+Department xxxxxx
+Channel xxxxxx
+USB Cable Detected
+Select USB mode
+Mass Storage="E" / Serial Port="."
+'E' (Yes) '.' (No)
+Attribute (ViewDescription) 25/38
+<< ReplayDescription >>
+  <ReplayDescription>
+    <File Index="2" />
+    <ReplayMode Mode="USER_REC" />
+  </ReplayDescription>
+Attribute (ReplayDescription) 26/38
+Basic Rule for Response scanner information
+MyId
+The system, department, site and channel on Full Database have MyId.
+The system, department, site and channel copied form full database have MyId.
+But system, department, site and channel which user created don't have MyId.
+MyId relates RadioReference ID.
+ID is shown xxId=xx.
+e.x.
+CountyId=5
+AgencyId=15
+ID list
+HPDB ID description RRDB ID
+CountyId Conventional System ( County ) ctid
+AgencyId Conventional System ( Agency ) aid
+TrunkId Trunked System sid
+CGroupId Conventional Department scid
+CFreqId Conventional Frequncy fid
+SiteId Trunked Site siteId
+TGroupId Trunked Department tgCid
+Tid Trunked Channel tgId
+Note :
+Search with Scan doesn't have MyId.
+Index
+The index will be used, when you hold or avoid system, department and channel.
+It is decided when data is downloaded to RAM. It is invalid if DB_Counter differs.
+Name
+ASCII code (20h-7eh)
+Max Length 64 characters
+PSI, GSI Basic rule 27/38
+------------------------------------------------------------------------------------------
+AST Analize Start
+------------------------------------------------------------------------------------------
+■ Current Activity
+Controller → Radio
+AST,CURRENT_ACTIVITY,[Site Index]\r
+Radio → Controller
+format will be XML.
+Data is sent in 200ms interval
+C-Ch
+No LCN Frequency SystemID SiteID TGID Type
+V-Ch
+No LCN Frequency TGID Unit ID MOD TGID Type
+Parameter
+LCN ： LCN(decimal)
+Freq ： Frequency
+TGID ： Talk Group ID(decimal)
+Unit ID ： Unit ID(decimal)
+MOD ： Mode
+Analog
+Digital
+Encrypted
+TgidType ： Talk Group ID type
+Control Channel
+Encrypted
+Patch
+Unknown
+TGID
+I-CALL
+SystemID ： System ID(hex)
+SiteID ： Site ID(decimal)
+XML example
+AST,<XML>,\r
+<?xml version="1.0" encoding="utf-8"?>\r
+<AST>\r
+<CurrentActivity LCN="1" Freq="851.0125" SystemID="0001h" SiteID="0" TgidType="Control Channel" />\r
+<CurrentActivity LCN="2" Freq="851.0375" TGID="16" UnitID="32" MOD="Analog" TgidType="TGID" />\r
+<CurrentActivity LCN="3" Freq="851.0625" TGID="64" UnitID="128" MOD="Analog" TgidType="TGID" />\r
+：
+：
+<CurrentActivity LCN="32" Freq="851.6125" TGID="256" UnitID="512" MOD="Analog" Tgidype="TGID" />\r
+</AST>\r
+※Before sending AST command, please go to Scan Mode to load the hpdb data
+■ LCN Monitor
+Controller → Radio
+AST,LCN_MONITOR,[Site Index]\r
+Radio → Controller
+format will be XML.
+Data is sent in 1s interval
+No LCN Frequency Status
+Parameter
+LCN ： LCN(decimal)
+Freq ： Frequency
+ReceiveStaus ： 1 or 0
+XML example
+AST,<XML>,\r
+<?xml version="1.0" encoding="utf-8"?>\r
+<AST>\r
+<LcnMonitor LCN="1" Freq = "851.0125" ReceiveStaus="1" />\r
+<LcnMonitor LCN="2" Freq = "851.0250" ReceiveStaus="0" />\r
+<LcnMonitor LCN="3" Freq = "851.0375" ReceiveStaus="0" />\r
+<LcnMonitor LCN="4" Freq = "851.0500" ReceiveStaus="0" />\r
+<LcnMonitor LCN="5" Freq = "851.0625" ReceiveStaus="0" />\r
+：
+：
+<LcnMonitor LCN="32" Freq = "851.4000" ReceiveStaus="0" />\r
+</AST>\r
+※Before sending AST command, please go to Scan Mode to load the hpdb data
+Analyze Command 28/38
+■ Activity Log
+※If temporary clock was set and go to activity log mode, scanner sends NG response.
+Controller → Radio
+AST,ACTIVITY_LOG,[Site Index]\r
+Radio → Controller
+AST,ACTIVITY_LOG,[Time],[Data],[Message],[Description]
+Parameter
+Time ： MM/DD/YYYY hh:mm:ss
+Data ： Received raw data (depends on system type)
+Message ： Message type (Depends on system type)
+Description1-5 ： Message description (depends on system type). Number of description is depends on message type.
+【Motorola】
+"<cmd>/<prv>/<id>"
+cmd ： command field 0-1023(decimal)
+prv ： private bit 0 or 1
+id ： id field 0-65535(decimal)
+System ID Sid:
+Site ID Site:
+Talkgroup Voice Channel Grant Tid: Uid: Lcn: Sts: Mod:
+Talkgroup Voice Channel Grant Update Tid: Lcn: Sts:
+I-Call Voice Channel Grant Update Uid: Lcn:
+Individual Call Uid: Uid: Lcn:
+Patch/MultiSelect Voice Channel Grant Pid: Uid: Lcn: Sts: Mod:
+Patch/Multiselect Voice Channel Grant Update Pid: Lcn: Sts:
+Patch List Pid: Mid
+Patch Cancel Pid:
+Control
+First OSW
+Receive Error
+Description
+Sid ： System ID(hex)
+Site ： Site ID(decimal)
+Tid ： Talk Group ID(decimal)
+Uid ： Unit ID(decimal)
+Pid ： Patch ID(decimal)
+Mid ： Patch Member ID (decimal)
+Lcn ： LCN(decimal)
+Sts ： Status bit
+Normal Talkgroup
+All Talkgroup
+Emergency
+Talkgroup Patch
+Emergency Patch
+Emergency Multi-Group
+Multi-Select
+DES Encryption Talkgroup
+DES All Talkgroup
+DES Emergency
+DES Talkgroup Patch
+DES Emergency Patch
+DES Emergency Multi-Group
+Multi-Select DES TG
+Mod： Modulation
+Analog
+Digital
+【P25 Standard】
+"<opecode>/<data>"
+opecode opecode 1byte:00-FF(hex)
+data TSBK 12bytes:000000000000000000000000-FFFFFFFFFFFFFFFFFFFFFFFF(hex)
+Group Voice Channel Grant Lcn: Gad: Sad:
+Group Voice Channel Grant Explicit LcnT: Gad: Sad: LcnR:
+Group Voice Channel Grant Update Lcn: Gad: Lcn: Gad:
+Group Voice Channel Grant Update Explicit LcnT: LcnR: Gad:
+Unit To Unit Voice Channel Grant Lcn: Tad: Sad:
+Unit To Unit Voice Channel Grant Extended LcnT: Tad: Sad: LcnR:
+Unit To Unit Answer Request Tad: Src:
+Unit To Unit Answer Request Extended Tad: Src:
+Unit To Unit Voice Channel Grant Update Lcn: Tad: Sad:
+Unit To Unit Voice Channel Grant Update Extended LcnT: Tad: Sad: LcnR:
+Telephone Voice Channel Grant
+Telephone Interconnect Answer Request
+Identifier Update for X2TDMA
+Individual Data Channel Grant
+Group Data Channel Grant
+Group Data Channel Announcement
+Group Data Channel Announcement Explicit
+SNDCP Data Channel Grant
+SNDCP Data Page Request
+SNDCP Data Channel Announcement Explicit
+Status Update
+Data
+Message Description1 Description2 Description3 Description4 Description5
+Data
+Description1 Description4Description2 Description3Message Description5
+Analyze Command 29/38
+Status Query
+Message Update
+Radio Unit Monitor Command
+Call Alert
+Acknowledge Response FNE
+Queued Response
+Extended Function Command
+Deny Response
+Group Affiliation Response
+Secondary Control Channel Broadcast Explicit
+Group Affiliation Query
+Location Registration Response
+Unit Registration Response
+Unit Registration Command
+Authentication Command
+De-Registration Acknowledge
+Identifier Update for TDMA Iden: Type: Tofs: Csp: Bfrq:
+Identifier Update for VHF/UHF Bands
+Time and Date Announcement Iden: Bw: Tofs: Csp: Bfrq:
+Roaming Address Command
+Roaming Address Update
+System Service Broadcast
+Secondary Control Channel Broadcast
+RFSS Status Broadcast Sid: Sub: Site: Lcn:
+RFSS Status Broadcast Extended Sid: Sub: Site: LcnT: LcnR:
+Network Status Broadcast Wacn: Sid: Lcn:
+Network Status Broadcast Extended Wacn: Sid: LcnT: LcnR:
+Adjacent Status Broadcast
+Identifier Update for non-VHF/UHF Bands Iden: Bw: Tofs: Csp: Bfrq:
+Protection Parameter Broadcast
+Protection Parameter Update
+Receive Error
+Description
+Lcn ： LCN(decimal)
+LcnT ： Transmit channel LCN(decimal)
+LcnR ： Receive channel LCN(decimal)
+Gad ： Group Address(decimal)
+Sad ： Source Address(decimal)
+Tad ： Target Address(decimal)
+Src ： Source ID(decimal)
+Iden ： Identifier(decimal)
+Bw ： Band Width(decimal)
+Tofs ： Transmit Offset(decimal)
+Csp ： Channel Spacing(decimal)
+Bfrq ： Base Frequency(decimal)
+Sid ： System ID(hex)
+Sub ： RF Sub-system ID(decimal)
+Site ： Site ID(decimal)
+Wacn ： WACN ID(hex)
+Type ： Channel Type（decimal)
+【EDACS】
+"<data>"
+data message data 28bits:0000000-FFFFFFF(hex)
+Site ID Site: Lcn:
+Talkgroup Voice Channel Grant Tid: Uid: Lcn: Sts:
+Talkgroup Voice Channel Grant Update Tid: Lcn: Sts:
+I-Call Voice Channel Grant Update Uid: Lcn: Sts:
+Patch Voice Channel Grant Pid: Uid: Lcn: Sts:
+Patch Voice Channel Grant Update Pid: Lcn: Sts:
+Patch List Pid: Mid:
+First OSW
+Receive Error
+Description
+Site ： Site ID(decimal)
+Tid ： Talk Group ID(decimal 1-2047: AFS, decimal 2048-65535: Decimal)
+Uid ： Unit ID(decimal)
+Pid ： Patch ID(decimal)
+Mid ： Patch Member ID (decimal)
+Lcn ： LCN(decimal)
+Sts ： Status bit
+Normal Talkgroup
+Talkgroup Patch
+Emergency
+Emergency Patch
+Digital Talkgroup
+Digital Patch
+Digital Emergency
+Digital Emergency Patch
+I-Call
+Digital I-Call
+【LTR】
+"<data>"
+data <area_code>/<goto>/<home>/<id>/<free>
+area code Area Code 0 or 1
+goto Goto Repeater 0-31(decimal)
+Message Description1 Description2 Description3 Description4 Description5
+Data
+Data
+Analyze Command 30/38
+home Home Repeater 0-31(decimal)
+id Id Field 0-255(decimal)
+free Free Repeater 0-31(decimal)
+Repeater Idle Tid: Rpt: Goto: Free:
+Talkgroup Voice Channel Grant Update Tid: Rpt: Goto: Free:
+Turn-off Code Tid: Rpt: Goto: Free:
+Tid ： Talk Group ID (Area-Home-Id)
+Rpt ： Transmitting Repeater
+Goto ： Goto Repeater
+Free ： Free Repeater
+【DMR/MotoTRBO】
+"<opcode>/<fid>/<id>/<ch>/<slot>/<prv>/<emergency>"
+opcode Full/Short Link Control Opcode 00-3F (Hex)
+Control Signal Block Opcode 00-3F (Hex)
+fid Feature ID 00(DMR), 06(Connect Plus), 10(Capacity Plus) (Hex)
+id TGID 0-16777215 (Decimal)
+ch LCN 0-4095 (Decimal)
+slot TDMA Slot 1 or 2 or 15(None) (Decimal)
+prv Privacy 0 or 1
+emergency Emergency 0 or 1
+Talkgroup Voice Channel Grant Tid: Uid: Color Code: Lcn: Slot:
+Talkgroup Voice Channel Link Control Tid: Uid: Color Code: Lcn: Slot:
+Unit to Unit Voice Channel Grant Uid Src: Uid Dst: Color Code: Lcn: Slot:
+Unit to Unit Voice Channel Link Control Uid Src: Uid Dst: Color Code: Lcn: Slot:
+Broadcast Talkgroup Voice Channel Grant Tid: Uid: Color Code: Lcn: Slot:
+Capacity Plus Voice Channel Grant Tid: Uid: Color Code: Lcn: Slot:
+Capacity Plus Update Sid: Site: Color Code: Lcn: Slot:
+Capacity Plus Site ID Sid: Site: Color Code: Lcn: Slot:
+Linked Capacity Plus Site ID Sid: Site: Color Code: Lcn: Slot:
+Connect Plus Voice Channel Grant Tid: Uid: Color Code: Lcn: Slot:
+Connect Plus Update
+Connect Plus Network ID Sid: Site: Color Code: Lcn: Slot:
+DMR Network ID Sid: Site: Color Code: Lcn: Slot:
+Idle
+Description
+Sid ： Network ID (Hex)
+Site ： Site ID (Decimal)
+Tid ： Talk Group ID (Decimal)
+Uid ： Unit ID (Decimal)
+Uid Src ： Source Unit ID (Decimal)
+Uid Dst ： Destination Unit ID (Decimal)
+Color Code ： Color Code (Decimal)
+Lcn ： LCN (Decimal)
+Slot ： TDMA Slot (Decimal)
+※Before sending AST command, please go to Scan Mode to load the hpdb data
+【NXDN】
+"<call type>/<home ch>/<id>/<ch>/<prv>/<emergency>"
+call type Call Type 0-7 (Decimal)
+home ch Home Channel 0-31 (IDAS only, Decimal)
+id TGID NEXEDGE: 0-65535, IDAS: 0-2047 (Decimal)
+ch LCN 0-1023 (Decimal)
+prv Privacy 0 or 1
+emergency Emergency 0 or 1
+Replying to requesting communication Tid: Uid:
+Uid Src: Uid Dst:
+Performing voice communication Tid: Uid:
+Uid Src: Uid Dst:
+Sending Encryption init vector
+Assignment of traffic channel to VC Tid: Uid:
+Uid Src: Uid Dst:
+Existence of assigned traffic channel to VC Tid: Uid:
+Uid Src: Uid Dst:
+Transmission released
+Idle
+Disconnecting
+Site configuration information Sys: Site:
+Service information which site provides Sys: Site:
+Information of site's control channel Sys: Site:
+IDAS go to Repeater Tid: Uid:
+Uid Src: Uid Dst:
+Description
+Sys ： System ID (Decimal)
+Site ： Site ID (Decimal)
+Tid ： Talk Group ID (Decimal)
+Uid ： Unit ID (Decimal)
+Uid Src ： Individual Call Source Unit ID (Decimal)
+Uid Dst ： Individual Call Destination Unit ID (Decimal)
+RAN ： NEXEDGE RAN (Decimal)
+Cch LCN: or DFA
+Area Code: Go to Repeater: 
+Go to Repeater: 
+RAN: or Area Code: 
+RAN: or Area Code: 
+RAN: or Area Code: 
+RAN: or Area Code: 
+RAN: or Area Code: 
+Area Code: 
+RAN:
+RAN:
+RAN:
+LCN: or Home Ch:
+LCN: or Home Ch:
+LCN: or Home Ch:
+LCN: or Home Ch:
+Cch LCN: or DFA
+Description5
+RAN: or Area Code: 
+Area Code: 
+Description3
+Area Code: Home Ch:
+Home Ch:
+Description4
+Data
+Data
+Message Description1 Description2
+Description4 Description5Message Description1 Description2 Description3
+Description3 Description4 Description5Message Description1 Description2
+Analyze Command 31/38
+Area Code ： IDAS Area Code (Decimal)
+LCN ： NEXEDGE LCN (Decimal)
+Go to Repeater ： IDAS Repeater Channel (Decimal)
+Home Ch ： IDAS Home Channel (Decimal)
+Cch LCN ： NEXEDGE Control Channel (Decimal)
+DFA ： NEXEDGE Direct Frequency Assignment
+※Before sending AST command, please go to Scan Mode to load the hpdb data
+■ LCN Finder
+Controller → Radio
+AST,LCN_FINDER,[Site Index]\r
+Radio → Controller
+format will be XML.
+Data is sent in 500ms interval
+Parameter
+Freq ： Frequency
+AccuracyStatus ： Accuracy Level (Total 30 status)
+0 ： Unknown
+1 ： Level 1
+2 ： Level 2
+3 ： Level 3
+4 ： Level 4
+5 ： Found
+6 ： Disable
+Condition ： Searching
+All Lcn Found
+XML example
+AST,<XML>,\r
+<?xml version="1.0" encoding="utf-8"?>\r
+<AST>\r
+<LcnFinder Freq="851.0125" AccuracyStatus="566666666666666666666666666666"
+<LcnFinder Freq="851.0375" AccuracyStatus="610000000000000000000000000000"
+<LcnFinder Freq="851.0625" AccuracyStatus="603000000000000000000000000000"
+<LcnFinder Freq="851.6125" AccuracyStatus="600000000000000000000000000000"
+<LcnFinder Condition="Searching"/>
+</AST>\r
+※Before sending AST command, please go to Scan Mode to load the hpdb data
+■ Band Scope
+Data is sent in 10ms interval
+Controller → Radio
+AST,BAND_SCOPE,[Center frequency],[Span],[Step],[Modulation]\r
+[Center frequency]
+250000 - 13000000
+[Span]
+[Step]
+750
+[Modulation]
+Radio → Controller
+The data is output every time the frequency is changed
+AST,BAND_SCOPE,[Frequency],[RSSI_LEVEL]\r
+Parameter
+Frequency ： Frequency
+Status ： RSSI Level (0 - 100)
+■ Raw Data Output
+Controller → Radio
+AST,RAW_DATA_OUTPUT,[Frequency],[Modulation],[Filter],[Global Attenuator]\r
+[Frequency]
+250000 - 13000000
+200
+400
+600
+800
+1000
+80000
+100000
+200000
+1000
+6000
+4000
+2000
+625
+1500500
+2000
+2500
+5000
+10000
+8000
+10000
+20000
+40000
+60000
+Auto 
+833
+AM
+NFM
+FM
+WFM
+FMB
+Analyze Command 32/38
+[Modulation]
+[Filter]
+1=On
+0=Off
+[Global Attenuator]
+1=On
+0=Off
+Radio → Controller
+Discriminator A/D sampling raw data (10 bit signed data) will be output by the radio. 
+10 bit data will be divided into High byte and Low byte, see data format in next table. 
+※ Interface of ｒaw ｄata output mode is the only USB port.
+If you want to use the other remote command, please send after pause command.
+■ System Status
+Controller → Radio
+AST,SYSTEM_STATUS,[site_index]\r
+Radio → Controller
+AST,OK\r
+■ Rf Power Plot
+Controller → Radio
+AST,RF_POWER_PLOT,[Frequency],[Modulation],[Sampling Rate]\r
+[Frequency]
+250000 - 13000000
+[Modulation]
+[Sampling Rate]
+100
+200
+400
+800
+Radio → Controller
+AST,OK\r
+------------------------------------------------------------------------------------------
+APR Analize Pauze/Resume
+------------------------------------------------------------------------------------------
+Controller → Radio
+APR,[Analize Mode]\r
+Parameter
+Analize Mode ： SYSTEM_STATUS
+RF_POWER_PLOT
+CURRENT_ACTIVITY
+LCN_MONITOR
+ACTIVITY_LOG
+RAW_DATA_OUTPUT
+Radio → Controller
+APR,OK\r
+FMB
+Auto 
+AM
+NFM
+FM
+WFM
+WFM
+FMB
+Auto 
+AM
+NFM
+FM
+Analyze Command 33/38
+MSI
+Attribute Name Value
+Name Menu title
+Index Menu index
+MenuType TypeSelect/TypeInput/TypeLocation/TypeError
+Value Current set value
+Selected
+MenuItem
+Attribute Name Value
+Name Item name
+Index Item index
+Value Menu item current value
+MenuInput
+Attribute Name Value
+MaxLength 1-64
+EnableKeys Characters which user can input.
+AddedInformation String
+ 
+MenuLocation
+Attribute Name Value
+MaxLength 1-
+EnableKeys Characters which user can input.
+IsLatitude "1"=Lan/ "0"= Lon
+MenuErrorMsg
+Attribute Name Value
+Text Error Message
+ScanButton "1"=Enable / "0"=Disable 
+MSI 34/38
+Service Type
+id Service Type Name
+PST1 Multi-Dispatch
+PST2 Law Dispatch
+PST3 Fire Dispatch
+PST4 EMS Dispatch
+PST5 non
+PST6 Multi-Tac
+PST7 Law Tac
+PST8 Fire-Tac
+PST9 EMS-Tac
+PST10 non
+PST11 Interop
+PST12 Hospital
+PST13 Ham
+PST14 Public Works
+PST15 Aircraft
+PST16 Federal
+PST17 Business
+PST18 non
+PST19 non
+PST20 Railroad
+PST21 Other
+PST22 Multi-Talk
+PST23 Law Talk
+PST24 Fire-Talk
+PST25 EMS-Talk
+PST26 Transportation
+PST27 non
+PST28 non
+PST29 Emergency Ops
+PST30 Military
+PST31 Media
+PST32 Schools
+PST33 Security
+PST34 Utilities
+PST35 non
+PST36 non
+PST37 Corrections
+Custom Service Type
+id Service Type Name
+ST1 Custom 1
+ST2 Custom 2
+ST3 Custom 3
+ST4 Custom 4
+ST5 Custom 5
+ST6 Custom 6
+ST7 Custom 7
+ST8 Custom 8
+ST9 Racing Officials
+ST10 Racing Teams
+Service type 35/38
+Key code BCD536HP BCD436HP Note
+M MENU Menu Menu Key
+F ( Rotary nob) Func F Key
+L AVOID AVOID Avoid Key
+1 1 1 1 Key
+2 2 2 2 Key
+3 3 3 3 Key
+4 4 4 4 Key
+5 5 5 5 Key
+6 6 6 6 Key
+7 7 7 7 Key
+8 8 8 8 Key
+9 9 9 9 Key
+0 0 0 0 Key
+. . NO . NO Dot key 
+E E yes E yes Enter Key
+> ( Rotary nob) ( Rotary nob) Rotary Right
+< ( Rotary nob) ( Rotary nob) Rotary Left
+^ ( Rotary nob) ( Rotary nob) Rotary nob push
+V VOL Backlight Volume nob push
+Q SQ (none) Squelch nob push
+Y REPLAY REPLAY Replay Key
+A SYSTEM SYSTEM System Key
+B DEPT DEPT
+C CHANNEL CHAN Channel Key
+Z ZIP Zip Zip Key
+T SREV (none) Service Type Key
+R RANG RANG Range Key
+key code for KEY Command 36/38
+SAS(Sub Audio Settings)  SAD(Sub Audio Detected)  
+All Analog ( CTCSS/DCS )Digital (P25 NAC/ColorCode/RAN/Area) All Analog ( CTCSS/DCS )Digital (P25 NAC/ColorCode/RAN/Area)
+All Tone Search NAC Search None None None
+0x0000 CTCSS  67.0Hz NAC 000h CTCSS  67.0Hz NAC 000h
+CTCSS  69.3Hz NAC 001h CTCSS  69.3Hz NAC 001h
+CTCSS  71.9Hz NAC 002h CTCSS  71.9Hz NAC 002h
+CTCSS  74.4Hz NAC 003h CTCSS  74.4Hz NAC 003h
+CTCSS  77.0Hz NAC 004h CTCSS  77.0Hz NAC 004h
+CTCSS  79.7Hz NAC 005h CTCSS  79.7Hz NAC 005h
+CTCSS  82.5Hz NAC 006h CTCSS  82.5Hz NAC 006h
+CTCSS  85.4Hz NAC 007h CTCSS  85.4Hz NAC 007h
+CTCSS  88.5Hz NAC 008h CTCSS  88.5Hz NAC 008h
+CTCSS  91.5Hz NAC 009h CTCSS  91.5Hz NAC 009h
+CTCSS  94.8Hz NAC 00Ah CTCSS  94.8Hz NAC 00Ah
+CTCSS  97.4Hz NAC 00Bh CTCSS  97.4Hz NAC 00Bh
+CTCSS 100.0Hz NAC 00Ch CTCSS 100.0Hz NAC 00Ch
+CTCSS 103.5Hz NAC 00Dh CTCSS 103.5Hz NAC 00Dh
+CTCSS 107.2Hz NAC 00Eh CTCSS 107.2Hz NAC 00Eh
+CTCSS 110.9Hz NAC 00Fh CTCSS 110.9Hz NAC 00Fh
+CTCSS 114.8Hz NAC 010h CTCSS 114.8Hz NAC 010h
+CTCSS 118.8Hz NAC 011h CTCSS 118.8Hz NAC 011h
+0x0012 CTCSS 123.0Hz NAC 012h CTCSS 123.0Hz NAC 012h
+: CTCSS 127.3Hz : CTCSS 127.3Hz :
+: CTCSS 131.8Hz : CTCSS 131.8Hz :
+: CTCSS 136.5Hz : CTCSS 136.5Hz :
+0x0fff CTCSS 141.3Hz NAC FFFh CTCSS 141.3Hz NAC FFFh
+0x1000 CTCSS 146.2Hz Color Code 0 CTCSS 146.2Hz Color Code 0
+CTCSS 151.4Hz Color Code 1 CTCSS 151.4Hz Color Code 1
+CTCSS 156.7Hz Color Code 2 CTCSS 156.7Hz Color Code 2
+CTCSS 159.8Hz Color Code 3 CTCSS 159.8Hz Color Code 3
+CTCSS 162.2Hz Color Code 4 CTCSS 162.2Hz Color Code 4
+CTCSS 165.5Hz Color Code 5 CTCSS 165.5Hz Color Code 5
+CTCSS 167.9Hz Color Code 6 CTCSS 167.9Hz Color Code 6
+CTCSS 171.3Hz Color Code 7 CTCSS 171.3Hz Color Code 7
+CTCSS 173.8Hz Color Code 8 CTCSS 173.8Hz Color Code 8
+CTCSS 177.3Hz Color Code 9 CTCSS 177.3Hz Color Code 9
+CTCSS 179.9Hz Color Code 10 CTCSS 179.9Hz Color Code 10
+CTCSS 183.5Hz Color Code 11 CTCSS 183.5Hz Color Code 11
+CTCSS 186.2Hz Color Code 12 CTCSS 186.2Hz Color Code 12
+CTCSS 189.9Hz Color Code 13 CTCSS 189.9Hz Color Code 13
+CTCSS 192.8Hz Color Code 14 CTCSS 192.8Hz Color Code 14
+0x100f CTCSS 196.6Hz Color Code 15 CTCSS 196.6Hz Color Code 15
+: CTCSS 199.5Hz : CTCSS 199.5Hz :
+: CTCSS 203.5Hz : CTCSS 203.5Hz :
+: CTCSS 206.5Hz : CTCSS 206.5Hz :
+0x2000 CTCSS 210.7Hz RAN 0 CTCSS 210.7Hz RAN 0
+CTCSS 218.1Hz RAN 1 CTCSS 218.1Hz RAN 1
+CTCSS 225.7Hz RAN 2 CTCSS 225.7Hz RAN 2
+CTCSS 229.1Hz RAN 3 CTCSS 229.1Hz RAN 3
+CTCSS 233.6Hz RAN 4 CTCSS 233.6Hz RAN 4
+CTCSS 241.8Hz RAN 5 CTCSS 241.8Hz RAN 5
+CTCSS 250.3Hz RAN 6 CTCSS 250.3Hz RAN 6
+CTCSS 254.1Hz RAN 7 CTCSS 254.1Hz RAN 7
+DCS 006 RAN 8 DCS 006 RAN 8
+DCS 007 RAN 9 DCS 007 RAN 9
+DCS 015 RAN 10 DCS 015 RAN 10
+DCS 017 RAN 11 DCS 017 RAN 11
+DCS 021 RAN 12 DCS 021 RAN 12
+DCS 023 RAN 13 DCS 023 RAN 13
+DCS 025 RAN 14 DCS 025 RAN 14
+DCS 026 RAN 15 DCS 026 RAN 15
+DCS 031 RAN 16 DCS 031 RAN 16
+DCS 032 RAN 17 DCS 032 RAN 17
+DCS 036 RAN 18 DCS 036 RAN 18
+DCS 043 RAN 19 DCS 043 RAN 19
+DCS 047 RAN 20 DCS 047 RAN 20
+DCS 050 RAN 21 DCS 050 RAN 21
+DCS 051 RAN 22 DCS 051 RAN 22
+DCS 053 RAN 23 DCS 053 RAN 23
+DCS 054 RAN 24 DCS 054 RAN 24
+DCS 065 RAN 25 DCS 065 RAN 25
+DCS 071 RAN 26 DCS 071 RAN 26
+DCS 072 RAN 27 DCS 072 RAN 27
+DCS 073 RAN 28 DCS 073 RAN 28
+DCS 074 RAN 29 DCS 074 RAN 29
+DCS 114 RAN 30 DCS 114 RAN 30
+DCS 115 RAN 31 DCS 115 RAN 31
+DCS 116 RAN 32 DCS 116 RAN 32
+DCS 122 RAN 33 DCS 122 RAN 33
+DCS 125 RAN 34 DCS 125 RAN 34
+DCS 131 RAN 35 DCS 131 RAN 35
+DCS 132 RAN 36 DCS 132 RAN 36
+DCS 134 RAN 37 DCS 134 RAN 37
+DCS 141 RAN 38 DCS 141 RAN 38
+DCS 143 RAN 39 DCS 143 RAN 39
+DCS 145 RAN 40 DCS 145 RAN 40
+DCS 152 RAN 41 DCS 152 RAN 41
+DCS 155 RAN 42 DCS 155 RAN 42
+Sub Audio 37/38
+DCS 156 RAN 43 DCS 156 RAN 43
+DCS 162 RAN 44 DCS 162 RAN 44
+DCS 165 RAN 45 DCS 165 RAN 45
+DCS 172 RAN 46 DCS 172 RAN 46
+DCS 174 RAN 47 DCS 174 RAN 47
+DCS 205 RAN 48 DCS 205 RAN 48
+DCS 212 RAN 49 DCS 212 RAN 49
+DCS 214 RAN 50 DCS 214 RAN 50
+DCS 223 RAN 51 DCS 223 RAN 51
+DCS 225 RAN 52 DCS 225 RAN 52
+DCS 226 RAN 53 DCS 226 RAN 53
+DCS 243 RAN 54 DCS 243 RAN 54
+DCS 244 RAN 55 DCS 244 RAN 55
+DCS 245 RAN 56 DCS 245 RAN 56
+DCS 246 RAN 57 DCS 246 RAN 57
+DCS 251 RAN 58 DCS 251 RAN 58
+DCS 252 RAN 59 DCS 252 RAN 59
+DCS 255 RAN 60 DCS 255 RAN 60
+DCS 261 RAN 61 DCS 261 RAN 61
+DCS 263 RAN 62 DCS 263 RAN 62
+0x203f DCS 265 RAN 63 DCS 265 RAN 63
+: DCS 266 : DCS 266 :
+: DCS 271 : DCS 271 :
+: DCS 274 : DCS 274 :
+0x3000 DCS 306 Area 0 DCS 306 Area 0
+0x3001 DCS 311 Area 1 DCS 311 Area 1
+DCS 315 DCS 315
+DCS 325 DCS 325
+DCS 331 DCS 331
+DCS 332 DCS 332
+DCS 343 DCS 343
+DCS 346 DCS 346
+DCS 351 DCS 351
+DCS 356 DCS 356
+DCS 364 DCS 364
+DCS 365 DCS 365
+DCS 371 DCS 371
+DCS 411 DCS 411
+DCS 412 DCS 412
+DCS 413 DCS 413
+DCS 423 DCS 423
+DCS 431 DCS 431
+DCS 432 DCS 432
+DCS 445 DCS 445
+DCS 446 DCS 446
+DCS 452 DCS 452
+DCS 454 DCS 454
+DCS 455 DCS 455
+DCS 462 DCS 462
+DCS 464 DCS 464
+DCS 465 DCS 465
+DCS 466 DCS 466
+DCS 503 DCS 503
+DCS 506 DCS 506
+DCS 516 DCS 516
+DCS 523 DCS 523
+DCS 526 DCS 526
+DCS 532 DCS 532
+DCS 546 DCS 546
+DCS 565 DCS 565
+DCS 606 DCS 606
+DCS 612 DCS 612
+DCS 624 DCS 624
+DCS 627 DCS 627
+DCS 631 DCS 631
+DCS 632 DCS 632
+DCS 654 DCS 654
+DCS 662 DCS 662
+DCS 664 DCS 664
+DCS 703 DCS 703
+DCS 712 DCS 712
+DCS 723 DCS 723
+DCS 731 DCS 731
+DCS 732 DCS 732
+DCS 734 DCS 734
+DCS 743 DCS 743
+DCS 754 DCS 754
+Sub Audio 38/38

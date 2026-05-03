@@ -1,22 +1,66 @@
-# Reverse Engineering Notes
+# Reverse Engineering / Development - Lab notebook
 
-Per-scanner RE notes captured from real SD cards. Treat these as the
-canonical source of truth for "what does this scanner actually write
-to disk", because Uniden does not publish a spec.
+> **Canonical narrative is the wiki.** Start at
+> [`wiki/Reverse-Engineering.md`](../../wiki/Reverse-Engineering.md)
+> (or `Reverse-Engineering` on the GitHub Wiki) for the consolidated
+> story. The wiki tells you what we found and why it matters; this
+> folder is the **lab notebook** behind it - raw probe captures,
+> Ghidra projects, decompiles, pcaps, session logs, and the scripts
+> that produced all of the above.
+>
+> Lab files in here are kept for reproducibility and for cases where
+> the wiki abridges detail. They are **not** the canonical narrative.
+> If a wiki page disagrees with a lab file, the file wins (it has the
+> timestamp + bytes); fix the wiki.
 
-> If a fact in here disagrees with code in `scanner_manager.py` or
-> `scanner_profiles/`, **the RE note wins**. The code may pre-date
-> the RE or be wrong. Reconcile by updating the code, never by
-> editing the RE note to match buggy code.
+This folder is the home of the project's **RE / Development**
+workstream. Use it when you want to extend the work: add a new
+scanner family, port to a new SUB firmware, capture another Sentinel
+operation, etc.
 
-## Files in this folder
+## Layout
 
-| File | Purpose |
-| --- | --- |
-| `SDS100.md` | Uniden SDS100 (+ SDS200 by extension) - SD card RE plus live serial-mode RE. RE'd from real card on `D:\` and live USB serial on `MINILAPTOP`, both `2026-04-27`. |
-| `serial_probe.py` | **READ-ONLY** passive probe for live scanners. Sends only commands from a vetted whitelist; refuses to send anything from a hard-coded forbidden list. See "Running the probes" below. |
-| `com6_listen.py` | Listen-only baud sweep used to determine whether a CDC port is GPS NMEA, idle command port, or something else. Writes nothing. |
-| `sessions/` | Timestamped raw probe captures. Committed so the analysis in `SDS100.md` is reproducible from raw bytes. Filename convention: `<probe>_<timestamp>.txt`. |
+```
+AI/Dev/RE/
+├── README.md             # this file
+├── tools/                # canonical scripts (live probes, firmware,
+│                          #  Sentinel, automation, legacy archive)
+├── docs/                 # canonical lab notebooks (BT885.md,
+│                          #  SDS100.md, SD_CARD_COMPARISON.md,
+│                          #  Sentinel write-ups, etc.)
+├── specs/                # vendor PDFs / TXTs (Uniden Remote Command
+│                          #  spec V1.02, V2.00, BCDx36HP V1.05)
+├── plans/                # forward-looking RE plans (e.g. virtual
+│                          #  scanner roadmap)
+├── firmware/             # firmware blobs + Ghidra projects
+│                          #  (gitignored; bring your own)
+├── firmware_analysis/    # strings dumps + diffs (gitignored)
+├── sentinel_pcaps/       # raw USBPcap captures (gitignored) + the
+│                          #  decoded *.summary.md / *.files.md /
+│                          #  *.scsi.jsonl artifacts (committed)
+└── sessions/             # raw probe session logs (gitignored)
+```
+
+The `tools/` folder is the new home for everything executable -
+serial probes, firmware analyzers, Sentinel decoders, Ghidra glue.
+See `tools/README.md` for a one-line description of every script and
+common workflows.
+
+## Wiki pages this notebook backs
+
+| Topic | Wiki page (canonical) | Backed by |
+| --- | --- | --- |
+| Two-MCU architecture | [RE-Architecture](../../wiki/RE-Architecture.md) | `docs/SDS100.md`, `docs/sub_static_analysis.md`, `firmware/decompiles/` |
+| USB Mass Storage vs Serial mode | [RE-USB-Modes](../../wiki/RE-USB-Modes.md) | `tools/probes/list_ports.py`, `tools/automation/find_sds100_hub.ps1` |
+| SD card layout (BCDx36HP family) | [RE-SD-Card](../../wiki/RE-SD-Card.md) | `docs/SD_CARD_COMPARISON.md`, `docs/BT885.md`, `docs/SDS100.md`, `tools/sentinel/compare_cards.py` |
+| Serial command catalogs | [RE-Serial-Protocol](../../wiki/RE-Serial-Protocol.md) | `docs/SDS100_unofficial_commands.md`, `docs/sub_command_dispatch.md`, `tools/probes/serial_probe.py`, `tools/probes/sub_probe.py` |
+| Inter-MCU USART2 protocol | [RE-Inter-MCU-Bus](../../wiki/RE-Inter-MCU-Bus.md) | `docs/SDS100_inter_mcu_protocol.md`, `firmware/decompiles/` |
+| Firmware (SUB container, MAIN encryption) | [RE-Firmware](../../wiki/RE-Firmware.md) | `docs/SDS100_firmware.md`, `tools/firmware/inflate_sub.py`, `firmware/`, `tools/automation/` |
+| Sentinel as UMS editor | [RE-Sentinel](../../wiki/RE-Sentinel.md) | `docs/sentinel_api.md`, `docs/sentinel_capture.md`, `sentinel_pcaps/`, `tools/sentinel/` |
+| Tool inventory | [RE-Toolchain](../../wiki/RE-Toolchain.md) | `tools/README.md` and the per-script docstrings |
+| Recipes / playbooks | [RE-Workflows](../../wiki/RE-Workflows.md) | `docs/AUTOMATION.md`, `docs/ghidra_import_runbook.md` |
+| Virtual scanner roadmap | [Virtual-Scanner-Roadmap](../../wiki/Virtual-Scanner-Roadmap.md) | `plans/virtual_scanner.md` |
+| RE glossary | [Glossary](../../wiki/Glossary.md) | (defined inline in lab docs) |
 
 ## Running the probes (live scanner over USB)
 
@@ -26,76 +70,73 @@ enumerates **two** Uniden CDC virtual COM ports:
 
 | PID | Role | Probe target? |
 | --- | --- | --- |
-| `0x0019` | SUB processor bootloader | NO - only useful for Sentinel firmware flashing; not a general protocol |
-| `0x001A` | MAIN processor command port | **YES** - this is where the Uniden Remote Command Protocol lives |
-
-Find the right COM port:
-
-```powershell
-Get-CimInstance Win32_PnPEntity |
-  Where-Object { $_.DeviceID -match 'VID_1965' } |
-  Select-Object Name, DeviceID
-```
-
-The port whose DeviceID contains `PID_001A` is your target.
+| `0x0019` | SUB processor command port | **YES** - 13 single-character debug commands plus `MDL` / `VER`. |
+| `0x001A` | MAIN processor command port | **YES** - this is where the Uniden Remote Command Protocol lives. |
 
 Prerequisites:
 
 ```powershell
-# Anywhere - the scripts use only stdlib + pyserial
 py -m pip install --user pyserial
 ```
 
-Run the probe (replace `COM6` with whatever PID `0x001A` enumerated as):
+Each probe auto-detects the right CDC by VID/PID, no hard-coded COM
+number required:
 
 ```powershell
-py AI\Dev\RE\serial_probe.py --port COM6
+py AI\Dev\RE\tools\probes\list_ports.py
+py AI\Dev\RE\tools\probes\serial_probe.py
+py AI\Dev\RE\tools\probes\sub_probe.py
 ```
 
-Output goes to `AI/Dev/RE/sessions/sds100_serial_<timestamp>.txt` and is
-also streamed to the terminal. The probe takes ~20 seconds (36 commands
-x ~600 ms timeout, faster when responses arrive early).
+Override with `--port COM5` (or `/dev/ttyACM0`) if you need to.
+
+Output goes to `AI/Dev/RE/sessions/<probe>_<timestamp>.txt` (and to
+stdout). The `sessions/` folder is gitignored so probe captures stay
+local; promote anything reproducible into `docs/` after sanitising.
 
 ## Safety contract for the probes
 
-- **Whitelist-only.** New mnemonics may be added to `serial_probe.py`'s
-  `QUERIES` list **only** after confirming in the Uniden Operation
-  Specification that they have no "set" semantics.
+- **Whitelist-only.** New mnemonics may be added to
+  `tools/probes/serial_probe.py`'s `QUERIES` list **only** after
+  confirming in the Uniden Operation Specification that they have no
+  "set" semantics.
 - **Hard-coded forbidden list.** `KEY`, `PRG`, `EPG`, `JNT`, `JPM`,
   `WPL`, `WPS`, `CLR`, `DLA`, `MEMSET`, `WIPE`, `TGW`, `VLO`, `SLO`,
   `GLT`, `RST,SET` will never be sent regardless of the whitelist.
 - **No `,?` -> `set` escalation.** Even if the scanner answers `OK` to
   a `cmd,?` write-test, do NOT follow up with an actual `cmd,value`
   call; that's by definition a state change.
-- **MAIN port only (PID `0x001A`).** Don't probe the SUB bootloader
-  with anything beyond the Session-1 capture already in `SDS100.md`.
+- **Read-only by default.** Anything that can mutate the scanner, the
+  SD card, or the firmware blobs MUST require an explicit
+  `--allow-destructive` (or equivalent) opt-in flag.
 
 ## Adding a new scanner RE
 
 1. Plug the scanner's SD card in. Note the drive letter, volume label,
    filesystem, and total / free size.
-2. Mirror the structure of `SDS100.md`:
+2. Mirror the structure of `docs/SDS100.md`:
    - Identity files and what they contain.
    - Top-level layout with sizes / counts.
    - Per-folder analysis (HPDB, favorites, discovery, audio, etc.).
    - Record-type tally for at least one large HPD file.
-   - Sample raw lines for every record type.
+   - Sample raw lines for every record type. Sanitise PII.
    - Delta vs. the closest already-supported model.
    - Open questions / fields we don't yet understand.
 3. **Don't paraphrase**. Paste actual file contents (truncated where
-   sensible) so the next agent can verify without the physical card.
+   sensible) so the next contributor can verify without the physical
+   card. Strip GPS, agency names, hostnames, scanner serial numbers.
 4. Cross-reference into `AI/Dev/MULTI_SCANNER_BACKEND.md` so the
    driver-layer plan stays accurate.
 
 ## What goes in here vs. `docs/adding-a-scanner.md`
 
-- `docs/adding-a-scanner.md` is **public-facing** developer
-  documentation - generic, prescriptive, terse. Lives in git, ships
-  with the project.
-- `AI/Dev/RE/*` is **internal RE artifacts** - verbose, raw,
-  hostname-tagged, includes sample data dumps and conjecture. Also
-  in git so cross-machine syncs work, but the audience is "us"
-  (humans + AI agents) not "external contributors adding a profile".
+- `docs/adding-a-scanner.md` (top-level) is **public-facing**
+  developer documentation - generic, prescriptive, terse. Lives in
+  git, ships with the project.
+- `AI/Dev/RE/*` is the **lab notebook** - verbose, raw, includes
+  sample data dumps and conjecture. Also in git so cross-machine
+  syncs work, but the audience is "RE contributors" not "users
+  adding a profile".
 
 When you add a new scanner profile, both files exist - the RE doc
 captures _what the scanner writes_, the public doc captures _how to

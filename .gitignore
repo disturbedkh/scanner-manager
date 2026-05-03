@@ -41,3 +41,45 @@ build/
 # Crash logs (written by the global exception hook).
 logs/
 crash-*.log
+
+# Reverse-engineering tooling artifacts.
+#
+# Strategy: keep raw, PII-bearing or vendor-copyrighted captures + binaries
+# *local-only*; commit sanitized decoded artefacts (`.summary.md`,
+# `.scsi.jsonl`, `.files.md`) and canonical lab docs. See
+# AI/Dev/RE/tools/README.md for the full data-flow.
+
+# Raw probe + Sentinel session logs. Contain hostnames, serial numbers,
+# GPS, agency names. Never ship.
+AI/Dev/RE/sessions/
+
+# Firmware blobs (vendor copyright) + Ghidra project state + analysis dumps.
+# Blanket-ignore at the AI/Dev/RE/firmware/ subtree level so a dev unzipping
+# a vendor archive doesn't accidentally stage it.
+*.firm
+AI/Dev/RE/firmware/SDS100_SUB/
+AI/Dev/RE/firmware/**/*.bin
+AI/Dev/RE/firmware/**/*.firm
+AI/Dev/RE/firmware/**/*.zip
+AI/Dev/RE/firmware/**/Readme*.txt
+AI/Dev/RE/firmware/*.gpr
+AI/Dev/RE/firmware/*.gpr.lock
+AI/Dev/RE/firmware/*.rep/
+AI/Dev/RE/firmware/decompiles/
+AI/Dev/RE/firmware/analysis_dump.json
+AI/Dev/RE/firmware/analyzeHeadless.log
+AI/Dev/RE/firmware/LPC43xx.svd
+AI/Dev/RE/firmware_analysis/
+
+# Raw USB Mass Storage captures + sparse-reconstructed disk images.
+# Sanitized decoded artefacts (`.scsi.jsonl`, `.files.md`, `.summary.md`)
+# are deliberately *not* ignored - those are the publishable record.
+AI/Dev/RE/sentinel_pcaps/*.pcap
+AI/Dev/RE/sentinel_pcaps/*.pcapng
+AI/Dev/RE/sentinel_pcaps/*.disk.bin
+AI/Dev/RE/sentinel_pcaps/*.commands.jsonl
+
+# Ghidra environment shim (per-machine paths).
+AI/Dev/RE/automation/.ghidra_env.ps1
+AI/Dev/RE/tools/automation/.ghidra_env.ps1
+ghidra_env/
