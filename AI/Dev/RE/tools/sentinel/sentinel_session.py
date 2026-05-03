@@ -52,6 +52,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -148,33 +149,11 @@ OPERATIONS: tuple[Operation, ...] = (
             "and any handoff signal between Sentinel and the scanner."
         ),
     ),
-    Operation(
-        number=5,
-        filename="05_backup.pcap",
-        title="Backup",
-        instruction=(
-            "In Sentinel: File -> 'Backup'.\n"
-            "Choose any backup location, then wait for completion."
-        ),
-        expectation=(
-            "Comprehensive READ_10 of every persistent file on the SD card. "
-            "Mirror of op #1 but exhaustive. Reveals: complete file inventory "
-            "and read order. This is our 'read-all' template for our app."
-        ),
-    ),
-    Operation(
-        number=6,
-        filename="06_restore.pcap",
-        title="Restore",
-        instruction=(
-            "In Sentinel: File -> 'Restore'.\n"
-            "Use a recent backup. Wait for completion."
-        ),
-        expectation=(
-            "Comprehensive WRITE_10 of every persistent file. Mirror of #5. "
-            "This is our 'write-all' template for our app."
-        ),
-    ),
+    # NOTE: Backup / Restore operations were removed. In current Sentinel
+    # builds (v1.20+) these aliases are not exposed in the menu, and on
+    # older builds they were just full mirrors of Read/Write traffic.
+    # If a future Sentinel exposes them again and they look distinct on
+    # the wire, re-add them here as ops 5 + 6.
 )
 
 
@@ -305,31 +284,50 @@ def probe_interface_for_sds100(
     tool: Path, interface: str, seconds: float = 2.0
 ) -> bool:
     """Briefly capture on `interface` and return True if SDS100 USB
-    descriptors (VID 1965, PID 0019 or 001A) appear in the bytes.
+    descriptors (VID 1965, any PID) appear in the bytes.
+
+    Uses a per-call temporary directory so that:
+      a) leftover probe files from a previous run can't block this one
+         with a Windows file-lock (USBPcapCMD releases handles lazily); and
+      b) we never pollute PCAP_DIR with `_probe_*` files that look like
+         real captures.
     """
-    safe_name = interface.replace("\\", "_").replace(":", "_").lstrip("_")
-    tmp = PCAP_DIR / f"_probe_{safe_name}.pcap"
-    PCAP_DIR.mkdir(parents=True, exist_ok=True)
+    tmp_dir = Path(tempfile.mkdtemp(prefix="sentinel_probe_"))
+    tmp = tmp_dir / "probe.pcap"
     try:
         proc = _spawn_capture(tool, interface, tmp)
         time.sleep(seconds)
         _stop_capture(proc, timeout=5.0)
         if not tmp.exists():
             return False
-        data = tmp.read_bytes()
-        sds_markers = (b"\x65\x19\x19\x00", b"\x65\x19\x1a\x00")
+        # Windows: USBPcapCMD sometimes releases the file handle a few
+        # hundred ms after the process exits. Retry reads a couple of
+        # times before giving up.
+        data: bytes | None = None
+        for _ in range(5):
+            try:
+                data = tmp.read_bytes()
+                break
+            except PermissionError:
+                time.sleep(0.3)
+        if data is None:
+            return False
+        sds_markers = (b"\x65\x19\x19\x00", b"\x65\x19\x1a\x00", b"\x65\x19\x17\x00")
         return any(m in data for m in sds_markers)
     finally:
         try:
-            tmp.unlink()
-        except OSError:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+        except Exception:
             pass
 
 
 def _pnp_locate_sds100_hub() -> str | None:
     """Run the PowerShell PnP-trace helper and return the matched
     `\\\\.\\USBPcapN` interface, or None if not on Windows / not found."""
-    helper = REPO_ROOT / "AI" / "Dev" / "RE" / "automation" / "_find_sds100_hub.ps1"
+    helper = REPO_ROOT / "AI" / "Dev" / "RE" / "tools" / "automation" / "find_sds100_hub.ps1"
+    if not helper.exists():
+        # Legacy path (pre-tools-reorg) - kept as a fallback for old checkouts.
+        helper = REPO_ROOT / "AI" / "Dev" / "RE" / "automation" / "_find_sds100_hub.ps1"
     if not helper.exists():
         return None
     try:
@@ -380,12 +378,37 @@ def _measure_traffic(tool: Path, ifaces: list[tuple[str, str]], seconds: float =
     return sizes
 
 
-def auto_select_interface(tool: Path) -> str | None:
+def _probe_each_interface(tool: Path, ifaces: list[tuple[str, str]], seconds: float = 3.0) -> dict[str, bool]:
+    """For each USBPcap interface, capture briefly and check for VID 0x1965
+    descriptor markers. Returns {iface: True if SDS100 traffic detected}.
+    More specific than _measure_traffic - a busy keyboard hub will look
+    big but won't carry the SDS100 VID marker.
+    """
+    found: dict[str, bool] = {}
+    for ifid, label in ifaces:
+        print(f"      probing {ifid} for VID 0x1965 ({seconds:.0f}s)...", end=" ", flush=True)
+        hit = probe_interface_for_sds100(tool, ifid, seconds=seconds)
+        found[ifid] = hit
+        print("YES (SDS100 found)" if hit else "no")
+    return found
+
+
+def auto_select_interface(tool: Path) -> tuple[str | None, str]:
+    """Returns (interface, source) where `source` describes the strategy
+    that picked it. Used by main() to decide whether the post-pick
+    verification probe is needed.
+
+      "single"  - only one USBPcap interface exists
+      "pnp"     - Windows PnP parent-chain trace (deterministic)
+      "vid"     - per-interface VID 0x1965 descriptor probe
+      "traffic" - traffic-volume tiebreaker (low confidence)
+      "none"    - nothing matched
+    """
     print("[*] Listing USBPcap interfaces...")
     ifaces = list_usbpcap_interfaces(tool)
     if not ifaces:
         print("[X] No USBPcap interfaces found. Is USBPcap installed and the system rebooted?")
-        return None
+        return None, "none"
     print(f"[+] Found {len(ifaces)} USBPcap interface(s):")
     for ifid, label in ifaces:
         print(f"      {ifid}   ({label})")
@@ -395,17 +418,35 @@ def auto_select_interface(tool: Path) -> str | None:
     if len(valid_ifaces) == 1:
         only = valid_ifaces[0][0]
         print(f"[+] Only one USBPcap interface present; using {only}")
-        return only
+        return only, "single"
 
     # Strategy 1: deterministic Windows PnP parent-chain trace.
     pnp = _pnp_locate_sds100_hub()
     if pnp and pnp in iface_ids:
         print(f"[+] PnP trace -> {pnp}")
-        return pnp
+        return pnp, "pnp"
     if pnp:
         print(f"[!] PnP trace returned {pnp} but it is not in the USBPcap interface list.")
 
-    # Strategy 2: traffic-volume tiebreaker (idle SDS100 has continuous CDC polling).
+    # Strategy 2: VID 0x1965 descriptor probe on each interface. Only
+    # reliable when the scanner enumerates during the probe window
+    # (e.g. just plugged in, or actively transferring).
+    print("[*] Probing each interface for VID 0x1965 USB descriptors...")
+    found = _probe_each_interface(tool, valid_ifaces, seconds=3.0)
+    hits = [ifid for ifid, h in found.items() if h]
+    if len(hits) == 1:
+        print(f"[+] VID 0x1965 found on {hits[0]}")
+        return hits[0], "vid"
+    if len(hits) > 1:
+        print(f"[!] VID 0x1965 found on multiple interfaces: {hits}")
+        # Multiple hits is unusual but not impossible (e.g. user has two
+        # scanners or USBPcap is filtering oddly). Manual select.
+        return None, "none"
+
+    # Strategy 3: traffic-volume tiebreaker (only applicable if we still
+    # don't know which is the scanner - e.g. scanner currently idle in
+    # mass-storage mode and no enumeration in this window).
+    print("[!] No interface positively identified; falling back to traffic volume.")
     print("[*] Measuring traffic on each interface (2s each)...")
     sizes = _measure_traffic(tool, valid_ifaces, seconds=2.0)
     for ifid in sizes:
@@ -417,19 +458,24 @@ def auto_select_interface(tool: Path) -> str | None:
             or sizes[best] >= 4 * max(v for k, v in sizes.items() if k != best)
         ):
             print(f"[+] Traffic heuristic -> {best}")
-            return best
+            return best, "traffic"
 
     print("[!] Auto-detect ambiguous; manual selection required.")
-    return None
+    return None, "none"
 
 
 def manual_select_interface(tool: Path) -> str | None:
     ifaces = list_usbpcap_interfaces(tool)
     if not ifaces:
         return None
+    # Probe each interface so the user can see which one carries the SDS100.
+    print()
+    print("[*] Probing each interface so you can see which one carries the SDS100...")
+    found = _probe_each_interface(tool, ifaces, seconds=3.0)
     print()
     for i, (ifid, label) in enumerate(ifaces, start=1):
-        print(f"  [{i}] {ifid}   ({label})")
+        marker = "  <-- SDS100" if found.get(ifid) else ""
+        print(f"  [{i}] {ifid}   ({label}){marker}")
     raw = input("Pick interface number (or paste full \\\\.\\USBPcapN): ").strip()
     if raw.startswith("\\\\.\\"):
         return raw
@@ -438,6 +484,32 @@ def manual_select_interface(tool: Path) -> str | None:
         return ifaces[idx - 1][0]
     except (ValueError, IndexError):
         return None
+
+
+def verify_interface_or_warn(tool: Path, interface: str) -> bool:
+    """Final guard: probe the chosen interface and warn loudly if it does
+    not carry VID 0x1965 traffic. Returns True if the interface looks
+    correct, False otherwise. The session continues either way (the user
+    is interactive and can decide), but the warning makes the failure
+    impossible to miss.
+    """
+    print(f"[*] Final check: does {interface} carry VID 0x1965 traffic?")
+    if probe_interface_for_sds100(tool, interface, seconds=3.0):
+        print(f"[+] Confirmed: SDS100 USB descriptors visible on {interface}")
+        return True
+    print()
+    print("=" * 70)
+    print(f"  [!] WARNING: no VID 0x1965 (Uniden) descriptors on {interface}")
+    print("=" * 70)
+    print("  - Is the scanner powered on and in Mass Storage mode?")
+    print("  - Did you pick the right USBPcap interface? Try re-running")
+    print("    with --interface \\\\.\\USBPcapN to override.")
+    print("  - The scanner has to enumerate during the probe window for")
+    print("    USBPcap to see its descriptors. Replug it if needed.")
+    print("=" * 70)
+    print()
+    cont = input("Continue anyway? [y/N]: ").strip().lower()
+    return cont == "y"
 
 
 def capture_one_operation(state: SessionState, op: Operation) -> CaptureResult:
@@ -551,14 +623,30 @@ def run_session(args: argparse.Namespace) -> int:
     print(f"[+] Capture tool: {tool}  ({'USBPcapCMD' if is_usbpcapcmd(tool) else 'dumpcap'})")
 
     interface = args.interface
+    source = "user" if interface else "none"
     if not interface:
-        interface = auto_select_interface(tool)
+        interface, source = auto_select_interface(tool)
     if not interface:
         print()
         interface = manual_select_interface(tool)
+        source = "manual" if interface else "none"
     if not interface:
         print("[X] No interface selected. Aborting.")
         return 1
+
+    # Final guard: confirm the chosen interface actually carries SDS100
+    # traffic before running captures against the wrong bus. Only run
+    # this when selection confidence is low, i.e. the traffic-volume
+    # heuristic was the deciding strategy. PnP / VID-descriptor / single-
+    # interface / explicit-flag / manual selections are already trusted.
+    needs_verify = (
+        source == "traffic"
+        and not args.no_verify_interface
+    )
+    if needs_verify:
+        if not verify_interface_or_warn(tool, interface):
+            print("[X] Aborting at user request.")
+            return 1
 
     state = SessionState(
         capture_tool=tool,
@@ -648,6 +736,14 @@ def parse_args() -> argparse.Namespace:
         action="store_false",
         help="Disable output rotation; reuse the canonical filename "
              "(may collide with USBPcap's stale handle).",
+    )
+    p.add_argument(
+        "--no-verify-interface",
+        dest="no_verify_interface",
+        action="store_true",
+        help="Skip the post-selection probe that confirms the chosen "
+             "USBPcap interface actually carries VID 0x1965 (Uniden) "
+             "traffic. Use only if you're certain about the interface.",
     )
     return p.parse_args()
 

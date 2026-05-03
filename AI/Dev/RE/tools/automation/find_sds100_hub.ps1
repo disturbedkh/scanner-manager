@@ -2,7 +2,12 @@
 Maps the SDS100 to its USBPcap interface deterministically.
 
 Strategy:
-1. Find SDS100 (VID 1965 PID 0019) via PnP.
+1. Find any SDS100 USB device (VID 1965, any PID) via PnP. The scanner
+   exposes different PIDs depending on mode:
+     PID 0017  - Mass Storage (Sentinel mode)
+     PID 0019  - SUB MCU CDC serial port
+     PID 001A  - MAIN MCU CDC serial port
+   By matching on VID alone we work in any mode.
 2. Walk DEVPKEY_Device_Parent up to a USB\ROOT_HUB* node.
 3. Enumerate every PnP device with USBPcap in the InstanceId / FriendlyName.
 4. Cross-reference USBPcapN's installed filter against the root-hub instance ID.
@@ -14,7 +19,9 @@ on success, or USBPCAP_INTERFACE= (empty) on failure.
 #>
 param(
     [string]$Vid = '1965',
-    [string]$ProductId = '0019'
+    # Optional explicit PID. If omitted, match any PID under the VID
+    # (works for Mass Storage / SUB / MAIN modes interchangeably).
+    [string]$ProductId = ''
 )
 
 $ErrorActionPreference = 'Continue'
@@ -25,14 +32,25 @@ function Get-Parent($instanceId) {
     } catch { return $null }
 }
 
-$pattern = "USB\VID_${Vid}&PID_${ProductId}*"
+if ([string]::IsNullOrWhiteSpace($ProductId)) {
+    $pattern = "USB\VID_${Vid}*"
+    $modeHint = "any PID"
+} else {
+    $pattern = "USB\VID_${Vid}&PID_${ProductId}*"
+    $modeHint = "PID ${ProductId}"
+}
+
+# Prefer the most-specific match. If multiple devices match (e.g. user has
+# both serial ports + mass storage enumerated), we pick the first - they
+# all hang off the same physical hub, so root-hub trace is identical.
 $sds = Get-PnpDevice | Where-Object { $_.InstanceId -like $pattern } | Select-Object -First 1
 if (-not $sds) {
-    Write-Host "[X] SDS100 (VID ${Vid} PID ${ProductId}) not found via PnP" -ForegroundColor Red
+    Write-Host "[X] SDS100 (VID ${Vid}, ${modeHint}) not found via PnP" -ForegroundColor Red
+    Write-Host "    Is the scanner connected and powered on?"
     Write-Host "USBPCAP_INTERFACE="
     exit 1
 }
-Write-Host "[+] SDS100: $($sds.InstanceId)"
+Write-Host "[+] SDS100 (${modeHint}): $($sds.InstanceId)"
 
 $rootHub = $null
 $current = $sds.InstanceId
