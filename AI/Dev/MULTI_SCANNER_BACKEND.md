@@ -97,17 +97,23 @@ to a scanner profile. Don't conflate them.
    preferred long-term). Persist `scanner_profile_id` on the
    workspace's sidecar via `metastore.upsert_profile`.
 
-   **Important caveat (added after SDS100 RE on 2026-04-27).**
-   `TargetModel` is **NOT a per-model identifier on BCDx36HP-family
-   cards** - it's the firmware-family name. Both BT885 and SDS100
-   write `TargetModel\tBCDx36HP` in every header. The detector must
-   read `BCDx36HP/scanner.inf` (the `Scanner` record's field 1 is
-   the canonical model string, e.g. `SDS100`, presumed `BT885`) and
-   fall back to `BCDx36HP/profile.cfg`'s `ProductName` row, falling
-   back to `TargetModel` last. See `AI/Dev/RE/SDS100.md` for the
-   full reasoning. The current
-   `Bt885Profile.target_model_aliases = ("Beartracker885", ...)`
-   may be aspirational - we do not have a real BT885 card to verify.
+   **Important caveat (verified 2026-04-27 against real BT885 + SDS100
+   cards).** `TargetModel` is **NOT a per-model identifier on
+   BCDx36HP-family cards** - it's the firmware-family name. Both BT885
+   and SDS100 write `TargetModel\tBCDx36HP` in every header. The
+   detector must read `BCDx36HP/scanner.inf` (the `Scanner` record's
+   field 1 is the canonical model string: `BT885-SCN` for BT885,
+   `SDS100` for SDS100) and fall back to `BCDx36HP/profile.cfg`'s
+   `ProductName` row when present, falling back to `TargetModel`
+   last (it just identifies the family). See
+   `AI/Dev/RE/SD_CARD_COMPARISON.md` and `AI/Dev/RE/BT885.md` for
+   the verification. The current
+   `Bt885Profile.target_model_aliases = ("Beartracker885", ...)` is
+   **stale** - real BT885 hardware writes `BCDx36HP`, never
+   `Beartracker885`. The aliases should be retired alongside this
+   detector refactor; the test fixtures using
+   `TargetModel\tBeartracker885` need to switch to
+   `TargetModel\tBCDx36HP`.
 2. **Stop branching on globals.** Migrate remaining
    `SERVICE_TYPES`/`SCANNABLE_TYPES`/etc. reads in
    `scanner_manager.py` to go through `ACTIVE_PROFILE` (or the

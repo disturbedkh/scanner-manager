@@ -1,6 +1,6 @@
 # Project State
 
-_Last refreshed: 2026-04-27 (afternoon) by Cursor agent on `MINILAPTOP`._
+_Last refreshed: 2026-04-27 (afternoon)._
 _Cross-machine handoff: this snapshot reflects the SDS100 SD-card RE
 plus a live serial-mode RE session against a connected SDS100. See
 `AI/Dev/RE/SDS100.md` for full notes and `AI/Dev/RE/sessions/` for
@@ -10,7 +10,7 @@ raw probe captures._
 
 | Field | Value |
 | --- | --- |
-| Repo | https://github.com/disturbedkh/scanner-manager |
+| Repo | (this repo) |
 | Default branch | `main` |
 | Latest commit | `fb75913` - "Fix ruff lint errors on main (post-v0.9.0b2)" |
 | Latest tag | `v0.9.0b2` (2026-04-24) |
@@ -108,23 +108,30 @@ ruff check .
   header" - that flip is **not yet implemented**. See
   `MULTI_SCANNER_BACKEND.md` for the plan.
 - **`TargetModel` is not a per-model id in the BCDx36HP family.**
-  Confirmed on a real SDS100 card on 2026-04-27 - it writes
-  `TargetModel\tBCDx36HP` everywhere. The detector needs to read
-  `BCDx36HP/scanner.inf`'s `Scanner` line (field 1 = model). See
-  `AI/Dev/RE/SDS100.md` for full RE notes. The current
+  Confirmed against a real SDS100 card and a real BT885 card on
+  2026-04-27 - **both** write `TargetModel\tBCDx36HP` in every
+  header. The detector must read
+  `BCDx36HP/scanner.inf`'s `Scanner` line, field 1, to get the actual
+  model (`BT885-SCN` vs `SDS100`). The current
   `Bt885Profile.target_model_aliases = ("Beartracker885", ...)` is
-  unverified against real hardware.
+  **stale** - real BT885 hardware never writes `Beartracker885`.
+  See `AI/Dev/RE/SD_CARD_COMPARISON.md` and `AI/Dev/RE/BT885.md`.
 - Sidecars carry a nullable `scanner_profile_id`; nothing writes a
   non-null value yet.
 - `scanner_profiles/compat.py` exists specifically to avoid renaming
   every call site at once. Long-term we should retire it.
-- **SDS100 / SDS200 profile not implemented.** SD-card RE complete +
-  live serial-mode RE in progress. Implementation plan lives in
-  `AI/Dev/RE/SDS100.md`.
+- **SDS100 / SDS200 profile not implemented.** SD-card RE complete
+  for both BT885 and SDS100 (side-by-side diffed); live serial-mode
+  RE in progress. Implementation plan lives in `AI/Dev/RE/SDS100.md`.
+- **Firmware data tables are bit-identical across the family.**
+  `firmware/CityTable_V1_00_00.dat` and `firmware/ZipTable_V1_00_00.dat`
+  have the same SHA-256 on a real BT885 card and a real SDS100 card.
+  Same parser, same output. The bundled-tables-per-family approach
+  is justified.
 
 ## Live SDS100 RE - latest state (2026-04-27 PM)
 
-- Scanner connected via USB on `MINILAPTOP`, in **Serial Mode**
+- Scanner connected via USB, in **Serial Mode**
   (period key at boot prompt). Enumerates **two** Uniden CDC ports:
   - `VID 1965 PID 0019` = SUB processor bootloader (NOT useful for
     command-surface RE; only `M*`/`V*` first-char triggers)
@@ -141,9 +148,7 @@ ruff check .
   - `sessions/` - timestamped raw captures (committed for
     cross-machine reproducibility)
 - Pyserial dependency installed via user-site (`py -m pip install
-  --user pyserial`); the project's `.venv` is currently broken on
-  MINILAPTOP (points at a missing Python 3.14 install). Note for the
-  next desktop: a fresh `.venv` will be needed.
+  --user pyserial`).
 - Next planned passes (all read-only, COM6 only):
   1. STS payload bit-decoding by toggling scanner features
   2. GLG capture during a real transmission

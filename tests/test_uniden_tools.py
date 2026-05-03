@@ -156,7 +156,7 @@ def test_parse_ziplist_real_format(tmp_path: Path) -> None:
     p = tmp_path / "ZipListUs.txt"
     p.write_text(
         "99501\t61.211571 \t-149.876077 \tAK\n"
-        "32605\t29.678458 \t-82.367940 \tFL\n"
+        "32605\t29.650000 \t-82.350000 \tFL\n"
         "90210\t34.090107 \t-118.406477 \tCA\n",
         encoding="latin-1",
     )
@@ -164,7 +164,7 @@ def test_parse_ziplist_real_format(tmp_path: Path) -> None:
     assert len(entries) == 3
     by_zip = {e.zip_code: e for e in entries}
     assert by_zip["99501"].state_abbrev == "AK"
-    assert by_zip["32605"].lat == pytest.approx(29.678458)
+    assert by_zip["32605"].lat == pytest.approx(29.650000)
     assert by_zip["90210"].lon == pytest.approx(-118.406477)
 
 
@@ -184,7 +184,7 @@ def test_lookup_zip_finds_known(
     install_dir = tmp_path / "sentinel"
     install_dir.mkdir()
     (install_dir / "ZipListUs.txt").write_text(
-        "32605\t29.678458\t-82.367940\tFL\n",
+        "32605\t29.650000\t-82.350000\tFL\n",
         encoding="latin-1",
     )
     exe = install_dir / "BCDx36HP_Sentinel.exe"
