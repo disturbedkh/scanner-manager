@@ -12,6 +12,16 @@ makes the review cycle faster.
 
 <!-- What problem does it solve? Link related issues with "Fixes #123". -->
 
+## Discussion thread
+
+<!-- For non-trivial changes (RE findings, new tooling, new on-disk
+     format, refactors) please link the Discussions thread where the
+     idea was talked through, e.g. "Discussed in #42". For small,
+     mechanical changes you can write "n/a". -->
+
+- [ ] Links to a Discussions thread *(or)* explains below why this
+      change is small/mechanical enough to skip the discuss-first step.
+
 ## Testing
 
 - [ ] `pytest -x` passes locally.

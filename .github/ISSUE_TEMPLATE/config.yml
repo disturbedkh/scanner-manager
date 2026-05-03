@@ -1,8 +1,20 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Q&A - "How do I X?"
+    url: https://github.com/disturbedkh/scanner-manager/discussions/categories/q-a
+    about: Ask a usage / configuration question. Faster than an issue and gets a selectable answer.
+  - name: Help - install / setup / "scanner won't show up"
+    url: https://github.com/disturbedkh/scanner-manager/discussions/categories/help
+    about: Troubleshoot before opening a bug. Once we have a reproducer we'll graduate it to an Issue.
+  - name: Ideas - half-formed feature suggestions
+    url: https://github.com/disturbedkh/scanner-manager/discussions/categories/ideas
+    about: Brainstorm a feature in Discussions before formalising it as a feature request.
+  - name: Reverse Engineering - findings + protocol talk
+    url: https://github.com/disturbedkh/scanner-manager/discussions/categories/reverse-engineering
+    about: Share captures, decoded protocols, firmware analysis. Conversational counterpart to the RE wiki.
   - name: Wiki
     url: https://github.com/disturbedkh/scanner-manager/wiki
-    about: Tutorials, feature tours, architecture notes.
+    about: Tutorials, feature tours, architecture notes, full RE narrative.
   - name: Security issues
     url: https://github.com/disturbedkh/scanner-manager/security/advisories/new
     about: Report a vulnerability privately.
