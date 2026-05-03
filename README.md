@@ -148,19 +148,21 @@ is the most useful thing testers can do right now.
 ## Community
 
 Talk to other users and contributors on
-[**GitHub Discussions**](../../discussions). The forum is split into
-nine categories - the full guide lives at
+[**GitHub Discussions**](../../discussions). The forum has nine
+categories (alphabetical, GitHub-locked); the full guide lives at
 [`.github/DISCUSSIONS.md`](.github/DISCUSSIONS.md). Quick map:
 
-| If you want to... | Post in |
+| Category | Use it for |
 |---|---|
-| Show off a setup, recording, or favorites build | [Show and Tell](../../discussions/categories/show-and-tell) |
-| Ask "how do I X?" with an accepted answer | [Q&A](../../discussions/categories/q-a) |
-| Get help with install / setup / "scanner won't show up" | [Help](../../discussions/categories/help) |
-| Brainstorm a half-formed feature idea | [Ideas](../../discussions/categories/ideas) |
-| Talk through a refactor / RE-tool proposal | [Tooling / Development](../../discussions/categories/tooling-development) |
-| Share a finding about firmware/protocol | [Reverse Engineering](../../discussions/categories/reverse-engineering) |
-| Talk antennas, mods, jigs, hardware | [Hardware](../../discussions/categories/hardware) |
+| [Announcements](../../discussions/categories/announcements) | Maintainer-only releases + project-direction posts. |
+| [General](../../discussions/categories/general) | Catch-all for things that don't fit elsewhere. |
+| [Hardware](../../discussions/categories/hardware) | Scanner hardware - antennas, mods, jigs, USB cabling, PCB photos. |
+| [Help](../../discussions/categories/help) | "How do I X?" / install / setup / "scanner won't show up". Answerable - mark a reply as the accepted answer. |
+| [Ideas](../../discussions/categories/ideas) | Half-formed feature ideas to brainstorm before opening a feature request. |
+| [Polls](../../discussions/categories/polls) | Maintainer-run quick polls (release timing, naming, defaults). |
+| [Reverse Engineering](../../discussions/categories/reverse-engineering) | Findings, captures, decoded protocols, firmware analysis. |
+| [Show and tell](../../discussions/categories/show-and-tell) | Show off a setup, recording, or custom favorites build. |
+| [Tooling/Development](../../discussions/categories/tooling-development) | Developer-facing talk: CI, build system, refactors, RE tool architecture. |
 
 The **wiki** is the long-form companion: human-readable feature
 tours, the [reverse-engineering narrative](../../wiki/Reverse-Engineering),
