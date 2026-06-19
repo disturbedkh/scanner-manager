@@ -7,8 +7,8 @@ import time
 import uuid
 from pathlib import Path
 
-from metastore import GlobalMetaStore
-from sdcard import (
+from core.metastore import GlobalMetaStore
+from core.sdcard import (
     DISP_CONFLICT,  # noqa: F401 — re-exported constants are part of the API
     CardIdentity,
     capture_file_state,

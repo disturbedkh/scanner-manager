@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-import updater
+import core.app_updater as updater
 
 logger = logging.getLogger(__name__)
 

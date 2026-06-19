@@ -43,7 +43,7 @@ jobs:
       - name: Lint (ruff)
         run: >-
           ruff check core/ gui/ legacy_tk/ scanner_profiles/ scanner_drivers/
-          firmware/ streaming/ audio/ virtual_sd/ tests/ scripts/
+          firmware/ streaming/ audio/ virtual_sd/ tests/ scripts/ AI/Dev/RE/tools/
 
       - name: Run tests (Windows)
         if: runner.os == 'Windows'

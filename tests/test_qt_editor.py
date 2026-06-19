@@ -76,7 +76,7 @@ def test_hpdb_tree_reports_no_changes_initially(qtbot, card_root: Path) -> None:
 
 
 def test_editor_dock_loads_card(qtbot, card_root: Path) -> None:
-    from device_manager import Device
+    from core.device_manager import Device
     from gui.editor.editor_dock import EditorDock
 
     dock = EditorDock()
@@ -90,7 +90,7 @@ def test_editor_dock_loads_card(qtbot, card_root: Path) -> None:
 
 
 def test_editor_dock_save_on_no_changes_is_safe(qtbot, card_root: Path) -> None:
-    from device_manager import Device
+    from core.device_manager import Device
     from gui.editor.editor_dock import EditorDock
 
     dock = EditorDock()
@@ -106,7 +106,7 @@ def test_editor_dock_save_on_no_changes_is_safe(qtbot, card_root: Path) -> None:
 def test_editor_dock_save_persists_service_type_change(
     qtbot, card_root: Path
 ) -> None:
-    from device_manager import Device
+    from core.device_manager import Device
     from gui.editor.editor_dock import EditorDock
 
     dock = EditorDock()

@@ -9,10 +9,10 @@ and a full revertable change log.**
 > Unofficial, community-built. Not affiliated with or endorsed by Uniden.
 > See [DISCLAIMER.md](DISCLAIMER.md).
 
-> **v0.10.0 cutover**: the default `scanner-manager` console script now
-> launches the [Qt UI](https://github.com/disturbedkh/scanner-manager/wiki/Qt-UI)
-> (PySide6). The legacy Tkinter shell is still available as
-> `scanner-manager-tk` for one release.
+> **v0.10.0:** the default `scanner-manager` console script launches the
+> [Qt UI](https://github.com/disturbedkh/scanner-manager/wiki/Qt-UI)
+> (PySide6). The legacy Tkinter shell remains available as
+> `scanner-manager-tk`.
 
 ---
 
@@ -74,8 +74,10 @@ notice. Everything else is unaffected.
 
 ### Option A — Prebuilt downloads (easiest)
 
-Grab the latest from the
-[Releases page](https://github.com/disturbedkh/scanner-manager/releases):
+Public builds are published from the
+[GitHub Releases page](https://github.com/disturbedkh/scanner-manager/releases)
+(manual mirror workflow after GitLab-validated tags). Private dev builds
+are available as GitLab CI job artifacts on `v*` tags.
 
 | OS      | Download                              | Run it               |
 | ------- | ------------------------------------- | -------------------- |

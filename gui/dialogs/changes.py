@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-import metastore
+import core.metastore as metastore
 
 logger = logging.getLogger(__name__)
 

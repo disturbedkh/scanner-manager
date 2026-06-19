@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import math
 
-import coverage_maps
+import core.coverage_maps as coverage_maps
 
 
 def test_heat_cells_empty_returns_zero_max():

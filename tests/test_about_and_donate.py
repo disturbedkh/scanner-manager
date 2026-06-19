@@ -16,7 +16,7 @@ import pytest
 
 tk = pytest.importorskip("tkinter")
 
-import scanner_manager
+import legacy_tk.scanner_manager as scanner_manager
 
 
 @pytest.fixture

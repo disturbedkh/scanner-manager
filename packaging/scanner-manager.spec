@@ -77,7 +77,7 @@ hiddenimports = [
     "scanner_profiles.registry",
     "scanner_profiles.bt885",
     "scanner_profiles.sds100",
-    # Backend modules (core package + one-release root shims).
+    # Backend modules (core package + legacy Tk).
     "core",
     "core.metastore",
     "core.sdcard",
@@ -90,7 +90,6 @@ hiddenimports = [
     "legacy_tk.scanner_manager",
     "virtual_sd",
     "virtual_sd.virtual_card",
-    "device_manager",
     "gui",
     "gui.app",
     "gui.main_window",
@@ -104,12 +103,6 @@ hiddenimports = [
     "gui.firmware",
     "gui.firmware.firmware_dock",
     "gui.dialogs",
-    "coverage_maps",
-    "updater",
-    "metastore",
-    "uniden_tools",
-    "sdcard",
-    "rr_api",
     "scanner_drivers",
     "scanner_drivers.serial_main",
     "scanner_drivers.serial_sub",
@@ -218,10 +211,10 @@ if IS_MACOS:
             "CFBundleName": "Scanner Manager",
             "CFBundleDisplayName": "Scanner Manager",
             "CFBundleShortVersionString": os.environ.get(
-                "SCANNER_MANAGER_VERSION", "0.9.0b3"
+                "SCANNER_MANAGER_VERSION", "0.10.0"
             ),
             "CFBundleVersion": os.environ.get(
-                "SCANNER_MANAGER_VERSION", "0.9.0b3"
+                "SCANNER_MANAGER_VERSION", "0.10.0"
             ),
             "NSHighResolutionCapable": True,
             # We read removable SD cards; declare the usage description

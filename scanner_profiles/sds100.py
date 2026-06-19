@@ -304,7 +304,7 @@ class Sds100Profile(ScannerProfile):
         # Same parser as BT885 - the FW tables are bit-identical
         # across the BCDx36HP family.
         try:
-            import sdcard
+            import core.sdcard as sdcard
         except Exception:
             return None
         reader = getattr(sdcard, "read_zip_table", None)
@@ -317,7 +317,7 @@ class Sds100Profile(ScannerProfile):
 
     def read_city_table(self, sd_root: str):
         try:
-            import sdcard
+            import core.sdcard as sdcard
         except Exception:
             return None
         reader = getattr(sdcard, "read_city_table", None)

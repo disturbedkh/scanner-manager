@@ -11,7 +11,7 @@ import os
 import time
 from pathlib import Path
 
-import sdcard
+import core.sdcard as sdcard
 
 
 def _write(path: Path, content: str) -> None:

@@ -1,9 +1,17 @@
-name: Release
+# Release build (deprecated mirror)
+#
+# GitLab (.gitlab-ci.yml) is the primary release path. Run this workflow
+# manually only when mirroring a GitLab-validated tag to the public GitHub repo.
+
+name: Release build (deprecated mirror)
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to build (tag or branch, e.g. v0.10.0)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -35,6 +43,8 @@ jobs:
     steps:
       - name: Check out
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -52,13 +62,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[full,dev]"
-          python -m pip install pyinstaller
 
       - name: Propagate version into Info.plist (macOS)
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${{ inputs.ref }}"
+          VERSION="${VERSION#v}"
           echo "SCANNER_MANAGER_VERSION=${VERSION}" >> "${GITHUB_ENV}"
 
       - name: Build with PyInstaller
@@ -103,13 +113,15 @@ jobs:
             dist/${{ matrix.artifact_name }}*
 
   publish-release:
-    name: Publish GitHub Release
+    name: Publish GitHub Release (manual mirror)
     needs: [build]
     runs-on: ubuntu-latest
 
     steps:
       - name: Check out
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -147,14 +159,12 @@ jobs:
         run: |
           python - <<'PY'
           import os, re
-          tag = os.environ.get("GITHUB_REF_NAME", "")
+          tag = "${{ inputs.ref }}"
           version = tag.lstrip("v")
           body = "See CHANGELOG.md for details.\n"
           try:
               with open("CHANGELOG.md", "r", encoding="utf-8") as f:
                   changelog = f.read()
-              # Match the version header (e.g. "## [0.9.0a1] - 2026-04-19")
-              # allowing optional date and bracket variants.
               pat = re.compile(
                   rf"^##\s*\[?{re.escape(version)}\]?.*?$(.*?)(?=^##\s*\[|\Z)",
                   re.MULTILINE | re.DOTALL,
@@ -174,9 +184,10 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.ref }}
           name: "Scanner Manager ${{ steps.notes.outputs.version }}"
           body: ${{ steps.notes.outputs.body }}
-          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') || contains(github.ref_name, 'a') || contains(github.ref_name, 'b') }}
+          prerelease: ${{ contains(inputs.ref, 'alpha') || contains(inputs.ref, 'beta') || contains(inputs.ref, 'rc') || contains(inputs.ref, 'a') || contains(inputs.ref, 'b') }}
           files: |
             dist/ScannerManager-windows-x64.zip
             dist/ScannerManager-windows-x64.zip.sha256

@@ -17,7 +17,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-import updater
+import core.app_updater as updater
 
 # ---------------------------------------------------------------------------
 # Version compare

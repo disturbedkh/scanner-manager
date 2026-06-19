@@ -11,7 +11,7 @@ pytest.importorskip("pytestqt")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from device_manager import Device  # noqa: E402
+from core.device_manager import Device  # noqa: E402
 from firmware.library import FirmwareCache, FirmwareVersion, HpdbVersion  # noqa: E402
 from gui.firmware.firmware_dock import FirmwareDock  # noqa: E402
 from scanner_profiles import get_profile  # noqa: E402

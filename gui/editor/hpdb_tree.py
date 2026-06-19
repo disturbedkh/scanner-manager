@@ -114,7 +114,7 @@ class HpdbTreeWidget(QWidget):
         :class:`scanner_manager.HpdFile`. Returns True if at least
         one file loaded.
         """
-        from scanner_manager import HpdConfig, HpdFile
+        from legacy_tk.scanner_manager import HpdConfig, HpdFile
 
         self._hpd_files.clear()
         self._hpd_config = None

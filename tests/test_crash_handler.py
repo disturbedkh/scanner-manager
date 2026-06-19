@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 
-import scanner_manager
+import legacy_tk.scanner_manager as scanner_manager
 
 
 def _raise_and_capture():

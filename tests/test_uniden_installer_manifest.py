@@ -19,7 +19,7 @@ import json
 import re
 from pathlib import Path
 
-import uniden_tools
+import core.uniden_tools as uniden_tools
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 

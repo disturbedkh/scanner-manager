@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:  # pragma: no cover
-    from device_manager import Device
+    from core.device_manager import Device
 
 logger = logging.getLogger(__name__)
 

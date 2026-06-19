@@ -27,11 +27,11 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-import coverage_maps
-import sdcard
-import uniden_tools
-import updater
-from metastore import (
+import core.app_updater as updater
+import core.coverage_maps as coverage_maps
+import core.sdcard as sdcard
+import core.uniden_tools as uniden_tools
+from core.metastore import (
     OP_ADD_ENTRY,
     OP_ADD_GROUP,
     OP_BULK_REVERT,
@@ -140,7 +140,7 @@ def open_in_file_manager(path: str) -> None:
 
 
 try:
-    import rr_api
+    import core.rr_api as rr_api
 except Exception:  # pragma: no cover - module always imports
     rr_api = None  # type: ignore
 

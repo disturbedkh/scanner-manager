@@ -17,8 +17,8 @@ from typing import List
 
 import pytest
 
-import uniden_tools
-from uniden_tools import (
+import core.uniden_tools as uniden_tools
+from core.uniden_tools import (
     TOOL_BT885,
     TOOL_SENTINEL,
     UnidenTool,

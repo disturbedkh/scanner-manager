@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from device_manager import Device, DeviceManager
+from core.device_manager import Device, DeviceManager
 
 logger = logging.getLogger(__name__)
 

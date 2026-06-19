@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "beartracker-885-scanner-manager"
-version = "0.9.0b3"
+version = "0.10.0"
 description = "Desktop GUI for managing Uniden BearTracker 885 HPD files, ZIP/coverage simulation, RadioReference imports, and Uniden Sentinel/Updater integration."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -113,17 +113,6 @@ scanner-manager-qt = "gui.app:main"
 scanner-manager-tk = "legacy_tk.scanner_manager:main"
 
 [tool.setuptools]
-# Root shims re-export core.* for one release; prefer ``from core...`` in new code.
-py-modules = [
-    "scanner_manager",
-    "coverage_maps",
-    "device_manager",
-    "metastore",
-    "rr_api",
-    "sdcard",
-    "uniden_tools",
-    "updater",
-]
 packages = [
     "core",
     "legacy_tk",
@@ -153,9 +142,6 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py39"
-exclude = [
-    "AI/Dev/RE/tools",
-]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "B", "I"]

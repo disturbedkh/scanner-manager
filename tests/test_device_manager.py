@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from device_manager import (
+from core.device_manager import (
     DEVICES_SCHEMA_VERSION,
     Device,
     DeviceManager,

@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from device_manager import Device
+from core.device_manager import Device
 from scanner_profiles import ScannerProfile
 
 from .coverage_panel import CoveragePanel

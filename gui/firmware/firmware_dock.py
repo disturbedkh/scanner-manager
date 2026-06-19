@@ -46,7 +46,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from device_manager import Device
+from core.device_manager import Device
 from firmware.ftp_client import (
     BT885_FTP,
     SENTINEL_FTP,

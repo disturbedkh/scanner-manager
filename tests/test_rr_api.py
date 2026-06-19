@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-from rr_api import (
+from core.rr_api import (
     RadioReferenceClient,
     RRAuthError,
     RRConfigError,

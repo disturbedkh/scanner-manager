@@ -46,7 +46,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from device_manager import Device, DeviceManager
+from core.device_manager import Device, DeviceManager
 from scanner_profiles import ScannerProfile, set_active_profile
 
 from .devices_dialog import AddDeviceDialog, ManageDevicesDialog
@@ -548,7 +548,7 @@ class MainWindow(QMainWindow):
 
     def _on_check_updates(self) -> None:
         try:
-            import updater
+            import core.app_updater as updater
             info = updater.check_for_update()
         except Exception as exc:  # noqa: BLE001
             logger.warning("Update check failed: %s", exc)

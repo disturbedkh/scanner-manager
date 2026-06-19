@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-import scanner_manager
+import legacy_tk.scanner_manager as scanner_manager
 from scanner_profiles import get_profile
 
 PROFILE = get_profile("uniden_bt885")

@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-import uniden_tools
+import core.uniden_tools as uniden_tools
 
 logger = logging.getLogger(__name__)
 

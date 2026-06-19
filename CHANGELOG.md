@@ -6,6 +6,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-06-19
+
+### Changed
+
+- **Official Qt-default release.** Version branding matches the PySide6
+  default entry (`scanner-manager`); legacy Tk remains via
+  `scanner-manager-tk`.
+- **Removed root import shims.** All product code imports canonical
+  `core.*` and `legacy_tk.scanner_manager`; root `metastore.py`,
+  `scanner_manager.py`, etc. deleted.
+- **Full-repo ruff scope.** `AI/Dev/RE/tools/` lint cleanup; CI lints
+  the entire repo including RE lab scripts.
+- **GitLab release parity.** Tag push builds Windows EXE + zip, macOS
+  tar.gz, and Linux tar.gz with SHA-256 sidecars.
+- GitHub `.github/workflows/release.yml` deprecated to manual
+  `workflow_dispatch` mirror builds only.
+
+### Removed
+
+- One-release root import shims (`metastore.py`, `updater.py`,
+  `sdcard.py`, `rr_api.py`, `coverage_maps.py`, `device_manager.py`,
+  `uniden_tools.py`, `scanner_manager.py`).
+
 ## [0.9.0b3] - 2026-06-19
 
 ### Changed

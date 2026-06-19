@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from scanner_manager import (
+from legacy_tk.scanner_manager import (
     CityRecord,
     CustomLocationsStore,
     FirmwareCityTable,
@@ -738,7 +738,7 @@ def test_diff_tgid_with_rr_detects_meaningful_changes():
 
 def test_rr_trs_mode_to_hpd_uses_canonical_scanner_vocabulary():
     # Canonical scanner vocabulary on the SD card: ALL / ANALOG / DIGITAL only.
-    from scanner_manager import _rr_trs_mode_to_hpd
+    from legacy_tk.scanner_manager import _rr_trs_mode_to_hpd
     assert _rr_trs_mode_to_hpd("D") == "DIGITAL"
     assert _rr_trs_mode_to_hpd("T") == "DIGITAL"
     assert _rr_trs_mode_to_hpd("TD") == "DIGITAL"
@@ -756,7 +756,7 @@ def test_rr_trs_mode_to_hpd_uses_canonical_scanner_vocabulary():
 
 
 def test_tgid_mode_labels_roundtrip():
-    from scanner_manager import (
+    from legacy_tk.scanner_manager import (
         MODE_CHOICES_TGID,
         MODE_CHOICES_TGID_LABELS,
         tgid_mode_canonical,
@@ -919,7 +919,7 @@ def test_trs_apply_import_skips_duplicates_and_inherits_geo(tmp_path: Path):
             pass
 
     stub = _AppStub(hpd)
-    app_cls = __import__("scanner_manager").ScannerManagerApp
+    app_cls = __import__("legacy_tk.scanner_manager", fromlist=["ScannerManagerApp"]).ScannerManagerApp
     stub._infer_tgroup_geo_defaults = types.MethodType(
         app_cls._infer_tgroup_geo_defaults, stub
     )
@@ -1179,7 +1179,7 @@ def test_audit_mode_issue_with_rr_prefers_rr_data(tmp_path: Path):
 
 
 def test_entry_matches_bulk_filter():
-    from scanner_manager import FreqEntry
+    from legacy_tk.scanner_manager import FreqEntry
     entry = FreqEntry(
         record=None,  # type: ignore[arg-type]
         name="x",

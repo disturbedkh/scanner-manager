@@ -10,10 +10,8 @@ Follow this file every time you cut a new version.
 
   ```bash
   ruff check core/ gui/ legacy_tk/ scanner_profiles/ scanner_drivers/ \
-    firmware/ streaming/ audio/ virtual_sd/ tests/ scripts/
+    firmware/ streaming/ audio/ virtual_sd/ tests/ scripts/ AI/Dev/RE/tools/
   ```
-
-  (`AI/Dev/RE/tools/` is excluded until a separate cleanup MR.)
 - [ ] `CHANGELOG.md` has a heading for the new version (move content
       from `[Unreleased]` into `[0.9.0b3] - YYYY-MM-DD`).
 - [ ] `pyproject.toml` `version` matches.
@@ -38,8 +36,12 @@ git tag -a v0.9.0b3 -m "v0.9.0b3 - layout reorg and GitLab CI parity"
 git push origin v0.9.0b3
 ```
 
-GitLab CI builds the Windows EXE on `v*` tags (`release:windows` job)
-and uploads artifacts with SHA-256 sidecars.
+GitLab CI builds the Windows EXE, macOS tarball, and Linux tarball on
+`v*` tags (`release:windows`, `release:macos`, `release:linux`).
+
+**Deprecated mirror:** GitHub Actions `.github/workflows/release.yml` is
+manual (`workflow_dispatch`) only — use it to publish public GitHub
+Release assets after a GitLab-validated tag.
 
 ## 2. Smoke test
 
@@ -69,11 +71,8 @@ repeat. Do **not** re-use a tag for a second attempt.
 
 ## 3. Public mirror (optional)
 
-GitHub Actions `.github/workflows/release.yml` still publishes public
-Release assets when tags are pushed to the GitHub remote. Prefer GitLab
-tags for the private full-context mirror; mirror to GitHub only when
-intentionally publishing a lean subset.
-
+**Secondary:** manually dispatch `.github/workflows/release.yml` on the
+public GitHub mirror when intentionally publishing lean release assets.
 Draft release notes from `CHANGELOG.md`.
 
 ## 4. Announce

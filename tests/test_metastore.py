@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from metastore import (
+from core.metastore import (
     OP_DELETE_SYSTEM,
     OP_EDIT_ENTRY,
     OP_EDIT_SYSTEM,
@@ -23,7 +23,7 @@ from metastore import (
     group_id_for,
     system_id_for,
 )
-from scanner_manager import (
+from legacy_tk.scanner_manager import (
     HpdFile,
     ScannerManagerApp,
     _parse_rr_fcc_callsign,
@@ -628,7 +628,7 @@ def test_composite_import_produces_single_event_and_no_per_entry_adds(
     """Imports must log exactly one composite event per the
     composite-only policy; per-entry OP_ADD_ENTRY events must not
     appear when callers pass ``log=False``."""
-    from metastore import OP_ADD_ENTRY, OP_IMPORT_APPLY
+    from core.metastore import OP_ADD_ENTRY, OP_IMPORT_APPLY
 
     system = headless_app.hpd.systems[0]
     before_adds = len([e for e in headless_app._meta.events if e.op == OP_ADD_ENTRY])

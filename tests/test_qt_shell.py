@@ -23,7 +23,7 @@ pytest.importorskip("pytestqt")
 
 from PySide6.QtWidgets import QDockWidget  # noqa: E402
 
-from device_manager import Device, DeviceManager  # noqa: E402
+from core.device_manager import Device, DeviceManager  # noqa: E402
 from gui.main_window import MainWindow  # noqa: E402
 
 

@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from device_manager import Device
+from core.device_manager import Device
 from virtual_sd import StagedFile, StageKind, VirtualCard, VirtualCardError
 
 

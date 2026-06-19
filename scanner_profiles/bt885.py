@@ -230,7 +230,7 @@ class Bt885Profile(ScannerProfile):
 
     def read_zip_table(self, sd_root: str):
         try:
-            import sdcard
+            import core.sdcard as sdcard
         except Exception:
             return None
         reader = getattr(sdcard, "read_zip_table", None)
@@ -243,7 +243,7 @@ class Bt885Profile(ScannerProfile):
 
     def read_city_table(self, sd_root: str):
         try:
-            import sdcard
+            import core.sdcard as sdcard
         except Exception:
             return None
         reader = getattr(sdcard, "read_city_table", None)
