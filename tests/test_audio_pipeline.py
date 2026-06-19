@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import List
-
 import pytest
 
 np = pytest.importorskip("numpy")  # noqa: N816

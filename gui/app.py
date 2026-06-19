@@ -15,8 +15,8 @@ import traceback
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, QCoreApplication
-from PySide6.QtGui import QIcon, QPalette
+from PySide6.QtCore import QCoreApplication, Qt
+from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from .main_window import MainWindow

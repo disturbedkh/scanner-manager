@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List
 from unittest.mock import patch
-
-import pytest
 
 from scanner_drivers.usb_detect import (
     SDS_PID_MAIN,

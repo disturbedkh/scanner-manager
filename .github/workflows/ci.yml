@@ -1,10 +1,10 @@
-name: CI
+name: CI (secondary mirror)
+
+# GitLab (.gitlab-ci.yml) is the primary CI gate. Run this workflow
+# manually when validating the public GitHub mirror.
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   test:
@@ -16,9 +16,6 @@ jobs:
         os: [windows-latest, ubuntu-latest, macos-latest]
         python-version: ["3.9", "3.11", "3.12"]
         exclude:
-          # macOS 14+ runners dropped Python 3.9 wheels for tkinter.
-          # Only test 3.11 / 3.12 on macOS to keep the job matrix lean
-          # and avoid a flaky setup-python lookup.
           - os: macos-latest
             python-version: "3.9"
 
@@ -35,18 +32,18 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pip install -r requirements-dev.txt
-          python -m pip install -e .
+          python -m pip install -e ".[full,dev]"
 
       - name: Install Linux headless X helpers
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb tk
+          sudo apt-get install -y xvfb python3-tk
 
       - name: Lint (ruff)
-        run: ruff check .
+        run: >-
+          ruff check core/ gui/ legacy_tk/ scanner_profiles/ scanner_drivers/
+          firmware/ streaming/ audio/ virtual_sd/ tests/ scripts/
 
       - name: Run tests (Windows)
         if: runner.os == 'Windows'
@@ -60,8 +57,8 @@ jobs:
         if: runner.os == 'Linux'
         run: xvfb-run -a pytest -x --maxfail=3
 
-      - name: Smoke-test module import
+      - name: Smoke-test imports
         shell: bash
         run: |
-          python -c "import scanner_manager; print('import ok:', scanner_manager.APP_VERSION)"
-          python -c "import sdcard, metastore, uniden_tools, rr_api; print('all modules import cleanly')"
+          python -c "import gui.app; import core.metastore, core.uniden_tools; print('import ok')"
+          python -c "import legacy_tk.scanner_manager; print('legacy tk ok')"

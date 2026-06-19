@@ -101,19 +101,24 @@ shasum -a 256 ScannerManager-*.tar.gz
 
 ### Option B — from source (any OS)
 
-Requires Python 3.9+ with Tkinter.
+Requires Python 3.9+. The default UI is Qt (PySide6); legacy Tk is
+still available via `scanner-manager-tk` for one release.
 
 ```bash
-git clone https://github.com/disturbedkh/scanner-manager.git
+# private dev mirror (full context)
+git clone https://gitlab.com/garudadev1/scanner-manager.git
 cd scanner-manager
-python -m pip install -r requirements.txt
-python -m pip install -e .
+python -m pip install -U pip
+python -m pip install -e ".[full]"
 scanner-manager
 ```
 
+Public mirror: `https://github.com/disturbedkh/scanner-manager.git`
+
 Platform notes:
 
-- **Windows**: ships with Tk in the standard Python installer.
+- **Windows**: ships with Tk in the standard Python installer (needed for
+  legacy Tk tests and `scanner-manager-tk`).
 - **macOS**: `python.org` Python or `brew install python-tk@3.12`.
   The system Python on recent macOS has a stripped Tk; prefer the
   python.org build.

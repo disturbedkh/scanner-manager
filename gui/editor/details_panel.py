@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from scanner_profiles import ScannerProfile, get_active_profile
+from scanner_profiles import get_active_profile
 
 from .entry_dialog import (
     BulkServiceTypeDialog,

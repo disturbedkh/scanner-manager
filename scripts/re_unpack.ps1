@@ -47,12 +47,12 @@ $Targets = @(
     @{
         Id        = "bt885";
         Name      = "BT885 Update Manager";
-        MsiPath   = Join-Path $RepoRoot "BT885_UpdateManager_V0_00_05\Setup.msi";
+        MsiPath   = Join-Path $RepoRoot "vendor\uniden_installers\BT885_UpdateManager_V0_00_05\Setup.msi";
     },
     @{
         Id        = "sentinel";
         Name      = "BCDx36HP Sentinel";
-        MsiPath   = Join-Path $RepoRoot "BCDx36HP_Sentinel_Version_3_01_01\Setup.msi";
+        MsiPath   = Join-Path $RepoRoot "vendor\uniden_installers\BCDx36HP_Sentinel_Version_3_01_01\Setup.msi";
     }
 )
 

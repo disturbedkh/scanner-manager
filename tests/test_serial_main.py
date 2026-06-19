@@ -194,7 +194,7 @@ def test_poll_gsi_parses_real_sds_schema():
 
 
 # Verbatim payload captured from real SDS100 firmware 1.26.01 via
-# the dev_mcp diagnostic-capture button (sds-capture-20260503-170346.json).
+# the dev_mcp diagnostic-capture button (see tests/fixtures/captures/sds-capture-20260503-170346.json).
 # Note the GSI,<XML>,\r prefix - the literal string '<XML>' between the
 # command echo and the actual XML doctype. Older parsers that just
 # stripped 'GSI,' tripped here and silently returned empty snapshots.

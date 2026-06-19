@@ -19,7 +19,6 @@ streaming dock; we never ship one.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from .icecast import IcecastPusher
 

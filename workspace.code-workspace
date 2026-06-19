@@ -4,5 +4,19 @@
 			"path": "."
 		}
 	],
-	"settings": {}
+	"settings": {
+		"python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+		"python.terminal.activateEnvironment": true,
+		"[python]": {
+			"editor.defaultFormatter": "charliermarsh.ruff",
+			"editor.formatOnSave": false
+		},
+		"ruff.enable": true
+	},
+	"extensions": {
+		"recommendations": [
+			"ms-python.python",
+			"charliermarsh.ruff"
+		]
+	}
 }

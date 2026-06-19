@@ -16,7 +16,7 @@ from __future__ import annotations
 import io
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, List, Tuple
+from typing import List, Tuple
 
 import pytest
 
@@ -24,10 +24,8 @@ from firmware import ftp_client as ftp_module
 from firmware.ftp_client import (
     BT885_FTP,
     SENTINEL_FTP,
-    FtpEntry,
     UnidenFtpClient,
 )
-
 
 # ----------------------------------------------------------------------
 # Fakes

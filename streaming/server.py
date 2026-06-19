@@ -22,9 +22,7 @@ import asyncio
 import json
 import logging
 import threading
-import time
-from dataclasses import asdict
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Dict, Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +31,8 @@ logger = logging.getLogger(__name__)
 # get_type_hints() falls back to treating the WebSocket parameter as
 # a query string field.
 try:
-    from fastapi import WebSocket as _WebSocket, WebSocketDisconnect as _WebSocketDisconnect
+    from fastapi import WebSocket as _WebSocket
+    from fastapi import WebSocketDisconnect as _WebSocketDisconnect
 except ImportError:  # pragma: no cover
     _WebSocket = None  # type: ignore
     _WebSocketDisconnect = None  # type: ignore
@@ -146,10 +145,6 @@ class StreamingServer:
     def _build_app(self):
         from fastapi import FastAPI
         from fastapi.responses import HTMLResponse, StreamingResponse
-        # Use the module-level WebSocket aliases so FastAPI's annotation
-        # resolver finds them when validating the route handler.
-        WebSocket = _WebSocket
-        WebSocketDisconnect = _WebSocketDisconnect
 
         app = FastAPI(title="Scanner Manager", version="1.0")
 

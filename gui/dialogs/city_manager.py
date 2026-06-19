@@ -15,7 +15,6 @@ import sys
 from pathlib import Path
 from typing import Dict, Optional
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
     QDoubleSpinBox,

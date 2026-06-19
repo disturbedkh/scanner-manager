@@ -6,6 +6,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.0b3] - 2026-06-19
+
+### Changed
+
+- **Repository layout refactor.** Shared backend modules moved into
+  `core/` (`metastore`, `sdcard`, `coverage_maps`, `rr_api`,
+  `device_manager`, `uniden_tools`, `app_updater`). Root-level
+  `.py` shims remain for one release; import from `core.*` in new
+  code.
+- Legacy Tk app moved to `legacy_tk/scanner_manager.py` (`scanner-manager-tk`
+  entry point). Root `scanner_manager.py` is a one-release shim.
+- Uniden installer MSIs relocated to `vendor/uniden_installers/`.
+- Test fixtures moved to `tests/fixtures/` (firmware blob, serial capture).
+- User runtime JSON (`app_settings.json`, `scanner_manager.meta.json`,
+  `zip_county_map.json`) no longer tracked in git.
+- **Build system parity.** GitLab CI is the primary gate; install path
+  standardized on `pip install -e ".[full,dev]"`; scoped ruff on product
+  code; PyInstaller hiddenimports updated for Qt + `virtual_sd`.
+
+### Deprecated
+
+- Root import shims (`metastore.py`, `updater.py`, etc.) and
+  `scanner_manager.py` at repo root — remove next release.
+
 ## [0.9.0b2] - 2026-04-24
 
 First **beta** release on GitHub. Big jump from `v0.9.0a2`: a

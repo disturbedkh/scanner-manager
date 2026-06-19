@@ -14,10 +14,8 @@ They cover:
 
 from __future__ import annotations
 
-import importlib
 import json
 import socket
-import threading
 import time
 import urllib.error
 import urllib.request

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Tuple
 
 import pytest
 
@@ -14,15 +13,14 @@ from firmware.updater import (
     apply_main_firmware,
     apply_sub_firmware,
     backup_card,
+    card_hpdb_dir,
     card_main_firmware_dir,
     card_sub_firmware_dir,
-    card_hpdb_dir,
     postflash_verify,
     preflight,
     read_scanner_inf,
 )
 from scanner_profiles import get_profile
-
 
 # ----------------------------------------------------------------------
 # Fixture builders

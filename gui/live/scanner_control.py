@@ -39,7 +39,6 @@ from scanner_drivers.serial_main import (
     SAFE_CONTROL_KEYS,
     SQUELCH_RANGE,
     VOLUME_RANGE,
-    MainDriverError,
     SerialMainDriver,
 )
 

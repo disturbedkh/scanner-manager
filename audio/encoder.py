@@ -23,12 +23,9 @@ forwards the bytes to every connected listener.
 
 from __future__ import annotations
 
-import io
 import logging
 import struct
-import wave
 from abc import ABC, abstractmethod
-from typing import Optional
 
 from .capture import AudioFrame
 
@@ -181,7 +178,6 @@ def make_encoder(
         # install pyogg if they want lower latency. Fall back to
         # WAV if pyogg isn't available.
         try:
-            from pyogg import OpusEncoder  # type: ignore[import-not-found]
             return _PyoggOpusEncoder(
                 sample_rate=sample_rate, channels=channels
             )

@@ -9,19 +9,19 @@ Python 3.9+ with Tkinter. On Linux, install your distro's Tk package
 (`sudo apt install python3-tk` on Debian/Ubuntu).
 
 ```bash
-git clone https://github.com/disturbedkh/scanner-manager.git
+git clone https://gitlab.com/garudadev1/scanner-manager.git
 cd scanner-manager
-python -m pip install -r requirements.txt
-python -m pip install -r requirements-dev.txt
-python -m pip install -e .
+python -m pip install -U pip
+python -m pip install -e ".[full,dev]"
 ```
 
 Smoke-test the install:
 
 ```bash
-scanner-manager --help  # just verifies the console-script hook
-pytest -x               # runs the test suite
-ruff check .            # lint
+scanner-manager --help  # verifies the console-script hook
+pytest -q               # runs the test suite
+ruff check core/ gui/ legacy_tk/ scanner_profiles/ scanner_drivers/ \
+  firmware/ streaming/ audio/ virtual_sd/ tests/ scripts/
 ```
 
 ## Running tests
@@ -35,7 +35,8 @@ ruff check .            # lint
 ## Code style
 
 - **Ruff** is the single source of truth for formatting + linting. CI
-  runs `ruff check .`; there's no separate `black` pass.
+  runs scoped `ruff check` on the product tree (see smoke-test above);
+  there's no separate `black` pass.
 - Line length is 100.
 - Imports sorted via `ruff --select I`.
 - No comments narrating obvious code - reserve comments for
@@ -43,6 +44,9 @@ ruff check .            # lint
 
 ## Architectural guidelines
 
+- **Package layout:** `core/` (backend), `gui/` (Qt default UI),
+  `legacy_tk/` (Tk fallback), `scanner_profiles/`, `vendor/uniden_installers/`
+  (dev-only MSIs), `tests/fixtures/` (committed test blobs).
 - **Never bypass MetaStore for mutations.** If you're touching a
   `FreqEntry`, `GroupNode`, or `SystemNode`, route through the
   existing `_do_*` methods so the change gets logged and is revertable.
@@ -52,8 +56,9 @@ ruff check .            # lint
   functionality must degrade gracefully. The app has to boot on a
   stock Python + Tk install.
 - **No telemetry, no phone-home.** Full stop.
-- **Don't bundle Uniden binaries.** Their installers are fetched on
-  demand via `data/uniden_installers.json` with SHA-256 verification.
+- **Don't bundle Uniden binaries in releases.** Production installs fetch
+  via `data/uniden_installers.json`. Dev copies may live under
+  `vendor/uniden_installers/`.
 
 ## Commit style
 

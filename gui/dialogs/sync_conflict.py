@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,

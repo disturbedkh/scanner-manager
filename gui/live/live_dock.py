@@ -47,7 +47,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from device_manager import Device
 from scanner_drivers.serial_main import (
     GlgEvent,
     GsiSnapshot,
@@ -55,18 +54,16 @@ from scanner_drivers.serial_main import (
     SerialMainDriver,
 )
 from scanner_drivers.serial_sub import (
+    IqFrame,
     SerialSubDriver,
     SubDriverError,
     WaterfallFrame,
 )
 from scanner_drivers.usb_detect import (
-    DetectedPort,
     enumerate_ports,
     find_ports_for_profile,
 )
 from scanner_profiles import ScannerProfile
-
-from scanner_drivers.serial_sub import IqFrame
 
 from .controllers import MainPollerController, SubPollerController
 from .scanner_control import ScannerControlWidget
@@ -297,7 +294,7 @@ class LiveDock(QWidget):
         self._sub_combo.clear()
 
         # Populate every visible port; mark detected matches with a hint.
-        for combo, default_port, label in (
+        for combo, default_port, _label in (
             (self._main_combo, matched.main, "MAIN"),
             (self._sub_combo, matched.sub, "SUB"),
         ):

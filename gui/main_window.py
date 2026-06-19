@@ -50,18 +50,18 @@ from device_manager import Device, DeviceManager
 from scanner_profiles import ScannerProfile, set_active_profile
 
 from .devices_dialog import AddDeviceDialog, ManageDevicesDialog
-from .header import HeaderBar
-from .editor.editor_dock import EditorDock
-from .live.live_dock import LiveDock
-from .streaming.streaming_dock import StreamingDock
-from .firmware.firmware_dock import FirmwareDock
-from .dialogs.workspaces import WorkspaceManagerDialog
-from .dialogs.profile_snapshots import ProfileSnapshotsDialog
 from .dialogs.changes import ChangesPanelDialog
 from .dialogs.city_manager import CityManagerDialog
+from .dialogs.profile_snapshots import ProfileSnapshotsDialog
+from .dialogs.report_issue import ReportIssueDialog
 from .dialogs.uniden_tools import UnidenToolsDialog
 from .dialogs.update_available import UpdateAvailableDialog
-from .dialogs.report_issue import ReportIssueDialog
+from .dialogs.workspaces import WorkspaceManagerDialog
+from .editor.editor_dock import EditorDock
+from .firmware.firmware_dock import FirmwareDock
+from .header import HeaderBar
+from .live.live_dock import LiveDock
+from .streaming.streaming_dock import StreamingDock
 from .windows import CoverageWindow, FirmwareWindow, LogWindow
 
 logger = logging.getLogger(__name__)
@@ -491,7 +491,6 @@ class MainWindow(QMainWindow):
         self._coverage_window = None
         # If the active profile uses the embedded coverage panel,
         # make sure it's visible in the editor again.
-        profile = self._editor_dock.coverage_panel().parent()
         try:
             if self._current_device:
                 p = self._current_device.resolve_profile()

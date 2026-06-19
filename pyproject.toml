@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "beartracker-885-scanner-manager"
-version = "0.9.0b2"
+version = "0.9.0b3"
 description = "Desktop GUI for managing Uniden BearTracker 885 HPD files, ZIP/coverage simulation, RadioReference imports, and Uniden Sentinel/Updater integration."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -75,6 +75,12 @@ streaming = [
 firmware = [
     # ftplib is stdlib; nothing extra required for FTP discovery.
 ]
+dev = [
+    "pytest>=8",
+    "ruff>=0.5",
+    "mcp>=1.0",
+    "pyinstaller>=6.0",
+]
 full = [
     "zeep>=4.2",
     "keyring>=24.0",
@@ -104,9 +110,10 @@ Donate = "https://paypal.me/gvillescanner"
 # `scanner-manager-tk` for one release as an emergency fallback.
 scanner-manager = "gui.app:main"
 scanner-manager-qt = "gui.app:main"
-scanner-manager-tk = "scanner_manager:main"
+scanner-manager-tk = "legacy_tk.scanner_manager:main"
 
 [tool.setuptools]
+# Root shims re-export core.* for one release; prefer ``from core...`` in new code.
 py-modules = [
     "scanner_manager",
     "coverage_maps",
@@ -118,11 +125,14 @@ py-modules = [
     "updater",
 ]
 packages = [
+    "core",
+    "legacy_tk",
     "scanner_profiles",
     "scanner_drivers",
     "audio",
     "streaming",
     "firmware",
+    "virtual_sd",
     "gui",
     "gui.editor",
     "gui.live",
@@ -143,6 +153,9 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py39"
+exclude = [
+    "AI/Dev/RE/tools",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "B", "I"]

@@ -60,6 +60,5 @@ def test_streaming_dock_listener_url_format(qtbot, monkeypatch) -> None:
 
     # Don't actually start uvicorn; just simulate the relevant code.
     dock._port_spin.setValue(8765)
-    expected_url = "http://10.0.0.42:8765/viewer"
     # We compute the URL inline; just assert helper produces the right ip.
     assert sd._local_ip() == "10.0.0.42"

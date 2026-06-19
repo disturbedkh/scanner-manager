@@ -1,30 +1,43 @@
 # Packaging
 
-Everything needed to produce the one-file Windows EXE for Scanner Manager.
+Everything needed to produce cross-platform Scanner Manager binaries
+from the **Qt default** entry (`gui/app.py`).
 
 ## Files
 
-- `scanner-manager.spec` - PyInstaller spec. Runs the PyInstaller
-  `--onefile --windowed` build and bundles `data/uniden_installers.json`,
-  the LICENSE, and related legal notices inside the EXE.
-- `icon.ico` - placeholder app icon (256x256 PNG-in-ICO). Swap in a real
-  piece of art before the 1.0 release; the build will pick it up
-  automatically.
+- `scanner-manager.spec` - PyInstaller spec. Bundles `data/*.json`, legal
+  notices, and the full Qt + `core/` backend (including `virtual_sd`,
+  firmware, streaming). Does **not** bundle `vendor/uniden_installers/`.
+- `icon.ico` / `icon.icns` - app icons for Windows/Linux and macOS.
 
 ## Build locally
 
-From the repo root:
+From the repo root (matches CI/release install path):
 
-```bash
-python -m pip install pyinstaller
+```powershell
+python -m pip install -e ".[full,dev]"
 pyinstaller packaging/scanner-manager.spec --noconfirm
 ```
 
-The output lands at `dist/ScannerManager.exe` (~25 MB on Python 3.12).
+Outputs:
 
-## CI
+| Platform | Artifact |
+| -------- | -------- |
+| Windows | `dist/ScannerManager.exe` |
+| macOS | `dist/ScannerManager.app` |
+| Linux | `dist/ScannerManager` |
 
-`.github/workflows/release.yml` runs this same command on a `v*` tag,
-computes the EXE's SHA-256, and attaches both the EXE and its checksum
-file to the GitHub Release. Don't run locally and upload - let the
-workflow produce the release artifact so the checksum matches CI.
+Set `SCANNER_MANAGER_VERSION` when building macOS bundles so Info.plist
+matches the git tag.
+
+## CI / release
+
+**Primary:** GitLab CI (`.gitlab-ci.yml`) runs lint + test on every push
+and builds the Windows EXE on `v*` tags.
+
+**Secondary:** `.github/workflows/release.yml` still publishes public
+GitHub Release assets when tags are pushed to GitHub. Prefer GitLab tags
+for the private full-context mirror.
+
+Do not hand-upload EXEs — let CI produce artifacts so SHA-256 sidecars
+match the build environment.

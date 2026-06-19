@@ -18,12 +18,10 @@ Layout::
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-from typing import Any, List, Optional
+from typing import List, Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QHBoxLayout,
     QLabel,
     QMessageBox,
     QSplitter,

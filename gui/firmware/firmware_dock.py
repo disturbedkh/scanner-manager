@@ -27,15 +27,11 @@ import logging
 import os
 import subprocess
 import sys
-import threading
-from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
-    QCheckBox,
-    QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -50,16 +46,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from virtual_sd import StageKind, VirtualCard, VirtualCardError
-
 from device_manager import Device
-from scanner_profiles import ScannerProfile
-
 from firmware.ftp_client import (
     BT885_FTP,
     SENTINEL_FTP,
     FtpEndpoint,
-    FtpEntry,
     UnidenFtpClient,
 )
 from firmware.library import (
@@ -69,6 +60,8 @@ from firmware.library import (
     filter_hpdb,
     filter_main_firmware,
     filter_sub_firmware,
+)
+from firmware.library import (
     latest as latest_version,
 )
 from firmware.updater import (
@@ -78,10 +71,12 @@ from firmware.updater import (
     apply_main_firmware,
     apply_sub_firmware,
     backup_card,
-    preflight,
     postflash_verify,
+    preflight,
     read_scanner_inf,
 )
+from scanner_profiles import ScannerProfile
+from virtual_sd import StageKind, VirtualCard, VirtualCardError
 
 logger = logging.getLogger(__name__)
 

@@ -27,7 +27,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Dict, Optional
 from xml.etree import ElementTree as ET
 
 logger = logging.getLogger(__name__)

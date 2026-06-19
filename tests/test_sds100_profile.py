@@ -7,7 +7,6 @@ import pytest
 from scanner_profiles import get_profile, list_profiles
 from scanner_profiles.sds100 import Sds100Profile
 
-
 PROFILE = get_profile("uniden_sds100")
 
 

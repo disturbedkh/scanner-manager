@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-import json
-from dataclasses import asdict
-
 import pytest
 
 pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from scanner_drivers.serial_main import GsiSnapshot  # noqa: E402
 from streaming.server import StreamingServer  # noqa: E402
 
 

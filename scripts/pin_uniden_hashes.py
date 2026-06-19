@@ -27,7 +27,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from uniden_tools import sha256_of_file  # noqa: E402  (after sys.path tweak)
+from core.uniden_tools import sha256_of_file  # noqa: E402  (after sys.path tweak)
 
 MANIFEST_PATH = REPO_ROOT / "data" / "uniden_installers.json"
 USER_AGENT = "scanner-manager/pin-uniden-hashes (+https://github.com/disturbedkh/scanner-manager)"

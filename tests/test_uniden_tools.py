@@ -102,8 +102,8 @@ def test_detect_honors_user_override(
 def test_bundled_installer_discovered(tmp_path: Path) -> None:
     """If the bundled setup.exe lives next to the checkout, we surface
     it so users can install missing tools from inside our UI."""
-    installer_dir = tmp_path / "BT885_UpdateManager_V0_00_05"
-    installer_dir.mkdir()
+    installer_dir = tmp_path / "vendor" / "uniden_installers" / "BT885_UpdateManager_V0_00_05"
+    installer_dir.mkdir(parents=True)
     (installer_dir / "setup.exe").write_bytes(b"MZ")
     tools = detect_installed_tools(repo_root=tmp_path)
     bt = next(t for t in tools if t.tool_id == TOOL_BT885)

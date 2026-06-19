@@ -7,10 +7,10 @@ from typing import List, Optional
 import pytest
 
 from scanner_drivers.serial_sub import (
-    AdcDump,
-    IqFrame,
     SUB_FORBIDDEN,
     SUB_SAFE_COMMANDS,
+    AdcDump,
+    IqFrame,
     SerialSubDriver,
     SubDriverError,
     WaterfallFrame,

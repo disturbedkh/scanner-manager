@@ -1,0 +1,231 @@
+{
+  "aux_queries": [
+    {
+      "cmd": "STS",
+      "raw_text": "STS,00110110110000,              May 3 17:12 \ufffd\ufffd  ,                              ,  V:15  S:0   DATA          \u001a\u001b,______________________________,Gainesville Regional    ,                        ,Utilities (GRUCom)      ,                        ,Home                          ,______________________________,                        ,                        ,                        ,                        ,Simulcast                     ,______________________________,ID Scanning...          ,                        ,                        ,                        ,TGID: ---                     ,                              ,                P25 NAC:4D2h  ,______________________________,                              ,                              , SYSTEM      DEPT     CHANNEL ,********* ********** *********,1,1,0,0,,,5,OFF,3\r"
+    },
+    {
+      "cmd": "PWR",
+      "raw_text": "PWR,-85,08531875\r"
+    },
+    {
+      "cmd": "MNU",
+      "error": "MainDriverError(\"refusing to send 'MNU': head 'MNU' is on the FORBIDDEN list (would mutate scanner state)\")"
+    },
+    {
+      "cmd": "GLT",
+      "raw_text": "GLT,ERR\r"
+    },
+    {
+      "cmd": "PWR",
+      "raw_text": "PWR,-82,08531875\r"
+    }
+  ],
+  "captured_at": 1777842230.3784833,
+  "errors": [],
+  "fft_samples": [
+    {
+      "byte_count": 2817,
+      "iteration": 0,
+      "raw_text_excerpt": "\r\n1589\r2151\r2996\r4018\r4672\r4385\r3444\r2528\r1935\r1689\r1799\r2393\r3691\r5363\r5402\r3292\r1345\r429\r241\r436\r855\r1543\r2983\r7963\r21564\r10885\r4082\r2531\r1989\r1686\r1348\r671\r-1056\r-5457\r-9506\r-4895\r-897\r584\r1125\r1399\r1702\r2209\r2978\r3732\r3855\r3182\r2336\r1832\r1783\r2180\r3114\r4928\r8176\r11221\r9576\r6258\r4191\r2997\r2257\r1832\r1715\r1971\r2684\r3790\r4736\r4703\r3794\r2785\r2033\r1479\r909\r-128\r-3373\r-14965\r-11817\r-2138\r338\r1229\r1714\r2063\r2301\r2275\r1660\r179\r-1672\r-2351\r-1454\r-186\r861\r1767\r2708\r3721\r4550\r4732\r4198\r3412\r2764\r2334\r2032\r1725\r1292\r644\r-201\r-977\r-1224\r-818\r-178\r317\r590\r714\r799\r1022\r2207\r31266\r14265\r1426\r547\r333\r362\r627\r1220\r2216\r3480\r4486\r4676\r4197\r3576\r3073\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r"
+    },
+    {
+      "byte_count": 2821,
+      "iteration": 1,
+      "raw_text_excerpt": "\r\n238\r104\r210\r541\r1049\r1678\r2366\r3017\r3548\r3921\r4146\r4245\r4197\r3951\r3444\r2642\r1493\r-86\r-2045\r-3579\r-3367\r-1773\r-37\r1536\r3033\r4194\r4328\r3400\r2246\r1433\r1065\r1073\r1319\r1517\r1060\r-730\r-2945\r-2841\r-935\r790\r2114\r3265\r4253\r4803\r4707\r4171\r3591\r3189\r2990\r2908\r2810\r2581\r2222\r1858\r1683\r1957\r3252\r7389\r14256\r9760\r4251\r2390\r1833\r1822\r2236\r3299\r5878\r11154\r12410\r7134\r4035\r2705\r1986\r1412\r714\r-465\r-2701\r-5312\r-3986\r-180\r1950\r2433\r2201\r1873\r1733\r1975\r2961\r5482\r9342\r8739\r4661\r2261\r1269\r1004\r1332\r2773\r8195\r17128\r8171\r2681\r1155\r670\r567\r634\r706\r497\r-470\r-2567\r-4913\r-5227\r-3778\r-2444\r-1601\r-1001\r-348\r757\r3792\r15951\r16268\r5295\r3348\r3282\r3589\r3918\r4360\r5672\r11297\r21323\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r"
+    },
+    {
+      "byte_count": 2826,
+      "iteration": 2,
+      "raw_text_excerpt": "\r\n948\r-1082\r-3556\r-4284\r-3003\r-1443\r-162\r1215\r3818\r13275\r20865\r7905\r4503\r3467\r2770\r2151\r1611\r1162\r777\r433\r154\r8\r25\r148\r356\r717\r1454\r3035\r6012\r8281\r6209\r3479\r2281\r2045\r2241\r2615\r3110\r3897\r5540\r9044\r12025\r8633\r4623\r2498\r1233\r161\r-1194\r-3414\r-6616\r-7550\r-4612\r-1833\r-203\r749\r1221\r1086\r72\r-1790\r-3280\r-2817\r-1256\r66\r971\r1673\r2372\r3225\r4240\r5015\r4810\r3628\r2338\r1543\r1351\r1605\r2024\r2282\r2118\r1406\r11\r-2631\r-7398\r-9629\r-5493\r-2352\r-952\r-227\r324\r906\r1501\r1851\r1805\r1538\r1277\r1091\r963\r869\r825\r967\r2247\r29846\r13365\r668\r-556\r-1011\r-1154\r-1008\r-511\r377\r1514\r2317\r2157\r1350\r635\r299\r297\r524\r921\r1545\r2861\r9562\r30088\r6749\r2521\r1512\r1081\r971\r1245\r2058\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r0\r"
+    }
+  ],
+  "glg_samples": [
+    {
+      "iteration": 0,
+      "parsed": {
+        "chan_tag": "",
+        "frq": "",
+        "is_receiving": false,
+        "mod": "",
+        "mut": "",
+        "name1": "",
+        "name2": "",
+        "name3": "",
+        "p25_nac": "",
+        "sql": "",
+        "sys_tag": ""
+      },
+      "raw_text": "GLG,,,,,,,,,,,,"
+    },
+    {
+      "iteration": 1,
+      "parsed": {
+        "chan_tag": "",
+        "frq": "",
+        "is_receiving": false,
+        "mod": "",
+        "mut": "",
+        "name1": "",
+        "name2": "",
+        "name3": "",
+        "p25_nac": "",
+        "sql": "",
+        "sys_tag": ""
+      },
+      "raw_text": "GLG,,,,,,,,,,,,"
+    },
+    {
+      "iteration": 2,
+      "parsed": {
+        "chan_tag": "",
+        "frq": "",
+        "is_receiving": false,
+        "mod": "",
+        "mut": "",
+        "name1": "",
+        "name2": "",
+        "name3": "",
+        "p25_nac": "",
+        "sql": "",
+        "sys_tag": ""
+      },
+      "raw_text": "GLG,,,,,,,,,,,,"
+    },
+    {
+      "iteration": 3,
+      "parsed": {
+        "chan_tag": "",
+        "frq": "",
+        "is_receiving": false,
+        "mod": "",
+        "mut": "",
+        "name1": "",
+        "name2": "",
+        "name3": "",
+        "p25_nac": "",
+        "sql": "",
+        "sys_tag": ""
+      },
+      "raw_text": "GLG,,,,,,,,,,,,"
+    },
+    {
+      "iteration": 4,
+      "parsed": {
+        "chan_tag": "",
+        "frq": "",
+        "is_receiving": false,
+        "mod": "",
+        "mut": "",
+        "name1": "",
+        "name2": "",
+        "name3": "",
+        "p25_nac": "",
+        "sql": "",
+        "sys_tag": ""
+      },
+      "raw_text": "GLG,,,,,,,,,,,,"
+    }
+  ],
+  "gsi_samples": [
+    {
+      "iteration": 0,
+      "parsed": {
+        "department_name": "",
+        "frequency_hz": null,
+        "is_receiving": false,
+        "mode": "",
+        "properties_keys": [],
+        "rssi_dbm": null,
+        "signal_pct": null,
+        "system_name": "",
+        "tg_name": "",
+        "tgid": "",
+        "unit_id": ""
+      },
+      "raw_bytes_hex": "4753492c3c584d4c3e2c0d3c3f786d6c2076657273696f6e3d22312e302220656e636f64696e673d227574662d38223f3e0d3c5363616e6e6572496e666f204d6f64653d225472756e6b205363616e2220565f53637265656e3d227472756e6b5f7363616e223e0d20203c4d6f6e69746f724c697374204e616d653d22486f6d652220496e6465783d223222204c697374547970653d22464c2220515f4b65793d223022204e5f5461673d224e6f6e65222044425f436f756e7465723d223022202f3e0d20203c53797374656d204e616d653d224761696e657376696c6c6520526567696f6e616c205574696c69746965732028475255436f6d292220496e6465783d2236222041766f69643d224f6666222053797374656d547970653d22503235205472756e6b2220515f4b65793d223022204e5f5461673d224e6f6e652220486f6c643d224f666622202f3e0d20203c4465706172746d656e7420496e6465783d2234323934393637323935222041766f69643d224f66662220515f4b65793d22302220486f6c643d224f666622202f3e0d20203c5447494420496e6465783d2234323934393637323935222041766f69643d224f66662220544749443d22544749443a202d2d2d2220536574536c6f743d22536c6f7420416e792220526563536c6f743d22536c6f74204e6f6e6522204e5f5461673d224e6f6e652220486f6c643d224f66662220505f43683d224f666622204c564c3d223022202f3e0d20203c556e69744944202f3e0d20203c53697465204e616d653d2253696d756c636173742220496e6465783d2239222041766f69643d224f66662220515f4b65793d224e6f6e652220486f6c643d224f666622204d6f643d224e464d22202f3e0d20203c536974654672657175656e637920467265713d22203835332e3138373530304d487a22204946583d224f666622205341533d224e4143203444326822205341443d224e4143203444326822202f3e0d20203c4475616c5761746368205052493d224f6666222043433d224f6666222057583d224f666622202f3e0d20203c50726f706572747920463d224f66662220564f4c3d223135222053514c3d223022205369673d223522204174743d224f666622205265633d224f666622204b65794c6f636b3d224f666622205032355374617475733d224461746122204d7574653d224d75746522204261636b6c696768743d223130302220415f4c65643d224f666622204469723d2255702220527373693d222d383522202f3e0d20203c566965774465736372697074696f6e3e0d202020203c4f766572577269746520546578743d224944205363616e6e696e672e2e2e22202f3e0d20203c2f566965774465736372697074696f6e3e0d3c2f5363616e6e6572496e666f3e0d",
+      "raw_text": "GSI,<XML>,\r<?xml version=\"1.0\" encoding=\"utf-8\"?>\r<ScannerInfo Mode=\"Trunk Scan\" V_Screen=\"trunk_scan\">\r  <MonitorList Name=\"Home\" Index=\"2\" ListType=\"FL\" Q_Key=\"0\" N_Tag=\"None\" DB_Counter=\"0\" />\r  <System Name=\"Gainesville Regional Utilities (GRUCom)\" Index=\"6\" Avoid=\"Off\" SystemType=\"P25 Trunk\" Q_Key=\"0\" N_Tag=\"None\" Hold=\"Off\" />\r  <Department Index=\"4294967295\" Avoid=\"Off\" Q_Key=\"0\" Hold=\"Off\" />\r  <TGID Index=\"4294967295\" Avoid=\"Off\" TGID=\"TGID: ---\" SetSlot=\"Slot Any\" RecSlot=\"Slot None\" N_Tag=\"None\" Hold=\"Off\" P_Ch=\"Off\" LVL=\"0\" />\r  <UnitID />\r  <Site Name=\"Simulcast\" Index=\"9\" Avoid=\"Off\" Q_Key=\"None\" Hold=\"Off\" Mod=\"NFM\" />\r  <SiteFrequency Freq=\" 853.187500MHz\" IFX=\"Off\" SAS=\"NAC 4D2h\" SAD=\"NAC 4D2h\" />\r  <DualWatch PRI=\"Off\" CC=\"Off\" WX=\"Off\" />\r  <Property F=\"Off\" VOL=\"15\" SQL=\"0\" Sig=\"5\" Att=\"Off\" Rec=\"Off\" KeyLock=\"Off\" P25Status=\"Data\" Mute=\"Mute\" Backlight=\"100\" A_Led=\"Off\" Dir=\"Up\" Rssi=\"-85\" />\r  <ViewDescription>\r    <OverWrite Text=\"ID Scanning...\" />\r  </ViewDescription>\r</ScannerInfo>\r"
+    },
+    {
+      "iteration": 1,
+      "parsed": {
+        "department_name": "",
+        "frequency_hz": null,
+        "is_receiving": false,
+        "mode": "",
+        "properties_keys": [],
+        "rssi_dbm": null,
+        "signal_pct": null,
+        "system_name": "",
+        "tg_name": "",
+        "tgid": "",
+        "unit_id": ""
+      },
+      "raw_bytes_hex": "4753492c3c584d4c3e2c0d3c3f786d6c2076657273696f6e3d22312e302220656e636f64696e673d227574662d38223f3e0d3c5363616e6e6572496e666f204d6f64653d225472756e6b205363616e2220565f53637265656e3d227472756e6b5f7363616e223e0d20203c4d6f6e69746f724c697374204e616d653d22486f6d652220496e6465783d223222204c697374547970653d22464c2220515f4b65793d223022204e5f5461673d224e6f6e65222044425f436f756e7465723d223022202f3e0d20203c53797374656d204e616d653d224761696e657376696c6c6520526567696f6e616c205574696c69746965732028475255436f6d292220496e6465783d2236222041766f69643d224f6666222053797374656d547970653d22503235205472756e6b2220515f4b65793d223022204e5f5461673d224e6f6e652220486f6c643d224f666622202f3e0d20203c4465706172746d656e7420496e6465783d2234323934393637323935222041766f69643d224f66662220515f4b65793d22302220486f6c643d224f666622202f3e0d20203c5447494420496e6465783d2234323934393637323935222041766f69643d224f66662220544749443d22544749443a202d2d2d2220536574536c6f743d22536c6f7420416e792220526563536c6f743d22536c6f74204e6f6e6522204e5f5461673d224e6f6e652220486f6c643d224f66662220505f43683d224f666622204c564c3d223022202f3e0d20203c556e69744944202f3e0d20203c53697465204e616d653d2253696d756c636173742220496e6465783d2239222041766f69643d224f66662220515f4b65793d224e6f6e652220486f6c643d224f666622204d6f643d224e464d22202f3e0d20203c536974654672657175656e637920467265713d22203835332e3138373530304d487a22204946583d224f666622205341533d224e4143203444326822205341443d224e4143203444326822202f3e0d20203c4475616c5761746368205052493d224f6666222043433d224f6666222057583d224f666622202f3e0d20203c50726f706572747920463d224f66662220564f4c3d223135222053514c3d223022205369673d223522204174743d224f666622205265633d224f666622204b65794c6f636b3d224f666622205032355374617475733d224461746122204d7574653d224d75746522204261636b6c696768743d223130302220415f4c65643d224f666622204469723d2255702220527373693d222d383322202f3e0d20203c566965774465736372697074696f6e3e0d202020203c4f766572577269746520546578743d224944205363616e6e696e672e2e2e22202f3e0d20203c2f566965774465736372697074696f6e3e0d3c2f5363616e6e6572496e666f3e0d",
+      "raw_text": "GSI,<XML>,\r<?xml version=\"1.0\" encoding=\"utf-8\"?>\r<ScannerInfo Mode=\"Trunk Scan\" V_Screen=\"trunk_scan\">\r  <MonitorList Name=\"Home\" Index=\"2\" ListType=\"FL\" Q_Key=\"0\" N_Tag=\"None\" DB_Counter=\"0\" />\r  <System Name=\"Gainesville Regional Utilities (GRUCom)\" Index=\"6\" Avoid=\"Off\" SystemType=\"P25 Trunk\" Q_Key=\"0\" N_Tag=\"None\" Hold=\"Off\" />\r  <Department Index=\"4294967295\" Avoid=\"Off\" Q_Key=\"0\" Hold=\"Off\" />\r  <TGID Index=\"4294967295\" Avoid=\"Off\" TGID=\"TGID: ---\" SetSlot=\"Slot Any\" RecSlot=\"Slot None\" N_Tag=\"None\" Hold=\"Off\" P_Ch=\"Off\" LVL=\"0\" />\r  <UnitID />\r  <Site Name=\"Simulcast\" Index=\"9\" Avoid=\"Off\" Q_Key=\"None\" Hold=\"Off\" Mod=\"NFM\" />\r  <SiteFrequency Freq=\" 853.187500MHz\" IFX=\"Off\" SAS=\"NAC 4D2h\" SAD=\"NAC 4D2h\" />\r  <DualWatch PRI=\"Off\" CC=\"Off\" WX=\"Off\" />\r  <Property F=\"Off\" VOL=\"15\" SQL=\"0\" Sig=\"5\" Att=\"Off\" Rec=\"Off\" KeyLock=\"Off\" P25Status=\"Data\" Mute=\"Mute\" Backlight=\"100\" A_Led=\"Off\" Dir=\"Up\" Rssi=\"-83\" />\r  <ViewDescription>\r    <OverWrite Text=\"ID Scanning...\" />\r  </ViewDescription>\r</ScannerInfo>\r"
+    },
+    {
+      "iteration": 2,
+      "parsed": {
+        "department_name": "",
+        "frequency_hz": null,
+        "is_receiving": false,
+        "mode": "",
+        "properties_keys": [],
+        "rssi_dbm": null,
+        "signal_pct": null,
+        "system_name": "",
+        "tg_name": "",
+        "tgid": "",
+        "unit_id": ""
+      },
+      "raw_bytes_hex": "4753492c3c584d4c3e2c0d3c3f786d6c2076657273696f6e3d22312e302220656e636f64696e673d227574662d38223f3e0d3c5363616e6e6572496e666f204d6f64653d225472756e6b205363616e2220565f53637265656e3d227472756e6b5f7363616e223e0d20203c4d6f6e69746f724c697374204e616d653d22486f6d652220496e6465783d223222204c697374547970653d22464c2220515f4b65793d223022204e5f5461673d224e6f6e65222044425f436f756e7465723d223022202f3e0d20203c53797374656d204e616d653d224761696e657376696c6c6520526567696f6e616c205574696c69746965732028475255436f6d292220496e6465783d2236222041766f69643d224f6666222053797374656d547970653d22503235205472756e6b2220515f4b65793d223022204e5f5461673d224e6f6e652220486f6c643d224f666622202f3e0d20203c4465706172746d656e7420496e6465783d2234323934393637323935222041766f69643d224f66662220515f4b65793d22302220486f6c643d224f666622202f3e0d20203c5447494420496e6465783d2234323934393637323935222041766f69643d224f66662220544749443d22544749443a202d2d2d2220536574536c6f743d22536c6f7420416e792220526563536c6f743d22536c6f74204e6f6e6522204e5f5461673d224e6f6e652220486f6c643d224f66662220505f43683d224f666622204c564c3d223022202f3e0d20203c556e69744944202f3e0d20203c53697465204e616d653d2253696d756c636173742220496e6465783d2239222041766f69643d224f66662220515f4b65793d224e6f6e652220486f6c643d224f666622204d6f643d224e464d22202f3e0d20203c536974654672657175656e637920467265713d22203835332e3138373530304d487a22204946583d224f666622205341533d224e4143203444326822205341443d224e4143203444326822202f3e0d20203c4475616c5761746368205052493d224f6666222043433d224f6666222057583d224f666622202f3e0d20203c50726f706572747920463d224f66662220564f4c3d223135222053514c3d223022205369673d223522204174743d224f666622205265633d224f666622204b65794c6f636b3d224f666622205032355374617475733d224461746122204d7574653d224d75746522204261636b6c696768743d223130302220415f4c65643d224f666622204469723d2255702220527373693d222d383522202f3e0d20203c566965774465736372697074696f6e3e0d202020203c4f766572577269746520546578743d224944205363616e6e696e672e2e2e22202f3e0d20203c2f566965774465736372697074696f6e3e0d3c2f5363616e6e6572496e666f3e0d",
+      "raw_text": "GSI,<XML>,\r<?xml version=\"1.0\" encoding=\"utf-8\"?>\r<ScannerInfo Mode=\"Trunk Scan\" V_Screen=\"trunk_scan\">\r  <MonitorList Name=\"Home\" Index=\"2\" ListType=\"FL\" Q_Key=\"0\" N_Tag=\"None\" DB_Counter=\"0\" />\r  <System Name=\"Gainesville Regional Utilities (GRUCom)\" Index=\"6\" Avoid=\"Off\" SystemType=\"P25 Trunk\" Q_Key=\"0\" N_Tag=\"None\" Hold=\"Off\" />\r  <Department Index=\"4294967295\" Avoid=\"Off\" Q_Key=\"0\" Hold=\"Off\" />\r  <TGID Index=\"4294967295\" Avoid=\"Off\" TGID=\"TGID: ---\" SetSlot=\"Slot Any\" RecSlot=\"Slot None\" N_Tag=\"None\" Hold=\"Off\" P_Ch=\"Off\" LVL=\"0\" />\r  <UnitID />\r  <Site Name=\"Simulcast\" Index=\"9\" Avoid=\"Off\" Q_Key=\"None\" Hold=\"Off\" Mod=\"NFM\" />\r  <SiteFrequency Freq=\" 853.187500MHz\" IFX=\"Off\" SAS=\"NAC 4D2h\" SAD=\"NAC 4D2h\" />\r  <DualWatch PRI=\"Off\" CC=\"Off\" WX=\"Off\" />\r  <Property F=\"Off\" VOL=\"15\" SQL=\"0\" Sig=\"5\" Att=\"Off\" Rec=\"Off\" KeyLock=\"Off\" P25Status=\"Data\" Mute=\"Mute\" Backlight=\"100\" A_Led=\"Off\" Dir=\"Up\" Rssi=\"-85\" />\r  <ViewDescription>\r    <OverWrite Text=\"ID Scanning...\" />\r  </ViewDescription>\r</ScannerInfo>\r"
+    },
+    {
+      "iteration": 3,
+      "parsed": {
+        "department_name": "",
+        "frequency_hz": null,
+        "is_receiving": false,
+        "mode": "",
+        "properties_keys": [],
+        "rssi_dbm": null,
+        "signal_pct": null,
+        "system_name": "",
+        "tg_name": "",
+        "tgid": "",
+        "unit_id": ""
+      },
+      "raw_bytes_hex": "4753492c3c584d4c3e2c0d3c3f786d6c2076657273696f6e3d22312e302220656e636f64696e673d227574662d38223f3e0d3c5363616e6e6572496e666f204d6f64653d225472756e6b205363616e2220565f53637265656e3d227472756e6b5f7363616e223e0d20203c4d6f6e69746f724c697374204e616d653d22486f6d652220496e6465783d223222204c697374547970653d22464c2220515f4b65793d223022204e5f5461673d224e6f6e65222044425f436f756e7465723d223022202f3e0d20203c53797374656d204e616d653d224761696e657376696c6c6520526567696f6e616c205574696c69746965732028475255436f6d292220496e6465783d2236222041766f69643d224f6666222053797374656d547970653d22503235205472756e6b2220515f4b65793d223022204e5f5461673d224e6f6e652220486f6c643d224f666622202f3e0d20203c4465706172746d656e7420496e6465783d2234323934393637323935222041766f69643d224f66662220515f4b65793d22302220486f6c643d224f666622202f3e0d20203c5447494420496e6465783d2234323934393637323935222041766f69643d224f66662220544749443d22544749443a202d2d2d2220536574536c6f743d22536c6f7420416e792220526563536c6f743d22536c6f74204e6f6e6522204e5f5461673d224e6f6e652220486f6c643d224f66662220505f43683d224f666622204c564c3d223022202f3e0d20203c556e69744944202f3e0d20203c53697465204e616d653d2253696d756c636173742220496e6465783d2239222041766f69643d224f66662220515f4b65793d224e6f6e652220486f6c643d224f666622204d6f643d224e464d22202f3e0d20203c536974654672657175656e637920467265713d22203835332e3138373530304d487a22204946583d224f666622205341533d224e4143203444326822205341443d224e4143203444326822202f3e0d20203c4475616c5761746368205052493d224f6666222043433d224f6666222057583d224f666622202f3e0d20203c50726f706572747920463d224f66662220564f4c3d223135222053514c3d223022205369673d223522204174743d224f666622205265633d224f666622204b65794c6f636b3d224f666622205032355374617475733d224461746122204d7574653d224d75746522204261636b6c696768743d223130302220415f4c65643d224f666622204469723d2255702220527373693d222d383622202f3e0d20203c566965774465736372697074696f6e3e0d202020203c4f766572577269746520546578743d224944205363616e6e696e672e2e2e22202f3e0d20203c2f566965774465736372697074696f6e3e0d3c2f5363616e6e6572496e666f3e0d",
+      "raw_text": "GSI,<XML>,\r<?xml version=\"1.0\" encoding=\"utf-8\"?>\r<ScannerInfo Mode=\"Trunk Scan\" V_Screen=\"trunk_scan\">\r  <MonitorList Name=\"Home\" Index=\"2\" ListType=\"FL\" Q_Key=\"0\" N_Tag=\"None\" DB_Counter=\"0\" />\r  <System Name=\"Gainesville Regional Utilities (GRUCom)\" Index=\"6\" Avoid=\"Off\" SystemType=\"P25 Trunk\" Q_Key=\"0\" N_Tag=\"None\" Hold=\"Off\" />\r  <Department Index=\"4294967295\" Avoid=\"Off\" Q_Key=\"0\" Hold=\"Off\" />\r  <TGID Index=\"4294967295\" Avoid=\"Off\" TGID=\"TGID: ---\" SetSlot=\"Slot Any\" RecSlot=\"Slot None\" N_Tag=\"None\" Hold=\"Off\" P_Ch=\"Off\" LVL=\"0\" />\r  <UnitID />\r  <Site Name=\"Simulcast\" Index=\"9\" Avoid=\"Off\" Q_Key=\"None\" Hold=\"Off\" Mod=\"NFM\" />\r  <SiteFrequency Freq=\" 853.187500MHz\" IFX=\"Off\" SAS=\"NAC 4D2h\" SAD=\"NAC 4D2h\" />\r  <DualWatch PRI=\"Off\" CC=\"Off\" WX=\"Off\" />\r  <Property F=\"Off\" VOL=\"15\" SQL=\"0\" Sig=\"5\" Att=\"Off\" Rec=\"Off\" KeyLock=\"Off\" P25Status=\"Data\" Mute=\"Mute\" Backlight=\"100\" A_Led=\"Off\" Dir=\"Up\" Rssi=\"-86\" />\r  <ViewDescription>\r    <OverWrite Text=\"ID Scanning...\" />\r  </ViewDescription>\r</ScannerInfo>\r"
+    },
+    {
+      "iteration": 4,
+      "parsed": {
+        "department_name": "",
+        "frequency_hz": null,
+        "is_receiving": false,
+        "mode": "",
+        "properties_keys": [],
+        "rssi_dbm": null,
+        "signal_pct": null,
+        "system_name": "",
+        "tg_name": "",
+        "tgid": "",
+        "unit_id": ""
+      },
+      "raw_bytes_hex": "4753492c3c584d4c3e2c0d3c3f786d6c2076657273696f6e3d22312e302220656e636f64696e673d227574662d38223f3e0d3c5363616e6e6572496e666f204d6f64653d225472756e6b205363616e2220565f53637265656e3d227472756e6b5f7363616e223e0d20203c4d6f6e69746f724c697374204e616d653d22486f6d652220496e6465783d223222204c697374547970653d22464c2220515f4b65793d223022204e5f5461673d224e6f6e65222044425f436f756e7465723d223022202f3e0d20203c53797374656d204e616d653d224761696e657376696c6c6520526567696f6e616c205574696c69746965732028475255436f6d292220496e6465783d2236222041766f69643d224f6666222053797374656d547970653d22503235205472756e6b2220515f4b65793d223022204e5f5461673d224e6f6e652220486f6c643d224f666622202f3e0d20203c4465706172746d656e7420496e6465783d2234323934393637323935222041766f69643d224f66662220515f4b65793d22302220486f6c643d224f666622202f3e0d20203c5447494420496e6465783d2234323934393637323935222041766f69643d224f66662220544749443d22544749443a202d2d2d2220536574536c6f743d22536c6f7420416e792220526563536c6f743d22536c6f74204e6f6e6522204e5f5461673d224e6f6e652220486f6c643d224f66662220505f43683d224f666622204c564c3d223022202f3e0d20203c556e69744944202f3e0d20203c53697465204e616d653d2253696d756c636173742220496e6465783d2239222041766f69643d224f66662220515f4b65793d224e6f6e652220486f6c643d224f666622204d6f643d224e464d22202f3e0d20203c536974654672657175656e637920467265713d22203835332e3138373530304d487a22204946583d224f666622205341533d224e4143203444326822205341443d224e4143203444326822202f3e0d20203c4475616c5761746368205052493d224f6666222043433d224f6666222057583d224f666622202f3e0d20203c50726f706572747920463d224f66662220564f4c3d223135222053514c3d223022205369673d223522204174743d224f666622205265633d224f666622204b65794c6f636b3d224f666622205032355374617475733d224461746122204d7574653d224d75746522204261636b6c696768743d223130302220415f4c65643d224f666622204469723d2255702220527373693d222d383422202f3e0d20203c566965774465736372697074696f6e3e0d202020203c4f766572577269746520546578743d224944205363616e6e696e672e2e2e22202f3e0d20203c2f566965774465736372697074696f6e3e0d3c2f5363616e6e6572496e666f3e0d",
+      "raw_text": "GSI,<XML>,\r<?xml version=\"1.0\" encoding=\"utf-8\"?>\r<ScannerInfo Mode=\"Trunk Scan\" V_Screen=\"trunk_scan\">\r  <MonitorList Name=\"Home\" Index=\"2\" ListType=\"FL\" Q_Key=\"0\" N_Tag=\"None\" DB_Counter=\"0\" />\r  <System Name=\"Gainesville Regional Utilities (GRUCom)\" Index=\"6\" Avoid=\"Off\" SystemType=\"P25 Trunk\" Q_Key=\"0\" N_Tag=\"None\" Hold=\"Off\" />\r  <Department Index=\"4294967295\" Avoid=\"Off\" Q_Key=\"0\" Hold=\"Off\" />\r  <TGID Index=\"4294967295\" Avoid=\"Off\" TGID=\"TGID: ---\" SetSlot=\"Slot Any\" RecSlot=\"Slot None\" N_Tag=\"None\" Hold=\"Off\" P_Ch=\"Off\" LVL=\"0\" />\r  <UnitID />\r  <Site Name=\"Simulcast\" Index=\"9\" Avoid=\"Off\" Q_Key=\"None\" Hold=\"Off\" Mod=\"NFM\" />\r  <SiteFrequency Freq=\" 853.187500MHz\" IFX=\"Off\" SAS=\"NAC 4D2h\" SAD=\"NAC 4D2h\" />\r  <DualWatch PRI=\"Off\" CC=\"Off\" WX=\"Off\" />\r  <Property F=\"Off\" VOL=\"15\" SQL=\"0\" Sig=\"5\" Att=\"Off\" Rec=\"Off\" KeyLock=\"Off\" P25Status=\"Data\" Mute=\"Mute\" Backlight=\"100\" A_Led=\"Off\" Dir=\"Up\" Rssi=\"-84\" />\r  <ViewDescription>\r    <OverWrite Text=\"ID Scanning...\" />\r  </ViewDescription>\r</ScannerInfo>\r"
+    }
+  ],
+  "host": {
+    "executable": "C:\\Users\\khutt\\scanner-manager\\.venv\\Scripts\\python.exe",
+    "pid": 33060,
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.14.1"
+  },
+  "main_port": "COM4",
+  "schema": 1,
+  "sub_port": "COM3"
+}

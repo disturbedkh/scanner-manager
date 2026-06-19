@@ -1,37 +1,18 @@
-# Runtime dependencies. stdlib-only features still work without these
-# installed, but the following features silently fall back / get disabled:
+# Convenience mirror of pyproject.toml optional/runtime deps for CI tools
+# that still read requirements files. Canonical install:
+#   pip install -e ".[full]"
 #
-#   zeep    : direct RadioReference SOAP API (rr_api.py). Without it, the
-#             app uses the legacy HTML scraping path only.
-#   keyring : Windows Credential Manager storage for the RR username /
-#             password. Without it, credentials are kept in memory for
-#             the current session only (never written to JSON).
-#   tkintermapview : real tile-server map in the Coverage Map dialog.
-#             Without it, the app falls back to the pure-Tk coverage
-#             heatmap and the Coverage Map button is disabled with a
-#             helpful message.
-#   qrcode  : renders scannable QR codes in the Donate dialog beside
-#             each crypto address. Without it the dialog still works;
-#             the addresses are copy-to-clipboard only.
-#
-# All four are optional-at-runtime; they're listed here because the
-# full feature set of the Uniden Suite integration, the Coverage
-# Map viewer, and the Donate dialog expect them.
+# See [project.dependencies] and [project.optional-dependencies] in pyproject.toml.
+
 zeep>=4.2
 keyring>=24.0
 tkintermapview>=1.29
 qrcode>=7.4
-
-# Qt rebuild (Phases 1+) - optional for the legacy Tk app, required
-# for `scanner-manager-qt`. Pulled in by `pip install -e .[qt]` /
-# `[full]` from pyproject.toml as well.
 PySide6>=6.6
 pyqtgraph>=0.13
 pyserial>=3.5
 sounddevice>=0.4.6
 numpy>=1.21
-
-# Streaming dock (Phase 4)
 fastapi>=0.110
 uvicorn[standard]>=0.27
 httpx>=0.27

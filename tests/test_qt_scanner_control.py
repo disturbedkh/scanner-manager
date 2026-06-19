@@ -14,7 +14,6 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from gui.live.scanner_control import ScannerControlWidget  # noqa: E402
 from scanner_drivers.serial_main import (  # noqa: E402
     SAFE_CONTROL_KEYS,
-    MainDriverError,
     SerialMainDriver,
 )
 
@@ -84,7 +83,7 @@ def test_safe_control_keys_match_driver_whitelist():
     """
     fake = _FakeSerial(responses=[b"KEY,OK\r"] * len(SAFE_CONTROL_KEYS))
     driver = SerialMainDriver(fake)
-    for label, (key, mode) in SAFE_CONTROL_KEYS.items():
+    for _label, (key, mode) in SAFE_CONTROL_KEYS.items():
         # Should NOT raise.
         driver.send_key(key, mode)
 

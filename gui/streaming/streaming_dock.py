@@ -20,9 +20,9 @@ from __future__ import annotations
 import logging
 import socket
 from dataclasses import asdict
-from typing import Any, Dict, Optional
+from typing import Optional
 
-from PySide6.QtCore import QTimer, Qt, Signal
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -31,11 +31,9 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
-    QPlainTextEdit,
     QProgressBar,
     QPushButton,
     QSpinBox,
-    QSplitter,
     QTabWidget,
     QVBoxLayout,
     QWidget,

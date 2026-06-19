@@ -1,8 +1,18 @@
 {
   "mcpServers": {
     "GitLab": {
-      "type": "http",
-      "url": "https://gitlab.com/api/v4/mcp"
+      "url": "https://gitlab.com/api/v4/mcp",
+      "auth": {
+        "scopes": ["mcp"]
+      }
+    },
+    "scanner-manager-dev": {
+      "command": "c:\\Users\\khutt\\OneDrive\\Desktop\\Projects\\scanner-manager-20260420T171611Z-3-001\\scanner-manager\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "dev_mcp.mcp_bridge"],
+      "env": {
+        "SCANNER_MANAGER_DEV_MCP_HOST": "127.0.0.1",
+        "SCANNER_MANAGER_DEV_MCP_PORT": "8765"
+      }
     }
   }
 }

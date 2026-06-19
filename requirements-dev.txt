@@ -1,3 +1,7 @@
-# Optional tooling for local development
+# Convenience mirror of pyproject.toml [project.optional-dependencies] dev.
+# Canonical install: pip install -e ".[dev]"
+
 pytest>=8
 ruff>=0.5
+mcp>=1.0
+pyinstaller>=6.0
