@@ -1,3 +1,10 @@
+# ---------------------------------------------------------------------------
+# Private GitLab mirror (gitlab.com/garudadev1/scanner-manager): full RE
+# context, probe sessions, firmware captures, and dev tooling are tracked
+# for cross-machine Cursor work. The public GitHub mirror (origin) should
+# not receive these paths — avoid pushing context-heavy commits to origin.
+# ---------------------------------------------------------------------------
+
 __pycache__/
 *.py[cod]
 *.pyo
@@ -12,27 +19,6 @@ venv/
 .vscode/
 *.backup_*
 
-# Reverse-engineering scratch space. Developer-only (scripts/re_unpack.ps1
-# produces decompiled Uniden/RR assemblies into this tree). Never ship.
-_re/
-
-# Vendored Uniden installers. These are Uniden's property; we do NOT
-# redistribute them. The app downloads them from Uniden's CDN at runtime
-# using the manifest in data/uniden_installers.json (with SHA-256
-# verification). Developers may keep a local copy here for offline work;
-# git will never see it.
-BCDx36HP_Sentinel_Version_*/
-BT885_UpdateManager_V*/
-
-# User state / per-install runtime files. Kept out of the repo so that
-# a clean clone has a predictable starting state and user-specific ZIP
-# caches or session backups aren't accidentally committed.
-scanner_manager.meta.json
-scanner_manager.session.bak
-*.session.bak
-app_settings.json
-zip_county_map.json
-
 # Build outputs.
 dist/
 build/
@@ -42,62 +28,6 @@ build/
 logs/
 crash-*.log
 
-# Local dev-only debug bridge. The dev_mcp/ tree exposes raw HTTP +
-# MCP access to the running app and the scanner driver layer so an
-# AI assistant (or any developer) can poke at internals without going
-# through the GUI. It MUST NEVER ship - the /app/eval endpoint will
-# happily eval arbitrary Python and the scanner endpoints will drive
-# any byte to the radio. Drop the package locally to enable; delete
-# to disable. The main app gracefully no-ops if it isn't installed.
-dev_mcp/
-.scanner-manager/dev_mcp.token
-
-# Reverse-engineering tooling artifacts.
-#
-# Strategy: keep raw, PII-bearing or vendor-copyrighted captures + binaries
-# *local-only*; commit sanitized decoded artefacts (`.summary.md`,
-# `.scsi.jsonl`, `.files.md`) and canonical lab docs. See
-# AI/Dev/RE/tools/README.md for the full data-flow.
-
-# Raw probe + Sentinel session logs. Contain hostnames, serial numbers,
-# GPS, agency names. Never ship.
-AI/Dev/RE/sessions/
-
-# Firmware blobs (vendor copyright) + Ghidra project state + analysis dumps.
-# Blanket-ignore at the AI/Dev/RE/firmware/ subtree level so a dev unzipping
-# a vendor archive doesn't accidentally stage it.
-*.firm
-AI/Dev/RE/firmware/SDS100_SUB/
-AI/Dev/RE/firmware/**/*.bin
-AI/Dev/RE/firmware/**/*.firm
-AI/Dev/RE/firmware/**/*.zip
-AI/Dev/RE/firmware/**/Readme*.txt
-AI/Dev/RE/firmware/*.gpr
-AI/Dev/RE/firmware/*.gpr.lock
-AI/Dev/RE/firmware/*.rep/
-AI/Dev/RE/firmware/decompiles/
-AI/Dev/RE/firmware/analysis_dump.json
-AI/Dev/RE/firmware/analyzeHeadless.log
-AI/Dev/RE/firmware/LPC43xx.svd
-AI/Dev/RE/firmware_analysis/
-
-# Raw USB Mass Storage captures + sparse-reconstructed disk images.
-# Sanitized decoded artefacts (`.scsi.jsonl`, `.files.md`, `.summary.md`)
-# are deliberately *not* ignored - those are the publishable record.
-AI/Dev/RE/sentinel_pcaps/*.pcap
-AI/Dev/RE/sentinel_pcaps/*.pcapng
-AI/Dev/RE/sentinel_pcaps/*.disk.bin
-AI/Dev/RE/sentinel_pcaps/*.commands.jsonl
-
-# Ghidra environment shim (per-machine paths).
+# Per-machine Ghidra path shim (regenerate locally if needed).
 AI/Dev/RE/automation/.ghidra_env.ps1
 AI/Dev/RE/tools/automation/.ghidra_env.ps1
-ghidra_env/
-
-# Sentinel / BT885 Update Manager decompile scratch. Reproducible from
-# Uniden's publicly-distributed installers; the canonical findings are
-# committed to AI/Dev/RE/docs/uniden_update_endpoints.md. We ignore the
-# raw extracted installers and string dumps so we don't (a) re-host
-# Uniden's binaries, (b) bloat the repo with ~50 MB of vendor archives,
-# or (c) make trivially-extractable creds even more searchable on GH.
-AI/Dev/RE/sentinel_decompile/
