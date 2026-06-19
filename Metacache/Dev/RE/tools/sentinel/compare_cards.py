@@ -1,0 +1,243 @@
+"""Side-by-side comparison of two BCDx36HP-family SD cards.
+
+Read-only. Mounts BT885 and SDS100 cards from drive letters passed via
+`--bt`, `--sds`. Hashes binary files, runs the live FirmwareZipTable
+and FirmwareCityTable parsers from `scanner_manager.py` against both
+firmware folders, samples HPD record-type tallies on equivalent state
+files, and prints a normalized comparison report.
+
+Run from repo root:
+
+    py AI\\Dev\\RE\\compare_cards.py --bt E:\\ --sds H:\\
+
+Writes nothing to either card. Output goes to stdout and is suitable
+for piping into `Metacache/Dev/RE/sessions/`.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import os
+import sys
+from collections import Counter
+from pathlib import Path
+from typing import Dict, List, Tuple
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(REPO_ROOT))
+
+from legacy_tk.scanner_manager import FirmwareCityTable, FirmwareZipTable  # noqa: E402
+
+
+def sha256_of(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 16), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def list_files(root: Path) -> List[Tuple[Path, int]]:
+    out: List[Tuple[Path, int]] = []
+    for dirpath, _dirnames, filenames in os.walk(root):
+        if "System Volume Information" in dirpath:
+            continue
+        for name in filenames:
+            p = Path(dirpath) / name
+            try:
+                out.append((p, p.stat().st_size))
+            except OSError:
+                pass
+    return out
+
+
+def relative(p: Path, root: Path) -> str:
+    try:
+        return str(p.relative_to(root)).replace("\\", "/")
+    except ValueError:
+        return str(p)
+
+
+def head_record_type_tally(hpd_path: Path) -> Counter:
+    """Tally the leading token of each line in an HPD-shaped file."""
+    counter: Counter = Counter()
+    try:
+        with hpd_path.open("r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.rstrip("\r\n")
+                if not line:
+                    continue
+                token = line.split("\t", 1)[0]
+                counter[token] += 1
+    except OSError:
+        pass
+    return counter
+
+
+def hpd_header_lines(hpd_path: Path, n: int = 3) -> List[str]:
+    out: List[str] = []
+    try:
+        with hpd_path.open("r", encoding="utf-8", errors="replace") as fh:
+            for i, line in enumerate(fh):
+                if i >= n:
+                    break
+                out.append(line.rstrip("\r\n"))
+    except OSError:
+        pass
+    return out
+
+
+def run_zip_parser(card_root: Path) -> Dict[str, object]:
+    fw = card_root / "BCDx36HP" / "firmware"
+    if not fw.exists():
+        return {"present": False}
+    zt = FirmwareZipTable()
+    ok = zt.load_from_sd(str(card_root / "BCDx36HP"))
+    return {
+        "present": True,
+        "ok": ok,
+        "record_size": zt.record_size,
+        "zip_count": len(zt.zip_to_state_abbrev),
+        "coord_count": len(zt.zip_to_coords),
+        "extras_count": len(zt.zip_extras),
+        "flag_byte_distribution": dict(Counter(zt.zip_flag_bytes.values())),
+        "sample_zips": sorted(list(zt.zip_to_state_abbrev.items()))[:5],
+        "sample_coords": dict(sorted(list(zt.zip_to_coords.items()))[:3]),
+    }
+
+
+def run_city_parser(card_root: Path) -> Dict[str, object]:
+    fw = card_root / "BCDx36HP" / "firmware"
+    if not fw.exists():
+        return {"present": False}
+    ct = FirmwareCityTable()
+    ok = ct.load_from_sd(str(card_root / "BCDx36HP"))
+    return {
+        "present": True,
+        "ok": ok,
+        "record_size": ct.record_size,
+        "record_count": len(ct.records),
+        "states": sorted(ct.by_state.keys()),
+        "state_counts": {s: len(rs) for s, rs in sorted(ct.by_state.items())},
+        "sample_records": [
+            (r.state_abbrev, r.city_id, round(r.lat, 4), round(r.lon, 4))
+            for r in ct.records[:5]
+        ],
+    }
+
+
+def main(argv: List[str]) -> int:
+    p = argparse.ArgumentParser()
+    p.add_argument("--bt", required=True, help="BT885 card root (e.g. E:\\)")
+    p.add_argument("--sds", required=True, help="SDS100 card root (e.g. H:\\)")
+    p.add_argument(
+        "--sample-hpd",
+        default="s_000010.hpd",
+        help="State HPD basename to record-type-tally on both cards (default %(default)s)",
+    )
+    args = p.parse_args(argv)
+
+    bt = Path(args.bt)
+    sds = Path(args.sds)
+
+    print("=" * 70)
+    print(f"BT885  card root:  {bt}")
+    print(f"SDS100 card root:  {sds}")
+    print("=" * 70)
+
+    print("\n## Volume sizes (relative path -> bytes)")
+    bt_files = {relative(p, bt): sz for p, sz in list_files(bt)}
+    sds_files = {relative(p, sds): sz for p, sz in list_files(sds)}
+    print(f"BT885  files: {len(bt_files)}")
+    print(f"SDS100 files: {len(sds_files)}")
+
+    print("\n## Files present on BT885 only")
+    only_bt = sorted(set(bt_files) - set(sds_files))
+    for f in only_bt:
+        print(f"  {f}  ({bt_files[f]:>10} B)")
+    if not only_bt:
+        print("  (none)")
+
+    print("\n## Files present on SDS100 only")
+    only_sds = sorted(set(sds_files) - set(bt_files))
+    for f in only_sds:
+        print(f"  {f}  ({sds_files[f]:>10} B)")
+    if not only_sds:
+        print("  (none)")
+
+    print("\n## Files on both - bytes equal?")
+    common = sorted(set(bt_files) & set(sds_files))
+    for f in common:
+        if bt_files[f] == sds_files[f]:
+            print(f"  EQUAL SIZE   {bt_files[f]:>10} B   {f}")
+        else:
+            print(
+                f"  DIFFER SIZE  bt={bt_files[f]:>10} B  sds={sds_files[f]:>10} B   {f}"
+            )
+
+    print("\n## SHA-256 for binary firmware tables on both cards")
+    for sub in ("BCDx36HP/firmware/CityTable_V1_00_00.dat",
+                "BCDx36HP/firmware/ZipTable_V1_00_00.dat"):
+        bt_path = bt / Path(sub)
+        sds_path = sds / Path(sub)
+        if bt_path.exists() and sds_path.exists():
+            bt_h = sha256_of(bt_path)
+            sds_h = sha256_of(sds_path)
+            print(f"  {sub}")
+            print(f"    BT885   {bt_h}")
+            print(f"    SDS100  {sds_h}")
+            print(f"    {'IDENTICAL' if bt_h == sds_h else 'DIFFER'}")
+
+    print("\n## Live FirmwareZipTable parser - both cards")
+    bt_zip = run_zip_parser(bt)
+    sds_zip = run_zip_parser(sds)
+    print(f"  BT885 :  {bt_zip}")
+    print(f"  SDS100:  {sds_zip}")
+    if bt_zip.get("present") and sds_zip.get("present"):
+        same_count = bt_zip["zip_count"] == sds_zip["zip_count"]
+        same_recsize = bt_zip["record_size"] == sds_zip["record_size"]
+        print(
+            f"  -> record_size match: {same_recsize}, "
+            f"zip_count match: {same_count}"
+        )
+
+    print("\n## Live FirmwareCityTable parser - both cards")
+    bt_city = run_city_parser(bt)
+    sds_city = run_city_parser(sds)
+    print(f"  BT885 :  record_size={bt_city.get('record_size')} "
+          f"records={bt_city.get('record_count')} "
+          f"states={len(bt_city.get('states') or [])}")
+    print(f"  SDS100:  record_size={sds_city.get('record_size')} "
+          f"records={sds_city.get('record_count')} "
+          f"states={len(sds_city.get('states') or [])}")
+    if bt_city.get("ok") and sds_city.get("ok"):
+        same_recs = bt_city["record_count"] == sds_city["record_count"]
+        same_states = bt_city["states"] == sds_city["states"]
+        print(f"  -> record_count match: {same_recs}, state set match: {same_states}")
+
+    print("\n## hpdb.cfg head (3 lines from each card)")
+    for label, path in (
+        ("BT885 ", bt / "BCDx36HP" / "HPDB" / "hpdb.cfg"),
+        ("SDS100", sds / "BCDx36HP" / "HPDB" / "hpdb.cfg"),
+    ):
+        print(f"  {label}: {path}")
+        for ln in hpd_header_lines(path, 3):
+            print(f"    {ln!r}")
+
+    print(f"\n## State HPD record-type tally (both cards): {args.sample_hpd}")
+    for label, path in (
+        ("BT885 ", bt / "BCDx36HP" / "HPDB" / args.sample_hpd),
+        ("SDS100", sds / "BCDx36HP" / "HPDB" / args.sample_hpd),
+    ):
+        print(f"  {label}: {path}  ({path.stat().st_size if path.exists() else 'missing'} B)")
+        if path.exists():
+            tally = head_record_type_tally(path)
+            for token, count in sorted(tally.items(), key=lambda kv: -kv[1])[:15]:
+                print(f"    {count:>6}  {token}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

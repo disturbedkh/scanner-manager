@@ -11,7 +11,7 @@ ports when in serial mode:
 - VID 0x1965, PID 0x0019 → SUB command port  (FFT/ADC debug stream)
 
 Verified against real hardware in
-``AI/Dev/RE/docs/SDS100_unofficial_commands.md`` Session 3.
+``Metacache/Dev/RE/docs/SDS100_unofficial_commands.md`` Session 3.
 """
 
 from __future__ import annotations

@@ -1,0 +1,4 @@
+# SUB one-shot probe @ 2026-04-29T18:53:26.400256 on COM3
+
+U                9B  U5C42\r<\x00>><\x00>
+U,0              9B  U5C42\r<\x00>><\x00>

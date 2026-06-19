@@ -11,7 +11,7 @@
 #   2. Shell out to ILSpy's command-line (`ilspycmd`) to dump every .exe
 #      and .dll inside the extraction tree into human-readable C#.
 #   3. Stop. Reading / documenting the output is manual (see
-#      docs/uniden-behavior.md).
+#      Metacache/docs/uniden-behavior.md).
 #
 # The .NET Framework targets we care about:
 #
@@ -118,4 +118,4 @@ foreach ($t in $Targets) {
 }
 
 Write-Host ""
-Write-Host "Done. Review output under $OutRoot and fold findings into docs/*.md."
+Write-Host "Done. Review output under $OutRoot and fold findings into Metacache/docs/*.md."

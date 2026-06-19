@@ -3,7 +3,7 @@
 The SUB port (VID 0x1965, PID 0x0019) is undocumented by Uniden.
 Everything below is reverse-engineered from the SUB firmware
 (``sub_1.03.15_inflated.bin``) and falsified live; see
-``AI/Dev/RE/docs/SDS100_unofficial_commands.md`` for the full
+``Metacache/Dev/RE/docs/SDS100_unofficial_commands.md`` for the full
 catalog.
 
 This driver exposes only the commands that:

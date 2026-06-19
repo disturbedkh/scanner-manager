@@ -16,6 +16,9 @@ on:
 permissions:
   contents: write
 
+env:
+  SCANNER_MANAGER_BUILD_TYPE: Release
+
 jobs:
   build:
     name: Build ${{ matrix.os }}
@@ -25,19 +28,16 @@ jobs:
       matrix:
         include:
           - os: windows-latest
+            build_root: build/Windows/Release
             artifact_name: ScannerManager-windows-x64
-            binary_src: dist/ScannerManager.exe
-            binary_rename: ScannerManager.exe
             asset_ext: .zip
           - os: macos-latest
+            build_root: build/macOS/Release
             artifact_name: ScannerManager-macos
-            binary_src: dist/ScannerManager.app
-            binary_rename: ScannerManager.app
             asset_ext: .tar.gz
           - os: ubuntu-latest
+            build_root: build/Linux/Release
             artifact_name: ScannerManager-linux-x64
-            binary_src: dist/ScannerManager
-            binary_rename: ScannerManager
             asset_ext: .tar.gz
 
     steps:
@@ -74,25 +74,26 @@ jobs:
       - name: Build with PyInstaller
         run: pyinstaller packaging/scanner-manager.spec --noconfirm
 
-      - name: Show dist tree (debug)
+      - name: Show build tree (debug)
         shell: bash
-        run: ls -la dist
+        run: ls -la "${{ matrix.build_root }}"
 
       - name: Package artifact (Windows zip)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $hash = (Get-FileHash -Algorithm SHA256 dist/ScannerManager.exe).Hash.ToLower()
-          "$hash  ScannerManager.exe" | Out-File -Encoding ascii dist/ScannerManager.exe.sha256
-          Compress-Archive -Path dist/ScannerManager.exe -DestinationPath dist/${{ matrix.artifact_name }}.zip -Force
-          $ziphash = (Get-FileHash -Algorithm SHA256 dist/${{ matrix.artifact_name }}.zip).Hash.ToLower()
-          "$ziphash  ${{ matrix.artifact_name }}.zip" | Out-File -Encoding ascii dist/${{ matrix.artifact_name }}.zip.sha256
+          $root = "${{ matrix.build_root }}"
+          $hash = (Get-FileHash -Algorithm SHA256 "$root/ScannerManager.exe").Hash.ToLower()
+          "$hash  ScannerManager.exe" | Out-File -Encoding ascii "$root/ScannerManager.exe.sha256"
+          Compress-Archive -Path "$root/ScannerManager.exe" -DestinationPath "$root/${{ matrix.artifact_name }}.zip" -Force
+          $ziphash = (Get-FileHash -Algorithm SHA256 "$root/${{ matrix.artifact_name }}.zip").Hash.ToLower()
+          "$ziphash  ${{ matrix.artifact_name }}.zip" | Out-File -Encoding ascii "$root/${{ matrix.artifact_name }}.zip.sha256"
 
       - name: Package artifact (macOS tarball)
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          cd dist
+          cd "${{ matrix.build_root }}"
           tar -czf "${{ matrix.artifact_name }}.tar.gz" ScannerManager.app
           shasum -a 256 "${{ matrix.artifact_name }}.tar.gz" > "${{ matrix.artifact_name }}.tar.gz.sha256"
 
@@ -100,7 +101,7 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          cd dist
+          cd "${{ matrix.build_root }}"
           chmod +x ScannerManager
           tar -czf "${{ matrix.artifact_name }}.tar.gz" ScannerManager
           sha256sum "${{ matrix.artifact_name }}.tar.gz" > "${{ matrix.artifact_name }}.tar.gz.sha256"
@@ -110,7 +111,7 @@ jobs:
         with:
           name: ${{ matrix.artifact_name }}
           path: |
-            dist/${{ matrix.artifact_name }}*
+            ${{ matrix.build_root }}/${{ matrix.artifact_name }}*
 
   publish-release:
     name: Publish GitHub Release (manual mirror)
@@ -137,22 +138,22 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ScannerManager-windows-x64
-          path: dist
+          path: release-artifacts
 
       - name: Download macOS artifact
         uses: actions/download-artifact@v4
         with:
           name: ScannerManager-macos
-          path: dist
+          path: release-artifacts
 
       - name: Download Linux artifact
         uses: actions/download-artifact@v4
         with:
           name: ScannerManager-linux-x64
-          path: dist
+          path: release-artifacts
 
       - name: List release payload
-        run: ls -la dist
+        run: ls -la release-artifacts dist
 
       - name: Extract release notes
         id: notes
@@ -189,11 +190,11 @@ jobs:
           body: ${{ steps.notes.outputs.body }}
           prerelease: ${{ contains(inputs.ref, 'alpha') || contains(inputs.ref, 'beta') || contains(inputs.ref, 'rc') || contains(inputs.ref, 'a') || contains(inputs.ref, 'b') }}
           files: |
-            dist/ScannerManager-windows-x64.zip
-            dist/ScannerManager-windows-x64.zip.sha256
-            dist/ScannerManager-macos.tar.gz
-            dist/ScannerManager-macos.tar.gz.sha256
-            dist/ScannerManager-linux-x64.tar.gz
-            dist/ScannerManager-linux-x64.tar.gz.sha256
+            release-artifacts/ScannerManager-windows-x64.zip
+            release-artifacts/ScannerManager-windows-x64.zip.sha256
+            release-artifacts/ScannerManager-macos.tar.gz
+            release-artifacts/ScannerManager-macos.tar.gz.sha256
+            release-artifacts/ScannerManager-linux-x64.tar.gz
+            release-artifacts/ScannerManager-linux-x64.tar.gz.sha256
             dist/*.tar.gz
             dist/*.whl

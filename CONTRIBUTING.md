@@ -21,7 +21,7 @@ Smoke-test the install:
 scanner-manager --help  # verifies the console-script hook
 pytest -q               # runs the test suite
 ruff check core/ gui/ legacy_tk/ scanner_profiles/ scanner_drivers/ \
-  firmware/ streaming/ audio/ virtual_sd/ tests/ scripts/ AI/Dev/RE/tools/
+  firmware/ streaming/ audio/ virtual_sd/ tests/ scripts/ Metacache/Dev/RE/tools/
 ```
 
 ## Running tests

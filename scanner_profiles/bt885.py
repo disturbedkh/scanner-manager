@@ -117,7 +117,7 @@ _TARGET_MODEL_ALIASES: Sequence[str] = (
     # Historical aliases kept for backwards-compatibility with old
     # workspace sidecars + tests; real BT885 firmware writes
     # `BCDx36HP` here (verified 2026-04-27 against a real card -
-    # see AI/Dev/RE/docs/BT885.md). The BCDx36HP family alias is
+    # see Metacache/Dev/RE/docs/BT885.md). The BCDx36HP family alias is
     # what we'll match on going forward; identity is disambiguated
     # via `scanner.inf` Scanner field 1 (`BT885-SCN`).
     "Beartracker885",

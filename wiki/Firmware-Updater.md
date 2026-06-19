@@ -6,7 +6,7 @@
 > backup + atomic copy + post-flash verify.
 
 The full reverse-engineered endpoint reference lives at
-[`AI/Dev/RE/docs/uniden_update_endpoints.md`](../AI/Dev/RE/docs/uniden_update_endpoints.md);
+[`Metacache/Dev/RE/docs/uniden_update_endpoints.md`](../Metacache/Dev/RE/docs/uniden_update_endpoints.md);
 this page is the user-facing summary.
 
 ## Endpoints
@@ -105,5 +105,5 @@ The dock's **Run update wizard…** button orchestrates:
 ## Cross-references
 
 - [Qt UI](Qt-UI.md)
-- [`AI/Dev/RE/docs/uniden_update_endpoints.md`](../AI/Dev/RE/docs/uniden_update_endpoints.md)
-- [`AI/Dev/FIRMWARE_UPDATER.md`](../AI/Dev/FIRMWARE_UPDATER.md)
+- [`Metacache/Dev/RE/docs/uniden_update_endpoints.md`](../Metacache/Dev/RE/docs/uniden_update_endpoints.md)
+- [`Metacache/Dev/FIRMWARE_UPDATER.md`](../Metacache/Dev/FIRMWARE_UPDATER.md)

@@ -7,7 +7,7 @@ incrementally - the legacy Tk app remains runnable as
 
 Top-level entry point: :func:`gui.app.main`.
 
-Architecture (per ``AI/Dev/MULTI_DEVICE_GUI.md``):
+Architecture (per ``Metacache/Dev/MULTI_DEVICE_GUI.md``):
 
 - :mod:`gui.app` - QApplication entry, theme/style.
 - :mod:`gui.main_window` - main window, dock layout, status bar, menu.

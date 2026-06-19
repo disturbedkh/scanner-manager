@@ -111,9 +111,9 @@ maintainers can see exactly what blew up.
 ## Cross-references
 
 - Live dock + serial-mode safety: see
-  [`AI/Dev/RE/docs/SDS100_unofficial_commands.md`](../AI/Dev/RE/docs/SDS100_unofficial_commands.md)
+  [`Metacache/Dev/RE/docs/SDS100_unofficial_commands.md`](../Metacache/Dev/RE/docs/SDS100_unofficial_commands.md)
 - Streaming pipeline (audio + telemetry):
   [`Streaming-Server.md`](Streaming-Server.md)
 - Firmware updater (FTP discovery): [`Firmware-Updater.md`](Firmware-Updater.md)
 - Multi-device backend:
-  [`AI/Dev/MULTI_SCANNER_BACKEND.md`](../AI/Dev/MULTI_SCANNER_BACKEND.md)
+  [`Metacache/Dev/MULTI_SCANNER_BACKEND.md`](../Metacache/Dev/MULTI_SCANNER_BACKEND.md)

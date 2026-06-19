@@ -24,12 +24,12 @@ for free.
 
 ## How we know
 
-`AI/Dev/RE/sentinel_pcaps`
+`Metacache/Dev/RE/sentinel_pcaps`
 captured every USB packet between Sentinel and the SDS100 during
 operations 1 (Read From Scanner) and 2 (Write to Scanner). Phase 0c
 extends to ops 3-6 (HPDB Update, Firmware Update, Backup, Restore).
 
-The captures are decoded by `AI/Dev/RE/tools/sentinel/decode_sentinel_pcap.py`,
+The captures are decoded by `Metacache/Dev/RE/tools/sentinel/decode_sentinel_pcap.py`,
 which:
 
 1. Parses USBPcap pcap files via tshark.
@@ -333,7 +333,7 @@ When Sentinel is in Mass-Storage mode and the SDS100 mounts as a
 drive letter, run:
 
 ```pwsh
-.\AI\Dev\RE\tools\sentinel\dump_sd_inventory.ps1
+.\Metacache\Dev\RE\tools\sentinel\dump_sd_inventory.ps1
 ```
 
 This script auto-detects the SDS100 drive (by USB topology
@@ -371,10 +371,10 @@ All of these correspond directly to file shapes documented in
 
 ```pwsh
 # Per-op:
-py AI\Dev\RE\tools\sentinel\sentinel_session.py --skip 1 --skip 2
+py Metacache\Dev\RE\tools\sentinel\sentinel_session.py --skip 1 --skip 2
 
 # Re-decode any existing pcap with the new SCSI decoder:
-py AI\Dev\RE\tools\sentinel\decode_sentinel_pcap.py AI\Dev\RE\sentinel_pcaps\03_hpdb_update.pcap
+py Metacache\Dev\RE\tools\sentinel\decode_sentinel_pcap.py Metacache\Dev\RE\sentinel_pcaps\03_hpdb_update.pcap
 ```
 
 The session driver auto-detects the USBPcap interface (by USB
@@ -384,9 +384,9 @@ for the full recipe.
 
 ## Lab data
 
-- `AI/Dev/RE/sentinel_pcaps` - all captured pcaps + decoded artefacts.
-- `AI/Dev/RE/docs/sentinel_api.md` - the original raw write-up.
-- `AI/Dev/RE/tools/sentinel/decode_sentinel_pcap.py` - SCSI/UMS/FAT32 decoder.
-- `AI/Dev/RE/tools/sentinel/sentinel_session.py` - guided capture driver.
-- `AI/Dev/RE/tools/sentinel/dump_sd_inventory.ps1` - read-only SD card walker.
-- `AI/Dev/RE/sessions/phase0b_decision_2026-05-03.md` - the "Sentinel = UMS, not CDC" finding.
+- `Metacache/Dev/RE/sentinel_pcaps` - all captured pcaps + decoded artefacts.
+- `Metacache/Dev/RE/docs/sentinel_api.md` - the original raw write-up.
+- `Metacache/Dev/RE/tools/sentinel/decode_sentinel_pcap.py` - SCSI/UMS/FAT32 decoder.
+- `Metacache/Dev/RE/tools/sentinel/sentinel_session.py` - guided capture driver.
+- `Metacache/Dev/RE/tools/sentinel/dump_sd_inventory.ps1` - read-only SD card walker.
+- `Metacache/Dev/RE/sessions/phase0b_decision_2026-05-03.md` - the "Sentinel = UMS, not CDC" finding.

@@ -1,0 +1,236 @@
+﻿======================================================================
+BT885  card root:  E:\
+SDS100 card root:  H:\
+======================================================================
+
+## Volume sizes (relative path -> bytes)
+BT885  files: 156
+SDS100 files: 79
+
+## Files present on BT885 only
+  BCDx36HP/HPDB/s_000012.hpd.meta.json  (  10792470 B)
+  BCDx36HP/HPDB/s_000012.hpd.reconcile_20260420_163921.log  (    862064 B)
+  BCDx36HP/HPDB/s_000012.hpd.session.bak  (    869806 B)
+  Setup/DotNetFX40Client/dotNetFx40_Client_x86_x64.exe  (  43000680 B)
+  Setup/Setup.msi  (   6188032 B)
+  Setup/WindowsInstaller3_1/WindowsInstaller-KB893803-v2-x86.exe  (   2585872 B)
+  Setup/setup.exe  (    428032 B)
+  scanner-workspaces/Main/HPDB/hpdb.cfg  (    177902 B)
+  scanner-workspaces/Main/HPDB/s_000000.hpd  (   5818973 B)
+  scanner-workspaces/Main/HPDB/s_000001.hpd  (    376266 B)
+  scanner-workspaces/Main/HPDB/s_000002.hpd  (    136702 B)
+  scanner-workspaces/Main/HPDB/s_000004.hpd  (    306133 B)
+  scanner-workspaces/Main/HPDB/s_000005.hpd  (    151497 B)
+  scanner-workspaces/Main/HPDB/s_000006.hpd  (   1480244 B)
+  scanner-workspaces/Main/HPDB/s_000008.hpd  (    207430 B)
+  scanner-workspaces/Main/HPDB/s_000009.hpd  (    261602 B)
+  scanner-workspaces/Main/HPDB/s_000010.hpd  (     57400 B)
+  scanner-workspaces/Main/HPDB/s_000011.hpd  (     18754 B)
+  scanner-workspaces/Main/HPDB/s_000012.hpd  (    869806 B)
+  scanner-workspaces/Main/HPDB/s_000012.hpd.meta.json  (  10617563 B)
+  scanner-workspaces/Main/HPDB/s_000012.hpd.reconcile_20260420_163921.log  (    862064 B)
+  scanner-workspaces/Main/HPDB/s_000012.hpd.session.bak  (    870355 B)
+  scanner-workspaces/Main/HPDB/s_000013.hpd  (    493630 B)
+  scanner-workspaces/Main/HPDB/s_000015.hpd  (    123824 B)
+  scanner-workspaces/Main/HPDB/s_000016.hpd  (    199409 B)
+  scanner-workspaces/Main/HPDB/s_000017.hpd  (    603026 B)
+  scanner-workspaces/Main/HPDB/s_000018.hpd  (    343973 B)
+  scanner-workspaces/Main/HPDB/s_000019.hpd  (    156503 B)
+  scanner-workspaces/Main/HPDB/s_000020.hpd  (    431448 B)
+  scanner-workspaces/Main/HPDB/s_000021.hpd  (    395798 B)
+  scanner-workspaces/Main/HPDB/s_000022.hpd  (    633149 B)
+  scanner-workspaces/Main/HPDB/s_000023.hpd  (    138000 B)
+  scanner-workspaces/Main/HPDB/s_000024.hpd  (    254173 B)
+  scanner-workspaces/Main/HPDB/s_000025.hpd  (    309001 B)
+  scanner-workspaces/Main/HPDB/s_000026.hpd  (    189381 B)
+  scanner-workspaces/Main/HPDB/s_000027.hpd  (     89726 B)
+  scanner-workspaces/Main/HPDB/s_000028.hpd  (    525730 B)
+  scanner-workspaces/Main/HPDB/s_000029.hpd  (    320181 B)
+  scanner-workspaces/Main/HPDB/s_000030.hpd  (    142004 B)
+  scanner-workspaces/Main/HPDB/s_000031.hpd  (    185347 B)
+  scanner-workspaces/Main/HPDB/s_000032.hpd  (     68385 B)
+  scanner-workspaces/Main/HPDB/s_000033.hpd  (     85970 B)
+  scanner-workspaces/Main/HPDB/s_000034.hpd  (    494676 B)
+  scanner-workspaces/Main/HPDB/s_000035.hpd  (    189079 B)
+  scanner-workspaces/Main/HPDB/s_000036.hpd  (    828246 B)
+  scanner-workspaces/Main/HPDB/s_000037.hpd  (    953487 B)
+  scanner-workspaces/Main/HPDB/s_000038.hpd  (    149401 B)
+  scanner-workspaces/Main/HPDB/s_000039.hpd  (   1086014 B)
+  scanner-workspaces/Main/HPDB/s_000040.hpd  (    324496 B)
+  scanner-workspaces/Main/HPDB/s_000041.hpd  (    232738 B)
+  scanner-workspaces/Main/HPDB/s_000042.hpd  (    866984 B)
+  scanner-workspaces/Main/HPDB/s_000044.hpd  (     54226 B)
+  scanner-workspaces/Main/HPDB/s_000045.hpd  (    389671 B)
+  scanner-workspaces/Main/HPDB/s_000046.hpd  (    149861 B)
+  scanner-workspaces/Main/HPDB/s_000047.hpd  (    351354 B)
+  scanner-workspaces/Main/HPDB/s_000048.hpd  (   1729898 B)
+  scanner-workspaces/Main/HPDB/s_000049.hpd  (     74340 B)
+  scanner-workspaces/Main/HPDB/s_000050.hpd  (     56665 B)
+  scanner-workspaces/Main/HPDB/s_000051.hpd  (    497551 B)
+  scanner-workspaces/Main/HPDB/s_000053.hpd  (    238998 B)
+  scanner-workspaces/Main/HPDB/s_000054.hpd  (    348684 B)
+  scanner-workspaces/Main/HPDB/s_000055.hpd  (    580152 B)
+  scanner-workspaces/Main/HPDB/s_000056.hpd  (     50564 B)
+  scanner-workspaces/Main/HPDB/s_000066.hpd  (        76 B)
+  scanner-workspaces/Main/HPDB/s_000072.hpd  (     22719 B)
+  scanner-workspaces/Main/HPDB/s_000078.hpd  (        76 B)
+  scanner-workspaces/Main/HPDB/s_000101.hpd  (    415112 B)
+  scanner-workspaces/Main/HPDB/s_000102.hpd  (    150167 B)
+  scanner-workspaces/Main/HPDB/s_000103.hpd  (    177184 B)
+  scanner-workspaces/Main/HPDB/s_000104.hpd  (     30178 B)
+  scanner-workspaces/Main/HPDB/s_000105.hpd  (     36560 B)
+  scanner-workspaces/Main/HPDB/s_000106.hpd  (      1103 B)
+  scanner-workspaces/Main/HPDB/s_000107.hpd  (     54281 B)
+  scanner-workspaces/Main/HPDB/s_000108.hpd  (       861 B)
+  scanner-workspaces/Main/HPDB/s_000109.hpd  (    448981 B)
+  scanner-workspaces/Main/HPDB/s_000110.hpd  (     10638 B)
+  scanner-workspaces/Main/HPDB/s_000111.hpd  (    205458 B)
+  scanner-workspaces/Main/HPDB/s_000112.hpd  (    149584 B)
+  scanner-workspaces/Main/HPDB/s_000113.hpd  (      5316 B)
+  scanner-workspaces/Main/favorites_lists/f_list.cfg  (        42 B)
+  scanner-workspaces/Main/firmware/CityTable_V1_00_00.dat  (    566492 B)
+  scanner-workspaces/Main/firmware/ZipTable_V1_00_00.dat  (    693758 B)
+  scanner-workspaces/Main/scanner.inf  (       112 B)
+
+## Files present on SDS100 only
+  BCDx36HP/app_data.cfg  (       388 B)
+  BCDx36HP/discvery.cfg  (        42 B)
+  BCDx36HP/favorites_lists/f_000001.hpd  (      3662 B)
+  BCDx36HP/favorites_lists/f_000002.hpd  (      4922 B)
+  BCDx36HP/favorites_lists/f_000003.hpd  (      2305 B)
+  BCDx36HP/profile.cfg  (     15612 B)
+
+## Files on both - bytes equal?
+  DIFFER SIZE  bt=    177902 B  sds=   1610512 B   BCDx36HP/HPDB/hpdb.cfg
+  DIFFER SIZE  bt=   5818973 B  sds=   7703102 B   BCDx36HP/HPDB/s_000000.hpd
+  DIFFER SIZE  bt=    376266 B  sds=    634512 B   BCDx36HP/HPDB/s_000001.hpd
+  DIFFER SIZE  bt=    136702 B  sds=    297526 B   BCDx36HP/HPDB/s_000002.hpd
+  DIFFER SIZE  bt=    306133 B  sds=    726436 B   BCDx36HP/HPDB/s_000004.hpd
+  DIFFER SIZE  bt=    151497 B  sds=    447492 B   BCDx36HP/HPDB/s_000005.hpd
+  DIFFER SIZE  bt=   1480244 B  sds=   3402672 B   BCDx36HP/HPDB/s_000006.hpd
+  DIFFER SIZE  bt=    207430 B  sds=   1082657 B   BCDx36HP/HPDB/s_000008.hpd
+  DIFFER SIZE  bt=    261602 B  sds=    426888 B   BCDx36HP/HPDB/s_000009.hpd
+  DIFFER SIZE  bt=     57400 B  sds=    151136 B   BCDx36HP/HPDB/s_000010.hpd
+  DIFFER SIZE  bt=     18754 B  sds=     78385 B   BCDx36HP/HPDB/s_000011.hpd
+  DIFFER SIZE  bt=    859907 B  sds=   2240354 B   BCDx36HP/HPDB/s_000012.hpd
+  DIFFER SIZE  bt=    493630 B  sds=   1157677 B   BCDx36HP/HPDB/s_000013.hpd
+  DIFFER SIZE  bt=    123824 B  sds=    209834 B   BCDx36HP/HPDB/s_000015.hpd
+  DIFFER SIZE  bt=    199409 B  sds=    315770 B   BCDx36HP/HPDB/s_000016.hpd
+  DIFFER SIZE  bt=    603026 B  sds=   2315802 B   BCDx36HP/HPDB/s_000017.hpd
+  DIFFER SIZE  bt=    343973 B  sds=   1073503 B   BCDx36HP/HPDB/s_000018.hpd
+  DIFFER SIZE  bt=    156503 B  sds=    546862 B   BCDx36HP/HPDB/s_000019.hpd
+  DIFFER SIZE  bt=    431448 B  sds=    597736 B   BCDx36HP/HPDB/s_000020.hpd
+  DIFFER SIZE  bt=    395798 B  sds=    905057 B   BCDx36HP/HPDB/s_000021.hpd
+  DIFFER SIZE  bt=    633149 B  sds=    830485 B   BCDx36HP/HPDB/s_000022.hpd
+  DIFFER SIZE  bt=    138000 B  sds=    250603 B   BCDx36HP/HPDB/s_000023.hpd
+  DIFFER SIZE  bt=    254173 B  sds=    678202 B   BCDx36HP/HPDB/s_000024.hpd
+  DIFFER SIZE  bt=    309001 B  sds=    562819 B   BCDx36HP/HPDB/s_000025.hpd
+  DIFFER SIZE  bt=    189381 B  sds=    938598 B   BCDx36HP/HPDB/s_000026.hpd
+  DIFFER SIZE  bt=     89726 B  sds=    384293 B   BCDx36HP/HPDB/s_000027.hpd
+  DIFFER SIZE  bt=    525730 B  sds=    707610 B   BCDx36HP/HPDB/s_000028.hpd
+  DIFFER SIZE  bt=    320181 B  sds=   1035884 B   BCDx36HP/HPDB/s_000029.hpd
+  DIFFER SIZE  bt=    142004 B  sds=    278409 B   BCDx36HP/HPDB/s_000030.hpd
+  DIFFER SIZE  bt=    185347 B  sds=    372092 B   BCDx36HP/HPDB/s_000031.hpd
+  DIFFER SIZE  bt=     68385 B  sds=    665325 B   BCDx36HP/HPDB/s_000032.hpd
+  DIFFER SIZE  bt=     85970 B  sds=    170110 B   BCDx36HP/HPDB/s_000033.hpd
+  DIFFER SIZE  bt=    494676 B  sds=    956266 B   BCDx36HP/HPDB/s_000034.hpd
+  DIFFER SIZE  bt=    189079 B  sds=    376627 B   BCDx36HP/HPDB/s_000035.hpd
+  DIFFER SIZE  bt=    828246 B  sds=   1601266 B   BCDx36HP/HPDB/s_000036.hpd
+  DIFFER SIZE  bt=    953487 B  sds=    980828 B   BCDx36HP/HPDB/s_000037.hpd
+  DIFFER SIZE  bt=    149401 B  sds=    211807 B   BCDx36HP/HPDB/s_000038.hpd
+  DIFFER SIZE  bt=   1086014 B  sds=   2045769 B   BCDx36HP/HPDB/s_000039.hpd
+  DIFFER SIZE  bt=    324496 B  sds=    840638 B   BCDx36HP/HPDB/s_000040.hpd
+  DIFFER SIZE  bt=    232738 B  sds=    466496 B   BCDx36HP/HPDB/s_000041.hpd
+  DIFFER SIZE  bt=    866984 B  sds=   1773909 B   BCDx36HP/HPDB/s_000042.hpd
+  DIFFER SIZE  bt=     54226 B  sds=     87355 B   BCDx36HP/HPDB/s_000044.hpd
+  DIFFER SIZE  bt=    389671 B  sds=    615517 B   BCDx36HP/HPDB/s_000045.hpd
+  DIFFER SIZE  bt=    149861 B  sds=    286734 B   BCDx36HP/HPDB/s_000046.hpd
+  DIFFER SIZE  bt=    351354 B  sds=    965372 B   BCDx36HP/HPDB/s_000047.hpd
+  DIFFER SIZE  bt=   1729898 B  sds=   3414737 B   BCDx36HP/HPDB/s_000048.hpd
+  DIFFER SIZE  bt=     74340 B  sds=    404876 B   BCDx36HP/HPDB/s_000049.hpd
+  DIFFER SIZE  bt=     56665 B  sds=     91715 B   BCDx36HP/HPDB/s_000050.hpd
+  DIFFER SIZE  bt=    497551 B  sds=   1179766 B   BCDx36HP/HPDB/s_000051.hpd
+  DIFFER SIZE  bt=    238998 B  sds=    486177 B   BCDx36HP/HPDB/s_000053.hpd
+  DIFFER SIZE  bt=    348684 B  sds=    533731 B   BCDx36HP/HPDB/s_000054.hpd
+  DIFFER SIZE  bt=    580152 B  sds=   1398842 B   BCDx36HP/HPDB/s_000055.hpd
+  DIFFER SIZE  bt=     50564 B  sds=    225465 B   BCDx36HP/HPDB/s_000056.hpd
+  DIFFER SIZE  bt=        76 B  sds=      7575 B   BCDx36HP/HPDB/s_000066.hpd
+  DIFFER SIZE  bt=     22719 B  sds=     63176 B   BCDx36HP/HPDB/s_000072.hpd
+  DIFFER SIZE  bt=        76 B  sds=     14220 B   BCDx36HP/HPDB/s_000078.hpd
+  DIFFER SIZE  bt=    415112 B  sds=    655277 B   BCDx36HP/HPDB/s_000101.hpd
+  DIFFER SIZE  bt=    150167 B  sds=    386552 B   BCDx36HP/HPDB/s_000102.hpd
+  DIFFER SIZE  bt=    177184 B  sds=    162125 B   BCDx36HP/HPDB/s_000103.hpd
+  DIFFER SIZE  bt=     30178 B  sds=     64061 B   BCDx36HP/HPDB/s_000104.hpd
+  DIFFER SIZE  bt=     36560 B  sds=     98454 B   BCDx36HP/HPDB/s_000105.hpd
+  DIFFER SIZE  bt=      1103 B  sds=      5405 B   BCDx36HP/HPDB/s_000106.hpd
+  DIFFER SIZE  bt=     54281 B  sds=    105006 B   BCDx36HP/HPDB/s_000107.hpd
+  DIFFER SIZE  bt=       861 B  sds=      7259 B   BCDx36HP/HPDB/s_000108.hpd
+  DIFFER SIZE  bt=    448981 B  sds=   1247431 B   BCDx36HP/HPDB/s_000109.hpd
+  DIFFER SIZE  bt=     10638 B  sds=     50803 B   BCDx36HP/HPDB/s_000110.hpd
+  DIFFER SIZE  bt=    205458 B  sds=    584138 B   BCDx36HP/HPDB/s_000111.hpd
+  DIFFER SIZE  bt=    149584 B  sds=    236039 B   BCDx36HP/HPDB/s_000112.hpd
+  DIFFER SIZE  bt=      5316 B  sds=     11092 B   BCDx36HP/HPDB/s_000113.hpd
+  DIFFER SIZE  bt=        42 B  sds=      1498 B   BCDx36HP/favorites_lists/f_list.cfg
+  EQUAL SIZE       566492 B   BCDx36HP/firmware/CityTable_V1_00_00.dat
+  EQUAL SIZE       693758 B   BCDx36HP/firmware/ZipTable_V1_00_00.dat
+  DIFFER SIZE  bt=       112 B  sds=       117 B   BCDx36HP/scanner.inf
+
+## SHA-256 for binary firmware tables on both cards
+  BCDx36HP/firmware/CityTable_V1_00_00.dat
+    BT885   e59c0e036c5831b6b16ad909aab50be91dbf837e78cff04e14f6d6a6da1757d3
+    SDS100  e59c0e036c5831b6b16ad909aab50be91dbf837e78cff04e14f6d6a6da1757d3
+    IDENTICAL
+  BCDx36HP/firmware/ZipTable_V1_00_00.dat
+    BT885   69ea964e13eac869e49c7d4043ef94c72092c208d9d79b78d033b6439da41cc9
+    SDS100  69ea964e13eac869e49c7d4043ef94c72092c208d9d79b78d033b6439da41cc9
+    IDENTICAL
+
+## Live FirmwareZipTable parser - both cards
+  BT885 :  {'present': True, 'ok': True, 'record_size': 16, 'zip_count': 41771, 'coord_count': 41771, 'extras_count': 0, 'flag_byte_distribution': {0: 41771}, 'sample_zips': [('00501', 'NY'), ('00544', 'NY'), ('00601', 'PR'), ('00602', 'PR'), ('00603', 'PR')], 'sample_coords': {'00501': (40.815200000000004, -73.0455), '00544': (40.815200000000004, -73.0455), '00601': (18.178799999999995, -66.7516)}}
+  SDS100:  {'present': True, 'ok': True, 'record_size': 16, 'zip_count': 41771, 'coord_count': 41771, 'extras_count': 0, 'flag_byte_distribution': {0: 41771}, 'sample_zips': [('00501', 'NY'), ('00544', 'NY'), ('00601', 'PR'), ('00602', 'PR'), ('00603', 'PR')], 'sample_coords': {'00501': (40.815200000000004, -73.0455), '00544': (40.815200000000004, -73.0455), '00601': (18.178799999999995, -66.7516)}}
+  -> record_size match: True, zip_count match: True
+
+## Live FirmwareCityTable parser - both cards
+  BT885 :  record_size=12 records=47204 states=64
+  SDS100:  record_size=12 records=47204 states=64
+  -> record_count match: True, state set match: True
+
+## hpdb.cfg head (3 lines from each card)
+  BT885 : E:\BCDx36HP\HPDB\hpdb.cfg
+    'TargetModel\tBCDx36HP'
+    'FormatVersion\t1.00'
+    'DateModified\t04/19/2026 17:00:01'
+  SDS100: H:\BCDx36HP\HPDB\hpdb.cfg
+    'TargetModel\tBCDx36HP'
+    'FormatVersion\t1.00'
+    'DateModified\t04/07/2024 17:00:01'
+
+## State HPD record-type tally (both cards): s_000010.hpd
+  BT885 : E:\BCDx36HP\HPDB\s_000010.hpd  (57400 B)
+       390  TGID
+       117  C-Freq
+       108  T-Freq
+        66  T-Group
+        27  C-Group
+        21  Site
+        10  AreaState
+        10  AreaCounty
+         7  Conventional
+         3  Trunk
+         1  TargetModel
+         1  FormatVersion
+         1  DateModified
+  SDS100: H:\BCDx36HP\HPDB\s_000010.hpd  (151136 B)
+       900  TGID
+       419  C-Freq
+       165  T-Freq
+        86  T-Group
+        82  C-Group
+        38  Site
+        29  AreaState
+        29  AreaCounty
+        15  Trunk
+        14  Conventional
+         5  BandPlan_Mot
+         1  TargetModel
+         1  FormatVersion

@@ -1,0 +1,275 @@
+SDS-100-SUB
+Version 1.03.05 
+%I&N&H'O'L(J(MO
+`%N%H;`.`#`
+#J#KRl
+ M K!N
+&7F $O
+F $0'O
+ $MF'F
+&7F`$O
+$M "4I
+1F!": 
+kz/L-O
+F1F: krcp&p
+F)F: ;qcp%p
+F)F: {tcp%p
+OsMtLkx
+F1F: kpcp&p
+F: &p+ucp
+F1F: +tcp&p
++|&p3C1F
+F: +tcp
+F1F: kwcp&p
+`"sOtL;y#
+FqF: ;qcp
+F: ~qfp#p
+F)F: {pcp%p
+F)F: ;vcp%p
+F: %pcp
+F: &p+scp
+FrFaF: 
+K'uqF: 
+&qF:F: 
+F!F: {psp4p
+%rOrN{yrL#
+Fyqqp3p
+F)F: {vsp5p
+F)F: {psp5p
+FqF: ;rsp
+uDdD=D
+3p{N{L2x"
+F)F: 3pcp%p
+FJFAF: 
+0KRF1F: 
+(I;prF: 
+JFSFKFRF#p
+`KZF1F: 
+ZKBF9F: 
+AFZFYFBF
+pnq,qir*r
+$0jp+p
+F"F: tp3p
+F1F: +qcp&p
+F1F: kqcp&p
+F1F: +vcp&p
+F2F: ;p
+0"aIbH
+F: &p+scp=O
+F+{&p#
+F: #pcp+p
+3@yp:p
+70~q=q
+p}q<qyr:r
+C0~q=q
+7@yp:p
+G0~q=q
+O+LBxbp
+!!p*xbp: 
+F1F: #skp.p
+8`#zTN
+F9F: #rkp/p
+F)F: crsp5p
+F9F: #ssp7p
+OzL"~c~
+FqF: 3v
+0"IFPF
+hMhHiI
+akaCaKa
+&0kbCbKb
+/07N8I8J5x
+FqF: ;qsp
+FqF: {qsp
+F: {psp
+FqF: ;vsp
+yHF0"[I
+FqF: ;psp
+FqF: sp
+rFAF: 
+#@'eIB
+"ZUbysK
+FqF: #t
+F: ;pfL
+xpqF: 
+FXpqF: 
+2FXFIF
+FqF: cp
+FqF: #v
+oMpLcynO
+F1F: cqkp.p
+=M=Lcy;N<OC
+FQF: cqkp
+F: {qsp
+F)F: 3scp%p
+ayfJgK
+aybJcK
+M3\(p#
+F: 3Ukp
+kIkLlK
+YKYM]a
+CKCNDIDHEM
+FIciFJGH
+!I[h!H
+'K'I[h
+"I"H L
+h?h6h `
+h[h F[i
+;h#J[i
+JYh F+FMh
+<K8I<HKc
+'N(K(I/(
+3 +#`"
+iztJsL2
+IHHIIJIH
+%IKIOJNJL
+"EHEOFL
+DHDJEKO
+("5H>`
+4I5J5K
+3O4H4I5J5K
+,J-I-K.H
+pKsIpJ
+@FLHHG
+bJbuJh
+BEaDsD
+bJb,Jh
+H4p!F(",
+2`9O:N
+9J:I8`5`
+,N,M-K-O
+$!F("0F
+!F(F("
+(I(J)H)K(`1`r`!F
+"'Hkbo`sb&M
+&K&H'I'J
+!I!H"N"M-
+`8I9HB
+,J-K-HS
++J&K+HS
+(H)I)J*MS
+&%J%L5F1FG
+J[i+DSa
+qJqKmH3
+HLHHII
+pGM.IGH
+#DJ&IDH
+>M%I>H
+{hXLYI
+4N5I5h+K4H
+F5F3Fn
+`HdO:h
+(O(N)M
+'O'N(L(M6
+U,D!DR
+HFLFMF
+TKUH[NUM[I
+#XJYIYH
+ nInJoK
+^HZIZJ^K0D
+4M@K(h
+`MaJ+haIaH
+OKOJPI
+8O2N:I
+h*N)M#H%I
+NONNOMOL
+ $O$N]`
+WHehWKB
+#2F@I@H
+bh8H8KB
+!#&!&'$
+Feh#i!h
+dce#e#a
+s#bch#
+#a%il#@
+0"1"a-
+mB-!+!
+0##p.#cp/
+60##p.#cp
+0##p.#cp.
+%D.#kp
+cj#a#`
+`2FAF8F
+ "!jhF
+CjXhpG
+s@_@T@U@{@"
+@@@@@@@
+S%02X%04X%04X%04X%04X%01X
+%d, %d
+H, %ld, %ld
+h, %ld, %ld
+%f, %f, %d
+%ld, %ld, %ld, %ld, %ld, %ld
+Widest LPF, %d
+Narrowest LPF, %d
+LPF, %d
+Default LPF, %d
+SDS100-SUB
+Manual LNAGain1,%d, LNAGain2,%d, MixerGain,%d, ADC_P-P,%d
+R840_FM
+R840_DVB_T2_1_7M
+ADC P-P, %d, %fmV
+CIC OUT   min,%6d,  max=%6d, err=%6d
+FIR1 OUT  min,%6d,  max=%6d, err=%6d
+FIR2 OUT  min,%6d,  max=%6d, err=%6d
+FFT_PEAK,%ddB
+FFT_FREQ,%d
+FIR2_Range,%d, %ddB
+NCO_Range,min=%6d, max=%6d, dif=%6d
+Noise Squelch,%6d
+Window,%d
+IF=%d, STD= %s
+RF_gain_comb,%d, LNAGain1,%d, LNAGain2,%d, MixerGain,%d
+RF_GainMode,MANUAL
+RF_GainMode,AUTO
+VGA Mode Auto(Pin)
+VGA Mode Manual,%d
+dBm,%d,LNAGain1,%d, LNAGain2,%d, MixerGain,%d, Max,%d, ADC_P-P,%d
+IfRssi,%d
+RssiDbm,%d
+LNAGain1,Auto
+LNAGain1,%d
+LNAGain2,Auto
+LNAGain2,%d
+MixerGain,Auto
+MixerGain,%d
+REG[%2d],%02X, REG[%2d],%02X, REG[%2d],%02X, REG[%2d],%02X
+S*SSS{S
+W0WVW}W
+Z%ZKZpZ
+[([M[q[
+\'\K\o\
+\"]F]j]
+_2_U_w_
+`#`E`g`
+a2aTava
+c$cEcec
+d(dHdhd
+:}?(;|?
+[?SHX?1
+T?=MQ?
+=?Bh9?
++?V6'?
+g"?V6'?J
+5?Bh9?
+M?=MQ?1
+T?SHX?
+{?(;|?
+../src/lpc43xx_i2c.c
+0x%cp%d
+0X%cP%d
+0x%c.%.*llxp%d
+0X%c.%.*llXP%d
+(null)
+0123456789ABCDEF
+0123456789abcdef
+*** _Csys_alloc failed
+ @5^J@
+zHBff|B)
+GC33{C
+N:`=N(knN
+OJx<O=ImO
+3Y-KbY
+>K@]FK
+NK &WK
+ LTm'L
+gLH*qL

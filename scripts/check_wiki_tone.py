@@ -2,7 +2,7 @@
 """Tone linter for wiki/*.md and selected UI copy.
 
 Fails the build when user-facing documentation contains developer
-shorthand that's been called out in docs/style-guide.md. The rule set
+shorthand that's been called out in Metacache/docs/style-guide.md. The rule set
 is intentionally narrow and explicit: add to ``DENYLIST`` only after a
 language review, never to silence a lint failure on a one-off page.
 
@@ -113,7 +113,7 @@ def main(argv: List[str]) -> int:
                 print(f"    > {line}")
     if failed:
         print(
-            "\nTone check failed. See docs/style-guide.md for guidance,\n"
+            "\nTone check failed. See Metacache/docs/style-guide.md for guidance,\n"
             "or move internals under a '## Internals' heading at the\n"
             "bottom of the page."
         )

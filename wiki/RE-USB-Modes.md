@@ -30,7 +30,7 @@ interface. The MSC interface PID can vary; the topology trick we
 use to identify it is "USB device whose USBPcap interface trace
 goes back to a hub that also enumerates the SDS100 family CDC
 PIDs `0x0019`/`0x001A` when the device is rebooted into Serial
-mode" - see `AI/Dev/RE/tools/automation/find_sds100_hub.ps1`.
+mode" - see `Metacache/Dev/RE/tools/automation/find_sds100_hub.ps1`.
 
 ## Serial mode
 
@@ -78,7 +78,7 @@ main_port = ports.get(0x001A)
 sub_port  = ports.get(0x0019)
 ```
 
-This is what `AI/Dev/RE/tools/probes/list_ports.py`
+This is what `Metacache/Dev/RE/tools/probes/list_ports.py`
 does, and it's reused by every probe script.
 
 ## Mode signalling cheat sheet

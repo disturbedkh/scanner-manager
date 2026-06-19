@@ -8,7 +8,7 @@ top header populates its device selector from
 the "Add Device" wizard.
 
 Storage lives at ``data/devices.json`` (per
-``AI/Dev/MULTI_DEVICE_GUI.md`` §Storage layout). Schema is documented
+``Metacache/Dev/MULTI_DEVICE_GUI.md`` §Storage layout). Schema is documented
 inline in the file. We keep the on-disk structure forward-compatible
 by ignoring unknown keys instead of erroring.
 

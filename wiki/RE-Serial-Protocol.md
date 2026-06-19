@@ -25,7 +25,7 @@ COM number.
 
 | Spec | Date | Where it lives |
 |---|---|---|
-| BCDx36HP V1.05 | 2017-11-13 | `AI/Dev/RE/BCDx36HP_RemoteCommand_Specification_V1_05.txt` |
+| BCDx36HP V1.05 | 2017-11-13 | `Metacache/Dev/RE/BCDx36HP_RemoteCommand_Specification_V1_05.txt` |
 | SDS V1.02 | 2023-12-22 | (mirrored in repo) |
 | SDS V2.00 | 2025-07-07 | (mirrored in repo) |
 
@@ -176,7 +176,7 @@ empirically and confirmed by static RE of the SUB firmware.
    the prefix-fallback identity behaviour (`MA`->`SDS100-SUB`,
    `VA`->version).
 2. **Phase 6**: extracted SUB firmware
-   (`AI/Dev/RE/firmware/sub_1.03.15_inflated.bin`),
+   (`Metacache/Dev/RE/firmware/sub_1.03.15_inflated.bin`),
    imported into Ghidra, decompiled the parser at `FUN_14006ca6`.
    The parser uses a per-character `cmp #imm8` chain - no string
    table - so the only way to enumerate is to read the chain.
@@ -247,7 +247,7 @@ emitting bytes directly. Not yet decompiled in detail.
 
 The SUB firmware contains 35 `printf`-style format strings with
 no commands found yet that trigger them. Sample (full list in
-`AI/Dev/RE/docs/SDS100_unofficial_commands.md`):
+`Metacache/Dev/RE/docs/SDS100_unofficial_commands.md`):
 
 ```
 Manual LNAGain1,%d, LNAGain2,%d, MixerGain,%d, ADC_P-P,%d
@@ -290,10 +290,10 @@ Mode-sweep enumeration is open.
 
 ## Lab data
 
-- `AI/Dev/RE/docs/SDS100_unofficial_commands.md` - the canonical command catalog with safety classes, sources, and full notes.
-- `AI/Dev/RE/docs/sub_command_dispatch.md` - SUB-side dispatch table from the decompile.
-- `AI/Dev/RE/tools/probes/serial_probe.py` - safe MAIN-port probe with whitelist + forbidden list.
-- `AI/Dev/RE/tools/probes/sub_probe.py` - SUB-port probe (alphabet attack with anchor-and-compare).
-- `AI/Dev/RE/tools/probes/probe_batch.py` - batch probe driver with full-response capture.
-- `AI/Dev/RE/tools/probes/verify_dispatch.py` - live falsification of Ghidra-predicted mnemonics.
-- `AI/Dev/RE/sessions` - timestamped raw probe captures.
+- `Metacache/Dev/RE/docs/SDS100_unofficial_commands.md` - the canonical command catalog with safety classes, sources, and full notes.
+- `Metacache/Dev/RE/docs/sub_command_dispatch.md` - SUB-side dispatch table from the decompile.
+- `Metacache/Dev/RE/tools/probes/serial_probe.py` - safe MAIN-port probe with whitelist + forbidden list.
+- `Metacache/Dev/RE/tools/probes/sub_probe.py` - SUB-port probe (alphabet attack with anchor-and-compare).
+- `Metacache/Dev/RE/tools/probes/probe_batch.py` - batch probe driver with full-response capture.
+- `Metacache/Dev/RE/tools/probes/verify_dispatch.py` - live falsification of Ghidra-predicted mnemonics.
+- `Metacache/Dev/RE/sessions` - timestamped raw probe captures.

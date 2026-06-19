@@ -202,7 +202,7 @@ and the [virtual scanner roadmap](../../wiki/Virtual-Scanner-Roadmap).
 See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, test commands,
 lint rules, and PR expectations. Security issues: see [SECURITY.md](SECURITY.md).
 For RE / firmware / protocol contributions specifically, start at
-[`AI/Dev/RE/tools/README.md`](AI/Dev/RE/tools/README.md) and the
+[`Metacache/Dev/RE/tools/README.md`](Metacache/Dev/RE/tools/README.md) and the
 [RE wiki](../../wiki/Reverse-Engineering).
 
 ## License

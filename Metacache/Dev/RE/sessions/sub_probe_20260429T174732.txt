@@ -1,0 +1,37 @@
+# SDS100 SUB-port systematic probe
+# When     : 2026-04-29T17:47:32.738995
+# Port     : COM3
+# Anchor   : 'MDL' (expected to start with 'SDS100-SUB')
+# Forbidden: ['APR', 'AST', 'AVD', 'BOO', 'BRN', 'BRN_FW', 'BUR', 'CAL', 'CFG', 'CFW', 'CLR', 'CNF', 'DEL', 'DLA', 'DQK', 'EPG', 'ERA', 'ERS', 'FLA', 'FLS', 'FSH', 'GW2', 'GWF', 'HLD', 'JNT', 'JPM', 'KEY', 'MEMSET', 'MNU', 'MSB', 'MSV', 'MUT', 'NXT', 'PDN', 'PGM', 'POF', 'POW', 'PRG', 'PRV', 'PSI', 'PWF', 'PWROFF', 'PWR_OFF', 'QSH', 'REB', 'REG', 'RES', 'RGW', 'RST', 'RWR', 'SET', 'SLO', 'SQK', 'STR', 'TGW', 'UPD', 'UPG', 'URC', 'VLO', 'VOL_SET', 'WIPE', 'WPL', 'WPS', 'WR', 'WRT']
+# Available ports at start:
+#   COM6  Standard Serial over Bluetooth link (COM6)  [HWID BTHENUM\{00001101-0000-1000-8000-00805F9B34FB}_LOCALMFG&0000\9&2D5301D7&0&000000000000_00000000]
+#   COM3  USB Serial Device (COM3)  [HWID USB VID:PID=1965:0019 SER=0000000000001 LOCATION=1-5.1]
+#   COM4  USB Serial Device (COM4)  [HWID USB VID:PID=1965:001A SER= LOCATION=1-5.4.2]
+
+>>> ANCHOR=MDL   44B in 311.9 ms
+    raw  : b'SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r'
+    show : SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+
+# progress 9/98  hits=0  errs=0  unrec=0  to=8
+# progress 18/98  hits=0  errs=0  unrec=0  to=17
+# progress 27/98  hits=0  errs=0  unrec=0  to=26
+[   30/   98]  HIT      MIXG        55B in  188.1 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MIXG,?      77B in  188.4 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+[   31/   98]  HIT      VGA         68B in  186.9 ms  | Version 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \r
+            qform   VGA,?      102B in  187.0 ms  cls=hit  | Version 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \r
+[   32/   98]  HIT      VGM         68B in  188.9 ms  | Version 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \r
+            qform   VGM,?      102B in  188.3 ms  cls=hit  | Version 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \r
+[   33/   98]  HIT      VGN         68B in  190.4 ms  | Version 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \r
+            qform   VGN,?      102B in  189.4 ms  cls=hit  | Version 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \r
+[   34/   98]  HIT      VGAM        85B in  186.7 ms  | Version 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \r
+            qform   VGAM,?     119B in  182.4 ms  cls=hit  | Version 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \r
+# progress 37/98  hits=5  errs=0  unrec=3  to=28
+# progress 45/98  hits=5  errs=0  unrec=3  to=36
+# progress 54/98  hits=5  errs=0  unrec=3  to=45
+# progress 63/98  hits=5  errs=0  unrec=3  to=54
+# progress 71/98  hits=5  errs=0  unrec=3  to=62
+# progress 80/98  hits=5  errs=0  unrec=3  to=71
+# progress 89/98  hits=5  errs=0  unrec=3  to=80
+# progress 98/98  hits=5  errs=0  unrec=3  to=89
+
+# Done. 5 HIT, 0 err, 3 unrec, 90 timeout, 0 forbidden-skipped of 98 candidates.

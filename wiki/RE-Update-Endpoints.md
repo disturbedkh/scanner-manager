@@ -48,7 +48,7 @@ right after `ftp://` reveals four consecutive length-prefixed strings:
 - (Sentinel only) a TWiki info-link URL
 
 See the lab notes in
-`AI/Dev/RE/docs/uniden_update_endpoints.md` for the exact PowerShell
+`Metacache/Dev/RE/docs/uniden_update_endpoints.md` for the exact PowerShell
 + raw bytes used to extract them, and for the follow-up live FTP
 listings we ran to confirm the layout.
 
@@ -164,7 +164,7 @@ Direct integration. We do not need to:
 - Scrape the TWiki HTML
 - Maintain a hand-curated firmware manifest with hardcoded URLs
 
-Instead, the firmware updater (see `AI/Dev/FIRMWARE_UPDATER.md`)
+Instead, the firmware updater (see `Metacache/Dev/FIRMWARE_UPDATER.md`)
 discovers what's available by listing the FTP directory at runtime,
 parses filenames, downloads via plain `RETR`, verifies file size and
 SHA-256, and copies onto the SD card. The on-card flow (Uniden's
@@ -201,7 +201,7 @@ a handful of additional directories of varying usefulness:
 | `ftp.homepatrol.com` | `/HomePatrol/Updater/` | accessible | HomePatrol-1 firmware + 2011 weekly HPDBs |
 | `ftp.uniden.com` | `/internal/`, `/uaceng/`, `/ujeng/`, `/updates/` | **list-but-no-enter** (550) | engineering staging dirs; ACL-blocked |
 
-A separate "RE goodies hunt" pass (`AI/Dev/RE/docs/uniden_firmware_inventory.md`)
+A separate "RE goodies hunt" pass (`Metacache/Dev/RE/docs/uniden_firmware_inventory.md`)
 went deeper on what's downloadable. Highlights:
 
 - **BC-WF1 Wi-Fi adapter firmware is fully plaintext** (entropy 3.54)
@@ -223,7 +223,7 @@ went deeper on what's downloadable. Highlights:
   exists in any directory we can read.
 
 Full methodology + entropy tables + BC-WF1 string mining live in
-`AI/Dev/RE/docs/uniden_firmware_inventory.md`.
+`Metacache/Dev/RE/docs/uniden_firmware_inventory.md`.
 
 ## Cross-references
 
@@ -234,8 +234,8 @@ Full methodology + entropy tables + BC-WF1 string mining live in
   which this page covers.
 - [RE-SD-Card](RE-SD-Card) - target SD-card layout.
 - [Reverse Engineering](Reverse-Engineering) - high-level overview.
-- Lab notebook: `AI/Dev/RE/docs/uniden_update_endpoints.md` with the
+- Lab notebook: `Metacache/Dev/RE/docs/uniden_update_endpoints.md` with the
   raw bytes, hex dumps, and reproduction steps.
-- Goodies hunt: `AI/Dev/RE/docs/uniden_firmware_inventory.md` covers
+- Goodies hunt: `Metacache/Dev/RE/docs/uniden_firmware_inventory.md` covers
   the wider FTP topology, encryption analysis across the family, and
   the BC-WF1 RE win.

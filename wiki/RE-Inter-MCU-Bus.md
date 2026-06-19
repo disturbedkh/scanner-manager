@@ -153,7 +153,7 @@ and (for the bus tap) a USART2 logic-analyser on the PCB:
 
 ## Cross-reference (decompiles)
 
-All under `AI/Dev/RE/firmware/decompiles`:
+All under `Metacache/Dev/RE/firmware/decompiles`:
 
 - `1400e9e0_FUN_1400e9e0.json` - USART2 RX class decoder (Path A)
 - `1400eafc_FUN_1400eafc.json` - USART2 TX (THRE-poll loop)

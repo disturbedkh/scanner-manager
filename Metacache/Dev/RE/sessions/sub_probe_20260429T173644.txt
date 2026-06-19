@@ -1,0 +1,134 @@
+# SDS100 SUB-port systematic probe
+# When     : 2026-04-29T17:36:44.177261
+# Port     : COM3
+# Anchor   : 'MDL' (expected to start with 'SDS100-SUB')
+# Forbidden: ['APR', 'AST', 'AVD', 'BOO', 'BRN', 'BRN_FW', 'BUR', 'CAL', 'CFG', 'CFW', 'CLR', 'CNF', 'DEL', 'DLA', 'DQK', 'EPG', 'ERA', 'ERS', 'FLA', 'FLS', 'FSH', 'GW2', 'GWF', 'HLD', 'JNT', 'JPM', 'KEY', 'MEMSET', 'MNU', 'MSB', 'MSV', 'MUT', 'NXT', 'PDN', 'PGM', 'POF', 'POW', 'PRG', 'PRV', 'PSI', 'PWF', 'PWROFF', 'PWR_OFF', 'QSH', 'REB', 'REG', 'RES', 'RGW', 'RST', 'RWR', 'SET', 'SLO', 'SQK', 'STR', 'TGW', 'UPD', 'UPG', 'URC', 'VLO', 'VOL_SET', 'WIPE', 'WPL', 'WPS', 'WR', 'WRT']
+# Available ports at start:
+#   COM6  Standard Serial over Bluetooth link (COM6)  [HWID BTHENUM\{00001101-0000-1000-8000-00805F9B34FB}_LOCALMFG&0000\9&2D5301D7&0&000000000000_00000000]
+#   COM3  USB Serial Device (COM3)  [HWID USB VID:PID=1965:0019 SER=0000000000001 LOCATION=1-5.1]
+#   COM4  USB Serial Device (COM4)  [HWID USB VID:PID=1965:001A SER= LOCATION=1-5.4.2]
+
+>>> ANCHOR=MDL   44B in 176.8 ms
+    raw  : b'SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r'
+    show : SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+
+# progress 9/798  hits=0  errs=0  unrec=0  to=8
+[   13/  798]  HIT      M           22B in  179.7 ms  | SDS100-SUB\rSDS100-SUB\r
+            qform   M,?         44B in  188.4 ms  cls=unrecognised  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+# progress 18/798  hits=1  errs=0  unrec=0  to=16
+[   21/  798]  HIT      U            9B in  371.1 ms  | U5C42\r<\x00>D<\x92>
+[   22/  798]  HIT      V           34B in  184.6 ms  | Version 1.03.15 \rVersion 1.03.15 \r
+            qform   V,?         68B in  188.0 ms  cls=hit  | Version 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \rVersion 1.03.15 \r
+# progress 27/798  hits=3  errs=0  unrec=0  to=23
+# progress 36/798  hits=3  errs=0  unrec=0  to=32
+# progress 45/798  hits=3  errs=0  unrec=0  to=41
+# progress 54/798  hits=3  errs=0  unrec=0  to=50
+# progress 63/798  hits=3  errs=0  unrec=0  to=59
+# progress 72/798  hits=3  errs=0  unrec=0  to=68
+# progress 81/798  hits=3  errs=0  unrec=0  to=77
+# progress 89/798  hits=3  errs=0  unrec=0  to=85
+# progress 98/798  hits=3  errs=0  unrec=0  to=94
+# progress 107/798  hits=3  errs=0  unrec=0  to=103
+# progress 116/798  hits=3  errs=0  unrec=0  to=112
+# progress 125/798  hits=3  errs=0  unrec=0  to=121
+# progress 134/798  hits=3  errs=0  unrec=0  to=130
+# progress 143/798  hits=3  errs=0  unrec=0  to=139
+# progress 152/798  hits=3  errs=0  unrec=0  to=148
+# progress 161/798  hits=3  errs=0  unrec=0  to=157
+# progress 170/798  hits=3  errs=0  unrec=0  to=166
+# progress 179/798  hits=3  errs=0  unrec=0  to=175
+# progress 188/798  hits=3  errs=0  unrec=0  to=184
+# progress 197/798  hits=3  errs=0  unrec=0  to=193
+# progress 206/798  hits=3  errs=0  unrec=0  to=202
+# progress 215/798  hits=3  errs=0  unrec=0  to=211
+# progress 224/798  hits=3  errs=0  unrec=0  to=220
+# progress 233/798  hits=3  errs=0  unrec=0  to=229
+# progress 242/798  hits=3  errs=0  unrec=0  to=238
+# progress 251/798  hits=3  errs=0  unrec=0  to=247
+# progress 260/798  hits=3  errs=0  unrec=0  to=256
+# progress 269/798  hits=3  errs=0  unrec=0  to=265
+# progress 277/798  hits=3  errs=0  unrec=0  to=273
+# progress 286/798  hits=3  errs=0  unrec=0  to=282
+# progress 295/798  hits=3  errs=0  unrec=0  to=291
+# progress 303/798  hits=3  errs=0  unrec=0  to=299
+# progress 311/798  hits=3  errs=0  unrec=0  to=307
+# progress 319/798  hits=3  errs=0  unrec=0  to=315
+# progress 328/798  hits=3  errs=0  unrec=0  to=324
+# progress 336/798  hits=3  errs=0  unrec=0  to=332
+[  339/  798]  HIT      MA          33B in  184.5 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MA,?        55B in  185.3 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+[  340/  798]  HIT      MB          33B in  186.6 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MB,?        55B in  185.9 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+[  341/  798]  HIT      MC          33B in  185.1 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MC,?        55B in  187.9 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+[  342/  798]  HIT      MD          33B in  187.4 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MD,?        55B in  183.4 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+[  343/  798]  HIT      ME          33B in  186.3 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   ME,?        55B in  189.0 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+[  344/  798]  HIT      MF          33B in  187.5 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MF,?        55B in  189.9 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+[  345/  798]  HIT      MG          33B in  187.9 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MG,?        55B in  185.9 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+# progress 346/798  hits=10  errs=0  unrec=0  to=335
+[  346/  798]  HIT      MH          33B in  186.4 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MH,?        55B in  189.4 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+[  347/  798]  HIT      MI          33B in  187.9 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MI,?        55B in  187.4 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+[  348/  798]  HIT      MJ          33B in  184.8 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MJ,?        55B in  186.4 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+[  349/  798]  HIT      MK          33B in  188.9 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MK,?        55B in  189.9 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+[  350/  798]  HIT      ML          33B in  186.4 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   ML,?        55B in  188.8 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+[  351/  798]  HIT      MM          33B in  186.0 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MM,?        55B in  185.4 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+[  352/  798]  HIT      MN          33B in  188.9 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MN,?        55B in  188.9 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+[  353/  798]  HIT      MO          33B in  188.0 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MO,?        55B in  188.8 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+[  354/  798]  HIT      MP          33B in  188.1 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MP,?        55B in  188.7 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+# progress 355/798  hits=19  errs=0  unrec=0  to=335
+[  355/  798]  HIT      MQ          33B in  188.0 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MQ,?        55B in  187.3 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+[  356/  798]  HIT      MR          33B in  186.6 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MR,?        55B in  186.8 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+[  357/  798]  HIT      MS          33B in  185.9 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MS,?        55B in  183.8 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+[  358/  798]  HIT      MT          33B in  187.9 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MT,?        55B in  186.8 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+[  359/  798]  HIT      MU          33B in  186.3 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MU,?        55B in  187.6 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+[  360/  798]  HIT      MV          33B in  186.7 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MV,?        55B in  188.5 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+[  361/  798]  HIT      MW          33B in  185.9 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MW,?        55B in  188.9 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+[  362/  798]  HIT      MX          33B in  190.4 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MX,?        55B in  186.9 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+[  363/  798]  HIT      MY          33B in  189.9 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MY,?        55B in  189.4 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+# progress 364/798  hits=28  errs=0  unrec=0  to=335
+[  364/  798]  HIT      MZ          33B in  187.5 ms  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+            qform   MZ,?        55B in  184.3 ms  cls=hit  | SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+# progress 372/798  hits=29  errs=0  unrec=0  to=342
+# progress 380/798  hits=29  errs=0  unrec=0  to=350
+# progress 388/798  hits=29  errs=0  unrec=0  to=358
+# progress 397/798  hits=29  errs=0  unrec=0  to=367
+# progress 405/798  hits=29  errs=0  unrec=0  to=375
+# progress 414/798  hits=29  errs=0  unrec=0  to=384
+# progress 423/798  hits=29  errs=0  unrec=0  to=393
+# progress 431/798  hits=29  errs=0  unrec=0  to=401
+# progress 440/798  hits=29  errs=0  unrec=0  to=410
+# progress 449/798  hits=29  errs=0  unrec=0  to=419
+# progress 458/798  hits=29  errs=0  unrec=0  to=428
+# progress 467/798  hits=29  errs=0  unrec=0  to=437
+# progress 476/798  hits=29  errs=0  unrec=0  to=446
+# progress 485/798  hits=29  errs=0  unrec=0  to=455
+# progress 494/798  hits=29  errs=0  unrec=0  to=464
+# progress 502/798  hits=29  errs=0  unrec=0  to=472
+# progress 510/798  hits=29  errs=0  unrec=0  to=480
+# progress 519/798  hits=29  errs=0  unrec=0  to=489
+# progress 527/798  hits=29  errs=0  unrec=0  to=497
+# progress 535/798  hits=29  errs=0  unrec=0  to=505
+# progress 543/798  hits=29  errs=0  unrec=0  to=513
+[  547/  798]  HIT      UA           9B in  368.6 ms  | U5C42\r<\x00><\xC1>,

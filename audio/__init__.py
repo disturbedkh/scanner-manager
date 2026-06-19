@@ -2,7 +2,7 @@
 
 The scanner has no USB-audio class device; we capture from the host
 PC's soundcard input fed by the scanner's headphone jack. See
-``AI/Dev/MULTI_DEVICE_GUI.md`` for the streaming architecture.
+``Metacache/Dev/MULTI_DEVICE_GUI.md`` for the streaming architecture.
 
 Modules:
 

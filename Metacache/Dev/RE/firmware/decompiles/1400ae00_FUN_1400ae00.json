@@ -1,0 +1,1 @@
+{"addr":"1400ae00","name":"FUN_1400ae00","size":6,"body_min":"1400ae00","body_max":"1400ae05","callers":[{"addr":"14008340","name":"FUN_14008340"}],"callees":[],"peripheral_accesses":[],"string_xrefs":[],"decompile":"\r\nundefined4 FUN_1400ae00(void)\r\n\r\n{\r\n  return *DAT_1400ae08;\r\n}\r\n\r\n"}

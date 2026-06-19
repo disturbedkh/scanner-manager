@@ -28,10 +28,10 @@ and reachable.
 
 ```pwsh
 # Lists Uniden VID 1965 USB devices and their COM ports / topology
-py AI\Dev\RE\tools\probes\list_ports.py
+py Metacache\Dev\RE\tools\probes\list_ports.py
 
 # If in Mass-Storage mode, also confirm drive letter:
-.\AI\Dev\RE\tools\sentinel\dump_sd_inventory.ps1
+.\Metacache\Dev\RE\tools\sentinel\dump_sd_inventory.ps1
 ```
 
 **Outputs**:
@@ -59,7 +59,7 @@ PowerShell open at repo root.
 1. Verify the command is **not in any FORBIDDEN list** in
    `serial_probe.py`. If it is, stop - that means the command is
    destructive.
-2. Cross-reference against the spec PDFs in `AI/Dev/RE/`:
+2. Cross-reference against the spec PDFs in `Metacache/Dev/RE/`:
    - SDS V1.02 (`SDS200_RemoteCommand_Specification_V1_02.pdf` if mirrored)
    - SDS V2.00 (`SDS_Series_RemoteCommand_Specification_V2_00.pdf` if mirrored)
    - BCDx36HP V1.05 (`BCDx36HP_RemoteCommand_Specification_V1_05.txt`)
@@ -67,9 +67,9 @@ PowerShell open at repo root.
    `serial_probe.py` (with a comment citing the spec).
 4. Run a probe pass:
    ```pwsh
-   py AI\Dev\RE\tools\probes\serial_probe.py --port COM4
+   py Metacache\Dev\RE\tools\probes\serial_probe.py --port COM4
    ```
-5. Inspect `AI/Dev/RE/sessions/sds100_serial_<UTC>.txt`.
+5. Inspect `Metacache/Dev/RE/sessions/sds100_serial_<UTC>.txt`.
 
 **Outputs**:
 
@@ -77,7 +77,7 @@ PowerShell open at repo root.
 - Updated `serial_probe.py` whitelist if accepted.
 - Add a row to [RE-Serial-Protocol](RE-Serial-Protocol) for the
   documented behaviour, and to
-  `AI/Dev/RE/docs/SDS100_unofficial_commands.md`
+  `Metacache/Dev/RE/docs/SDS100_unofficial_commands.md`
   for any non-spec finding.
 
 ## Probe the SUB port
@@ -91,21 +91,21 @@ existing one.
 
 1. **Anchor first**: confirm SUB responds to `MDL`:
    ```pwsh
-   py AI\Dev\RE\tools\legacy\check_sub_alive.py --port COM3
+   py Metacache\Dev\RE\tools\legacy\check_sub_alive.py --port COM3
    ```
 2. **Single-character probe** (covers the entire 13-char debug
    ladder):
    ```pwsh
    # Edit BATCH list in _probe_batch.py to include 'o','q','w','d','r','m','z','h','l','s','t','u','v'
-   py AI\Dev\RE\tools\probes\probe_batch.py --port COM3
+   py Metacache\Dev\RE\tools\probes\probe_batch.py --port COM3
    ```
 3. **Multi-character probe** (alphabet attack):
    ```pwsh
-   py AI\Dev\RE\tools\probes\sub_probe.py --port COM3
+   py Metacache\Dev\RE\tools\probes\sub_probe.py --port COM3
    ```
 4. **Falsify a Ghidra prediction**:
    ```pwsh
-   py AI\Dev\RE\tools\probes\verify_dispatch.py --port COM3 --candidates AI\Dev\RE\sessions\dispatch_candidates.txt
+   py Metacache\Dev\RE\tools\probes\verify_dispatch.py --port COM3 --candidates Metacache\Dev\RE\sessions\dispatch_candidates.txt
    ```
 
 **Safety**: every SUB probe uses **anchor-and-compare** (re-send
@@ -113,7 +113,7 @@ existing one.
 
 **Outputs**:
 
-- Markdown report in `AI/Dev/RE/sessions/probe_batch_*.md` with
+- Markdown report in `Metacache/Dev/RE/sessions/probe_batch_*.md` with
   HIT / TIMEOUT / IDENTITY / ERR classification per probe.
 - Add new findings to `SDS100_unofficial_commands.md`.
 
@@ -134,15 +134,15 @@ existing one.
 
 ```pwsh
 # 1. Capture (auto-detects USBPcap interface, prompts you through ops)
-py AI\Dev\RE\tools\sentinel\sentinel_session.py
+py Metacache\Dev\RE\tools\sentinel\sentinel_session.py
 # When prompted, perform the op in Sentinel, wait for completion,
 # then press Enter in the terminal.
 
 # 2. Skip ops you don't want this session
-py AI\Dev\RE\tools\sentinel\sentinel_session.py --skip 1 --skip 2 --decode
+py Metacache\Dev\RE\tools\sentinel\sentinel_session.py --skip 1 --skip 2 --decode
 
 # 3. Re-decode an existing pcap
-py AI\Dev\RE\tools\sentinel\decode_sentinel_pcap.py AI\Dev\RE\sentinel_pcaps\03_hpdb_update.pcap
+py Metacache\Dev\RE\tools\sentinel\decode_sentinel_pcap.py Metacache\Dev\RE\sentinel_pcaps\03_hpdb_update.pcap
 ```
 
 **Outputs**:
@@ -174,22 +174,22 @@ target function's address (e.g. `0x14006ca6`).
 
 ```pwsh
 # Re-import + analyse + dump (run once or after firmware version change)
-powershell -ExecutionPolicy Bypass -File AI\Dev\RE\tools\automation\run_ghidra_setup.ps1
+powershell -ExecutionPolicy Bypass -File Metacache\Dev\RE\tools\automation\run_ghidra_setup.ps1
 
 # Targeted decompile of one or more functions (comma-separated addrs or names)
 $env:DECOMPILE_TARGETS = "0x14006ca6,FUN_14008340,0x1400e9e0"
-powershell -ExecutionPolicy Bypass -File AI\Dev\RE\tools\automation\run_ghidra_decompile.ps1
+powershell -ExecutionPolicy Bypass -File Metacache\Dev\RE\tools\automation\run_ghidra_decompile.ps1
 
 # Show the resulting decompile
-py AI\Dev\RE\tools\firmware\decompile_pull.py --show 0x14006ca6
+py Metacache\Dev\RE\tools\firmware\decompile_pull.py --show 0x14006ca6
 ```
 
 **Outputs**:
 
-- `AI/Dev/RE/firmware/decompiles/<addr>_<name>.json` per target -
+- `Metacache/Dev/RE/firmware/decompiles/<addr>_<name>.json` per target -
   full C decompile + callers + callees + peripheral access + string
   xrefs.
-- `AI/Dev/RE/firmware/decompiles/<addr>_<name>.md` - human-readable
+- `Metacache/Dev/RE/firmware/decompiles/<addr>_<name>.md` - human-readable
   view of the same.
 
 **Notes**:
@@ -207,28 +207,28 @@ py AI\Dev\RE\tools\firmware\decompile_pull.py --show 0x14006ca6
 **Why**: identify what changed between two MAIN or two SUB firmware
 versions.
 
-**Prereqs**: both firmware files in `AI/Dev/RE/firmware/`.
+**Prereqs**: both firmware files in `Metacache/Dev/RE/firmware/`.
 
 **Steps**:
 
 ```pwsh
 # Per-image entropy + magic-byte scan + head/tail hex dump
-py AI\Dev\RE\tools\firmware\firmware_structure.py --image AI\Dev\RE\firmware\sub_1.03.05.firm
-py AI\Dev\RE\tools\firmware\firmware_structure.py --image AI\Dev\RE\firmware\sub_1.03.15.firm
+py Metacache\Dev\RE\tools\firmware\firmware_structure.py --image Metacache\Dev\RE\firmware\sub_1.03.05.firm
+py Metacache\Dev\RE\tools\firmware\firmware_structure.py --image Metacache\Dev\RE\firmware\sub_1.03.15.firm
 
 # String extraction + version diff (two images of same MCU)
-py AI\Dev\RE\tools\firmware\firmware_strings.py --old AI\Dev\RE\firmware\sub_1.03.05.firm \
-                                   --new AI\Dev\RE\firmware\sub_1.03.15.firm
+py Metacache\Dev\RE\tools\firmware\firmware_strings.py --old Metacache\Dev\RE\firmware\sub_1.03.05.firm \
+                                   --new Metacache\Dev\RE\firmware\sub_1.03.15.firm
 
 # Byte-level diff (computes changed runs)
-py AI\Dev\RE\tools\firmware\firmware_structure.py --diff old=AI\Dev\RE\firmware\X --new=AI\Dev\RE\firmware\Y
+py Metacache\Dev\RE\tools\firmware\firmware_structure.py --diff old=Metacache\Dev\RE\firmware\X --new=Metacache\Dev\RE\firmware\Y
 ```
 
 **Outputs**:
 
-- `AI/Dev/RE/firmware_analysis/<name>.strings.txt` - per-image
+- `Metacache/Dev/RE/firmware_analysis/<name>.strings.txt` - per-image
   string list.
-- `AI/Dev/RE/firmware_analysis/firmware_structure_report.md` -
+- `Metacache/Dev/RE/firmware_analysis/firmware_structure_report.md` -
   rendered structural report with entropy, signatures, head/tail.
 - Stdout shows the version-diff (added / removed strings).
 
@@ -266,7 +266,7 @@ whether the SUB visibly resyncs is a partial test.
 
 **Outputs**:
 
-- Session note in `AI/Dev/RE/sessions/` documenting the test.
+- Session note in `Metacache/Dev/RE/sessions/` documenting the test.
 - Update [RE-Inter-MCU-Bus](RE-Inter-MCU-Bus) with the result.
 
 ## Bootstrap a new machine
@@ -286,8 +286,8 @@ winget install --id EclipseAdoptium.Temurin.21.JDK -e --source winget
 # Open a fresh PowerShell window so PATH picks up Java
 
 # 3. Ghidra + LPC43xx SVD
-powershell -ExecutionPolicy Bypass -File AI\Dev\RE\tools\automation\bootstrap_ghidra.ps1
-powershell -ExecutionPolicy Bypass -File AI\Dev\RE\tools\automation\fetch_lpc43xx_svd.ps1
+powershell -ExecutionPolicy Bypass -File Metacache\Dev\RE\tools\automation\bootstrap_ghidra.ps1
+powershell -ExecutionPolicy Bypass -File Metacache\Dev\RE\tools\automation\fetch_lpc43xx_svd.ps1
 
 # 4. Wireshark + USBPcap (for Sentinel captures)
 winget install --id WiresharkFoundation.Wireshark -e --source winget
@@ -295,7 +295,7 @@ winget install --id desowin.USBPcap -e --source winget
 # Reboot now so the USBPcap kernel driver loads
 
 # 5. After reboot, audit
-powershell -ExecutionPolicy Bypass -File AI\Dev\RE\tools\automation\check_prereqs.ps1
+powershell -ExecutionPolicy Bypass -File Metacache\Dev\RE\tools\automation\check_prereqs.ps1
 ```
 
 **Verification**:
@@ -306,7 +306,7 @@ powershell -ExecutionPolicy Bypass -File AI\Dev\RE\tools\automation\check_prereq
 - `& "C:\Program Files\Wireshark\tshark.exe" --version` works
 - `Test-Path "C:\Program Files\USBPcap\USBPcapCMD.exe"` is `True`
 
-If any of these fail, see `AI/Dev/RE/docs/AUTOMATION.md`
+If any of these fail, see `Metacache/Dev/RE/docs/AUTOMATION.md`
 for the original troubleshooting notes.
 
 ## Future RE goals (not yet recipes)

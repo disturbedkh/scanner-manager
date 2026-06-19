@@ -19,27 +19,33 @@ python -m pip install -e ".[full,dev]"
 pyinstaller packaging/scanner-manager.spec --noconfirm
 ```
 
-Outputs:
+Outputs land under `build/<OS>/<Release|Development>/`:
 
-| Platform | Artifact |
-| -------- | -------- |
-| Windows | `dist/ScannerManager.exe` (+ `ScannerManager-windows-x64.zip` in CI) |
-| macOS | `dist/ScannerManager.app` (+ `ScannerManager-macos.tar.gz` in CI) |
-| Linux | `dist/ScannerManager` (+ `ScannerManager-linux-x64.tar.gz` in CI) |
+| Platform | Default (Development) | CI tag builds (Release) |
+| -------- | --------------------- | ----------------------- |
+| Windows | `build/Windows/Development/ScannerManager.exe` | `build/Windows/Release/ScannerManager.exe` (+ zip in CI) |
+| macOS | `build/macOS/Development/ScannerManager.app` | `build/macOS/Release/ScannerManager.app` (+ tar.gz in CI) |
+| Linux | `build/Linux/Development/ScannerManager` | `build/Linux/Release/ScannerManager` (+ tar.gz in CI) |
 
+Set `SCANNER_MANAGER_BUILD_TYPE=Release` for release-mode local smoke.
 Set `SCANNER_MANAGER_VERSION` when building macOS bundles so Info.plist
 matches the git tag.
+
+PyInstaller intermediate files go to
+`build/<OS>/<Type>/.pyinstaller-work/` (gitignored via `build/`).
+
+**Note:** `python -m build` (wheel/sdist for PyPI-style publish) still
+writes to repo-root `dist/` — that is separate from PyInstaller output.
 
 ## CI / release
 
 **Primary:** GitLab CI (`.gitlab-ci.yml`) runs lint + test on every push
 and builds all three platform artifacts on `v*` tags (`release:windows`,
-`release:macos`, `release:linux`).
+`release:macos`, `release:linux`) under `build/<OS>/Release/`.
 
 **Deprecated mirror:** `.github/workflows/release.yml` is manual
 (`workflow_dispatch`) only — use it to publish public GitHub Release
-assets after a GitLab-validated tag. Do not treat GitHub as the primary
-release gate.
+assets after a GitLab-validated tag.
 
 Do not hand-upload EXEs — let CI produce artifacts so SHA-256 sidecars
 match the build environment.

@@ -1,0 +1,32 @@
+﻿# SDS100 passive serial probe
+# When     : 2026-04-27T18:47:26
+# Host     : MAINGAMINGPC
+# Port     : COM4  (baud=115200, 8N1)
+# Output   : C:\Users\khutt\scanner-manager\AI\Dev\RE\sessions\sds100_serial_20260427T184726.txt
+# Probe ID : 20260427T184726
+# Mode     : poll
+#   poll-cmd      : 'GLG'
+#   poll-interval : 0.25s
+#   poll-duration : 30.0s
+#
+# Forbidden (never sent): ['APR', 'AST', 'AVD', 'CLR', 'DLA', 'DQK', 'EPG', 'GW2', 'GWF', 'HLD', 'JNT', 'JPM', 'KEY', 'MEMSET', 'MNU', 'MSB', 'MSV', 'NXT', 'POF', 'PRG', 'PRV', 'PSI', 'PWF', 'QSH', 'SLO', 'SQK', 'TGW', 'URC', 'VLO', 'WIPE', 'WPL', 'WPS']
+# Whitelist size        : 57
+#
+# Available ports at start:
+#   COM6  Standard Serial over Bluetooth link (COM6)  [HWID BTHENUM\{00001101-0000-1000-8000-00805F9B34FB}_LOCALMFG&0000\9&2D5301D7&0&000000000000_00000000]
+#   COM3  USB Serial Device (COM3)  [HWID USB VID:PID=1965:0019 SER=0000000000001 LOCATION=1-5.1]
+#   COM4  USB Serial Device (COM4)  [HWID USB VID:PID=1965:001A SER= LOCATION=1-5.4.2]
+
+
+## POLL MODE
+   cmd       : 'GLG'
+   interval  : 250 ms (~4.0 Hz)
+   duration  : 30.0 s
+
+[18:47:26.516] #0001     48 ms    16B  CHG  GLG,,,,,,,,,,,,\r
+
+## POLL SUMMARY: 120 iterations, 1 unique responses, 0 empty
+
+# probe complete.
+
+Log saved to: C:\Users\khutt\scanner-manager\AI\Dev\RE\sessions\sds100_serial_20260427T184726.txt

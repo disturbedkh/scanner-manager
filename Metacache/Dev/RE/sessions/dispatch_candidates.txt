@@ -1,0 +1,18 @@
+# SUB-port dispatch candidates extracted from FUN_14006ca6 in
+# sub_1.03.15_inflated.bin. See sub_command_dispatch.md for full notes.
+# One mnemonic per line; comments allowed. _verify_dispatch.py will
+# strip the FORBIDDEN_HEADS list at runtime ('h' is forbidden because
+# its streaming output skews the anchor-and-compare classifier).
+o
+q
+w
+d
+r
+m
+z
+h
+l
+s
+t
+u
+v

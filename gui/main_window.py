@@ -506,7 +506,7 @@ class MainWindow(QMainWindow):
             "<h3>Scanner Manager (Qt rebuild)</h3>"
             "<p>Multi-scanner manager for Uniden SDS100/200 and BearTracker 885.</p>"
             "<p>Phased rebuild on top of the existing scanner_profiles "
-            "backend - see <code>AI/Dev/MULTI_DEVICE_GUI.md</code>.</p>",
+            "backend - see <code>Metacache/Dev/MULTI_DEVICE_GUI.md</code>.</p>",
         )
 
     # ------------------------------------------------------------------

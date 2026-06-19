@@ -1,0 +1,10 @@
+# SDS100 SUB-port systematic probe
+# When     : 2026-04-29T17:30:04.710524
+# Port     : COM3
+# Anchor   : 'MDL' (expected to start with 'SDS100-SUB')
+# Forbidden: ['APR', 'AST', 'AVD', 'BOO', 'BRN', 'BRN_FW', 'BUR', 'CAL', 'CFG', 'CFW', 'CLR', 'CNF', 'DEL', 'DLA', 'DQK', 'EPG', 'ERA', 'ERS', 'FLA', 'FLS', 'FSH', 'GW2', 'GWF', 'HLD', 'JNT', 'JPM', 'KEY', 'MEMSET', 'MNU', 'MSB', 'MSV', 'MUT', 'NXT', 'PDN', 'PGM', 'POF', 'POW', 'PRG', 'PRV', 'PSI', 'PWF', 'PWROFF', 'PWR_OFF', 'QSH', 'REB', 'REG', 'RES', 'RGW', 'RST', 'RWR', 'SET', 'SLO', 'SQK', 'STR', 'TGW', 'UPD', 'UPG', 'URC', 'VLO', 'VOL_SET', 'WIPE', 'WPL', 'WPS', 'WR', 'WRT']
+# Available ports at start:
+#   COM6  Standard Serial over Bluetooth link (COM6)  [HWID BTHENUM\{00001101-0000-1000-8000-00805F9B34FB}_LOCALMFG&0000\9&2D5301D7&0&000000000000_00000000]
+#   COM3  USB Serial Device (COM3)  [HWID USB VID:PID=1965:0019 SER=0000000000001 LOCATION=1-5.1]
+#   COM4  USB Serial Device (COM4)  [HWID USB VID:PID=1965:001A SER= LOCATION=1-5.4.2]
+

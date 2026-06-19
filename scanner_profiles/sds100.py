@@ -2,7 +2,7 @@
 
 The SDS100 (handheld) and SDS200 (mobile) share ~99% of their
 firmware and SD card layout per the lab notebook in
-``AI/Dev/RE/docs/SDS100.md``. The only practical differences are
+``Metacache/Dev/RE/docs/SDS100.md``. The only practical differences are
 form factor and antenna connector. One profile covers both via
 the ``scanner_inf_aliases`` list ``("SDS100", "SDS200")``.
 
@@ -26,8 +26,8 @@ tables (CityTable / ZipTable). What's different:
   (waterfall, GPS, weather, display layout, paging tones, etc.).
 
 References:
-- ``AI/Dev/RE/docs/SDS100.md``
-- ``AI/Dev/RE/docs/SD_CARD_COMPARISON.md``
+- ``Metacache/Dev/RE/docs/SDS100.md``
+- ``Metacache/Dev/RE/docs/SD_CARD_COMPARISON.md``
 - ``wiki/RE-Serial-Protocol.md``
 """
 

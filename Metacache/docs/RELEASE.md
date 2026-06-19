@@ -10,7 +10,7 @@ Follow this file every time you cut a new version.
 
   ```bash
   ruff check core/ gui/ legacy_tk/ scanner_profiles/ scanner_drivers/ \
-    firmware/ streaming/ audio/ virtual_sd/ tests/ scripts/ AI/Dev/RE/tools/
+    firmware/ streaming/ audio/ virtual_sd/ tests/ scripts/ Metacache/Dev/RE/tools/
   ```
 - [ ] `CHANGELOG.md` has a heading for the new version (move content
       from `[Unreleased]` into `[0.9.0b3] - YYYY-MM-DD`).
@@ -36,8 +36,23 @@ git tag -a v0.9.0b3 -m "v0.9.0b3 - layout reorg and GitLab CI parity"
 git push origin v0.9.0b3
 ```
 
-GitLab CI builds the Windows EXE, macOS tarball, and Linux tarball on
-`v*` tags (`release:windows`, `release:macos`, `release:linux`).
+GitLab CI builds release artifacts under `build/<OS>/Release/` on
+`v*` tags (`release:windows`, `release:macos`, `release:linux`):
+
+| OS | Artifact path |
+| -- | ------------- |
+| Windows | `build/Windows/Release/ScannerManager.exe` (+ zip) |
+| macOS | `build/macOS/Release/ScannerManager-macos.tar.gz` |
+| Linux | `build/Linux/Release/ScannerManager-linux-x64.tar.gz` |
+
+Local PyInstaller smoke (Development default):
+
+```powershell
+pyinstaller packaging/scanner-manager.spec --noconfirm
+dir build\Windows\Development\
+```
+
+Release-mode local smoke: `$env:SCANNER_MANAGER_BUILD_TYPE='Release'`
 
 **Deprecated mirror:** GitHub Actions `.github/workflows/release.yml` is
 manual (`workflow_dispatch`) only — use it to publish public GitHub
@@ -77,7 +92,7 @@ Draft release notes from `CHANGELOG.md`.
 
 ## 4. Announce
 
-- Post `docs/forum-announcement.md` to the RadioReference Forums and
+- Post `Metacache/docs/forum-announcement.md` to the RadioReference Forums and
   /r/scanners when ready for a public beta.
 - Pin the release announcement on the repo.
 - Reply to any "is this tool still maintained?" threads you've been

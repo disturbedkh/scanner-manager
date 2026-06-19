@@ -1,0 +1,4 @@
+# remainder run @ 2026-04-29T18:48:31.052339 on COM3
+# anchor MDL -> 44B  SDS100-SUB\rSDS100-SUB\rSDS100-SUB\rSDS100-SUB\r
+
+[  1/30] HIT U,1         9B | U5C42\r<\x00>><\x00>

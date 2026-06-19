@@ -1,0 +1,531 @@
+# SDS100 passive serial probe
+# When     : 2026-04-29T17:49:20
+# Host     : MAINGAMINGPC
+# Port     : COM4  (baud=115200, 8N1)
+# Output   : C:\Users\khutt\scanner-manager\AI\Dev\RE\sessions\sds100_serial_20260429T174920.txt
+# Probe ID : 20260429T174920
+# Mode     : query
+#
+# Forbidden (never sent): ['APR', 'AST', 'AVD', 'BFH', 'CLR', 'DLA', 'DQK', 'EPG', 'GW2', 'GWF', 'HLD', 'JNT', 'JPM', 'KEY', 'MEMSET', 'MNU', 'MSB', 'MSV', 'NXT', 'POF', 'PRG', 'PRV', 'PSI', 'PWF', 'QSH', 'SLO', 'SQK', 'TGW', 'URC', 'VLO', 'WIPE', 'WPL', 'WPS']
+# Whitelist size        : 103
+#
+# Available ports at start:
+#   COM6  Standard Serial over Bluetooth link (COM6)  [HWID BTHENUM\{00001101-0000-1000-8000-00805F9B34FB}_LOCALMFG&0000\9&2D5301D7&0&000000000000_00000000]
+#   COM3  USB Serial Device (COM3)  [HWID USB VID:PID=1965:0019 SER=0000000000001 LOCATION=1-5.1]
+#   COM4  USB Serial Device (COM4)  [HWID USB VID:PID=1965:001A SER= LOCATION=1-5.4.2]
+
+
+>>> model                     cmd='MDL'
+<<< 11 bytes in 113 ms
+    raw  : b'MDL,SDS100\r'
+    show : MDL,SDS100\r
+
+>>> firmware                  cmd='VER'
+<<< 20 bytes in 110 ms
+    raw  : b'VER,Version 1.26.01\r'
+    show : VER,Version 1.26.01\r
+
+>>> status_display            cmd='STS'
+<<< 833 bytes in 115 ms
+    raw  : b'STS,00110110110000,              Apr29 17:57     ,                              ,  V:15  S:0   P25             ,______________________________,Gainesville Regional    ,                        ,Utilities (GRUCom)      ,                        ,Home                          ,______________________________,University of Florida   ,                        ,Police                  ,                        ,Simulcast                     ,______________________________,Primary Operations      ,                        ,                        ,                        ,TGID:2187                     ,                              ,Law Dispatch    P25 NAC:4D2h  ,______________________________,N\x14\x15                           ,                              , SYSTEM      DEPT     CHANNEL ,********* ********** *********,1,0,0,0,,,0,OFF,3\r'
+    show : STS,00110110110000,              Apr29 17:57     ,                              ,  V:15  S:0   P25             ,______________________________,Gainesville Regional    ,                        ,Utilities (GRUCom)      ,                        ,Home                          ,______________________________,University of Florida   ,                        ,Police                  ,                        ,Simulcast                     ,______________________________,Primary Operations      ,                        ,                        ,                        ,TGID:2187                     ,                              ,Law Dispatch    P25 NAC:4D2h  ,______________________________,N<\x14><\x15>                           ,                              , SYSTEM      DEPT     CHANNEL ,********* ********** *********,1,0,0,0,,,0,OFF,3\r
+
+>>> favorites_qkeys           cmd='FQK'
+<<< 204 bytes in 118 ms
+    raw  : b'FQK,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0\r'
+    show : FQK,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0\r
+
+>>> get_scanner_info          cmd='GSI'
+<<< 1092 bytes in 131 ms
+    raw  : b'GSI,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">\r  <MonitorList Name="Home" Index="2" ListType="FL" Q_Key="0" N_Tag="None" DB_Counter="0" />\r  <System Name="Gainesville Regional Utilities (GRUCom)" Index="6" Avoid="Off" SystemType="P25 Trunk" Q_Key="0" N_Tag="None" Hold="Off" />\r  <Department Name="University of Florida Police" Index="80" Avoid="Off" Q_Key="0" Hold="Off" />\r  <TGID Name="Primary Operations" Index="84" Avoid="Off" TGID="TGID:2187" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Law Dispatch" P_Ch="Off" LVL="0" />\r  <UnitID Name="UID:3094229" U_Id="UID:3094229" />\r  <Site Name="Simulcast" Index="9" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />\r  <SiteFrequency Freq=" 851.775000MHz" IFX="Off" SAS="NAC 4D2h" SAD="NAC 4D2h" />\r  <DualWatch PRI="Off" CC="Off" WX="Off" />\r  <Property F="Off" VOL="15" SQL="0" Sig="0" Att="Off" Rec="Off" KeyLock="Off" P25Status="P25" Mute="Unmute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-999" />\r  <ViewDescription>\r  </ViewDescription>\r</ScannerInfo>\r'
+    show : GSI,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">\r  <MonitorList Name="Home" Index="2" ListType="FL" Q_Key="0" N_Tag="None" DB_Counter="0" />\r  <System Name="Gainesville Regional Utilities (GRUCom)" Index="6" Avoid="Off" SystemType="P25 Trunk" Q_Key="0" N_Tag="None" Hold="Off" />\r  <Department Name="University of Florida Police" Index="80" Avoid="Off" Q_Key="0" Hold="Off" />\r  <TGID Name="Primary Operations" Index="84" Avoid="Off" TGID="TGID:2187" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Law Dispatch" P_Ch="Off" LVL="0" />\r  <UnitID Name="UID:3094229" U_Id="UID:3094229" />\r  <Site Name="Simulcast" Index="9" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />\r  <SiteFrequency Freq=" 851.775000MHz" IFX="Off" SAS="NAC 4D2h" SAD="NAC 4D2h" />\r  <DualWatch PRI="Off" CC="Off" WX="Off" />\r  <Property F="Off" VOL="15" SQL="0" Sig="0" Att="Off" Rec="Off" KeyLock="Off" P25Status="P25" Mute="Unmute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-999" />\r  <ViewDescription>\r  </ViewDescription>\r</ScannerInfo>\r
+
+>>> svc_types                 cmd='SVC'
+<<< 98 bytes in 110 ms
+    raw  : b'SVC,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0\r'
+    show : SVC,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0\r
+
+>>> date_time                 cmd='DTM'
+<<< 27 bytes in 110 ms
+    raw  : b'DTM,1,2026,4,29,17,57,57,1\r'
+    show : DTM,1,2026,4,29,17,57,57,1\r
+
+>>> location_range            cmd='LCR'
+<<< 27 bytes in 109 ms
+    raw  : b'LCR,0.000000,-0.000000,0.0\r'
+    show : LCR,0.000000,-0.000000,0.0\r
+
+>>> menu_status               cmd='MSI'
+<<< 112 bytes in 115 ms
+    raw  : b'MSI,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<MSI MenuType="TypeError" >\r  <Footer No="1" EOT="1"/>\r</MSI>\r'
+    show : MSI,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<MSI MenuType="TypeError" >\r  <Footer No="1" EOT="1"/>\r</MSI>\r
+
+>>> scanner_status_wf         cmd='GST'
+<<< 574 bytes in 116 ms
+    raw  : b'GST,00110110110000,              Apr29 17:57     ,,  V:15  S:0   P25             ,______________________________,Gainesville Regional    ,,Utilities (GRUCom)      ,,Home                          ,______________________________,University of Florida   ,,Police                  ,,Simulcast                     ,______________________________,Primary Operations      ,,,,TGID:2187                     ,,Law Dispatch    P25 NAC:4D2h  ,______________________________,N\x14\x15                           ,, SYSTEM      DEPT     CHANNEL ,********* ********** *********,0,OFF,3,,,,,,,,,\r'
+    show : GST,00110110110000,              Apr29 17:57     ,,  V:15  S:0   P25             ,______________________________,Gainesville Regional    ,,Utilities (GRUCom)      ,,Home                          ,______________________________,University of Florida   ,,Police                  ,,Simulcast                     ,______________________________,Primary Operations      ,,,,TGID:2187                     ,,Law Dispatch    P25 NAC:4D2h  ,______________________________,N<\x14><\x15>                           ,, SYSTEM      DEPT     CHANNEL ,********* ********** *********,0,OFF,3,,,,,,,,,\r
+
+>>> charge_status             cmd='GCS'
+<<< 4 bytes in 110 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> keep_alive                cmd='KAL'
+<<< 4 bytes in 110 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> glt_favorites             cmd='GLT,FL'
+<<< 490 bytes in 114 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FL Index="4294967295" Name="Full Database" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4261412864" Name="Search with Scan" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="0" Name="Alachua" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="2" Name="Home" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4" Name="Williston" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FL Index="4294967295" Name="Full Database" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4261412864" Name="Search with Scan" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="0" Name="Alachua" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="2" Name="Home" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4" Name="Williston" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_search_avoid          cmd='GLT,AFREQ'
+<<< 90 bytes in 110 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_fire_tone_out         cmd='GLT,FTO'
+<<< 3291 bytes in 143 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FTO Index="1" Freq=" 137.000000MHz" Mod="FM" Name="Tone-Out 0" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="2" Freq=" 138.000000MHz" Mod="FM" Name="Tone-Out 1" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="3" Freq=" 139.000000MHz" Mod="FM" Name="Tone-Out 2" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="4" Freq=" 140.000000MHz" Mod="FM" Name="Tone-Out 3" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="5" Freq=" 141.000000MHz" Mod="FM" Name="Tone-Out 4" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="6" Freq=" 142.000000MHz" Mod="FM" Name="Tone-Out 5" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="7" Freq=" 143.000000MHz" Mod="FM" Name="Tone-Out 6" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="8" Freq=" 144.000000MHz" Mod="FM" Name="Tone-Out 7" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="9" Freq=" 145.000000MHz" Mod="FM" Name="Tone-Out 8" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="10" Freq=" 146.000000MHz" Mod="FM" Name="Tone-Out 9" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="11" Freq=" 147.000000MHz" Mod="FM" Name="Tone-Out 10" ToneA="0.0" ToneB="0.0" />\r  <Footer No="1" EOT="0"/>\r</GLT>\rGLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FTO Index="12" Freq=" 148.000000MHz" Mod="FM" Name="Tone-Out 11" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="13" Freq=" 149.000000MHz" Mod="FM" Name="Tone-Out 12" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="14" Freq=" 150.000000MHz" Mod="FM" Name="Tone-Out 13" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="15" Freq=" 151.000000MHz" Mod="FM" Name="Tone-Out 14" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="16" Freq=" 152.000000MHz" Mod="FM" Name="Tone-Out 15" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="17" Freq=" 153.000000MHz" Mod="FM" Name="Tone-Out 16" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="18" Freq=" 154.000000MHz" Mod="FM" Name="Tone-Out 17" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="19" Freq=" 155.000000MHz" Mod="FM" Name="Tone-Out 18" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="20" Freq=" 156.000000MHz" Mod="FM" Name="Tone-Out 19" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="21" Freq=" 157.000000MHz" Mod="FM" Name="Tone-Out 20" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="22" Freq=" 158.000000MHz" Mod="FM" Name="Tone-Out 21" ToneA="0.0" ToneB="0.0" />\r  <Footer No="2" EOT="0"/>\r</GLT>\rGLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FTO Index="23" Freq=" 159.000000MHz" Mod="FM" Name="Tone-Out 22" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="24" Freq=" 160.000000MHz" Mod="FM" Name="Tone-Out 23" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="25" Freq=" 161.000000MHz" Mod="FM" Name="Tone-Out 24" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="26" Freq=" 162.000000MHz" Mod="FM" Name="Tone-Out 25" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="27" Freq=" 163.000000MHz" Mod="FM" Name="Tone-Out 26" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="28" Freq=" 164.000000MHz" Mod="FM" Name="Tone-Out 27" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="29" Freq=" 165.000000MHz" Mod="FM" Name="Tone-Out 28" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="30" Freq=" 166.000000MHz" Mod="FM" Name="Tone-Out 29" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="31" Freq=" 167.000000MHz" Mod="FM" Name="Tone-Out 30" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="32" Freq=" 168.000000MHz" Mod="FM" Name="Tone-Out 31" ToneA="0.0" ToneB="0.0" />\r  <Footer No="3" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FTO Index="1" Freq=" 137.000000MHz" Mod="FM" Name="Tone-Out 0" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="2" Freq=" 138.000000MHz" Mod="FM" Name="Tone-Out 1" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="3" Freq=" 139.000000MHz" Mod="FM" Name="Tone-Out 2" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="4" Freq=" 140.000000MHz" Mod="FM" Name="Tone-Out 3" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="5" Freq=" 141.000000MHz" Mod="FM" Name="Tone-Out 4" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="6" Freq=" 142.000000MHz" Mod="FM" Name="Tone-Out 5" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="7" Freq=" 143.000000MHz" Mod="FM" Name="Tone-Out 6" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="8" Freq=" 144.000000MHz" Mod="FM" Name="Tone-Out 7" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="9" Freq=" 145.000000MHz" Mod="FM" Name="Tone-Out 8" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="10" Freq=" 146.000000MHz" Mod="FM" Name="Tone-Out 9" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="11" Freq=" 147.000000MHz" Mod="FM" Name="Tone-Out 10" ToneA="0.0" ToneB="0.0" />\r  <Footer No="1" EOT="0"/>\r</GLT>\rGLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FTO Index="12" Freq=" 148.000000MHz" Mod="FM" Name="Tone-Out 11" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="13" Freq=" 149.000000MHz" Mod="FM" Name="Tone-Out 12" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="14" Freq=" 150.000000MHz" Mod="FM" Name="Tone-Out 13" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="15" Freq=" 151.000000MHz" Mod="FM" Name="Tone-Out 14" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="16" Freq=" 152.000000MHz" Mod="FM" Name="Tone-Out 15" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="17" Freq=" 153.000000MHz" Mod="FM" Name="Tone-Out 16" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="18" Freq=" 154.000000MHz" Mod="FM" Name="Tone-Out 17" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="19" Freq=" 155.000000MHz" Mod="FM" Name="Tone-Out 18" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="20" Freq=" 156.000000MHz" Mod="FM" Name="Tone-Out 19" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="21" Freq=" 157.000000MHz" Mod="FM" Name="Tone-Out 20" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="22" Freq=" 158.000000MHz" Mod="FM" Name="Tone-Out 21" ToneA="0.0" ToneB="0.0" />\r  <Footer No="2" EOT="0"/>\r</GLT>\rGLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FTO Index="23" Freq=" 159.000000MHz" Mod="FM" Name="Tone-Out 22" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="24" Freq=" 160.000000MHz" Mod="FM" Name="Tone-Out 23" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="25" Freq=" 161.000000MHz" Mod="FM" Name="Tone-Out 24" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="26" Freq=" 162.000000MHz" Mod="FM" Name="Tone-Out 25" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="27" Freq=" 163.000000MHz" Mod="FM" Name="Tone-Out 26" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="28" Freq=" 164.000000MHz" Mod="FM" Name="Tone-Out 27" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="29" Freq=" 165.000000MHz" Mod="FM" Name="Tone-Out 28" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="30" Freq=" 166.000000MHz" Mod="FM" Name="Tone-Out 29" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="31" Freq=" 167.000000MHz" Mod="FM" Name="Tone-Out 30" ToneA="0.0" ToneB="0.0" />\r  <FTO Index="32" Freq=" 168.000000MHz" Mod="FM" Name="Tone-Out 31" ToneA="0.0" ToneB="0.0" />\r  <Footer No="3" EOT="1"/>\r</GLT>\r
+
+>>> glt_custom_banks          cmd='GLT,CS_BANK'
+<<< 1271 bytes in 127 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <CS_BANK Index="1" Name="Custom 0" Lower="  25.000000MHz" Upper="  27.999999MHz" Mod="Auto" Step="Auto" />\r  <CS_BANK Index="2" Name="Custom 1" Lower="  28.000000MHz" Upper="  29.699999MHz" Mod="Auto" Step="Auto" />\r  <CS_BANK Index="3" Name="Custom 2" Lower="  29.700000MHz" Upper="  49.999999MHz" Mod="Auto" Step="Auto" />\r  <CS_BANK Index="4" Name="Custom 3" Lower="  50.000000MHz" Upper="  53.999999MHz" Mod="Auto" Step="Auto" />\r  <CS_BANK Index="5" Name="Custom 4" Lower=" 137.000000MHz" Upper=" 143.999999MHz" Mod="Auto" Step="Auto" />\r  <CS_BANK Index="6" Name="Custom 5" Lower=" 144.000000MHz" Upper=" 147.999999MHz" Mod="Auto" Step="Auto" />\r  <CS_BANK Index="7" Name="Custom 6" Lower=" 406.000000MHz" Upper=" 419.999999MHz" Mod="Auto" Step="Auto" />\r  <CS_BANK Index="8" Name="Custom 7" Lower=" 420.000000MHz" Upper=" 449.999999MHz" Mod="Auto" Step="Auto" />\r  <CS_BANK Index="9" Name="Custom 8" Lower=" 450.000000MHz" Upper=" 469.999999MHz" Mod="Auto" Step="Auto" />\r  <Footer No="1" EOT="0"/>\r</GLT>\rGLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <CS_BANK Index="10" Name="Custom 9" Lower=" 806.000000MHz" Upper=" 960.000000MHz" Mod="Auto" Step="Auto" />\r  <Footer No="2" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <CS_BANK Index="1" Name="Custom 0" Lower="  25.000000MHz" Upper="  27.999999MHz" Mod="Auto" Step="Auto" />\r  <CS_BANK Index="2" Name="Custom 1" Lower="  28.000000MHz" Upper="  29.699999MHz" Mod="Auto" Step="Auto" />\r  <CS_BANK Index="3" Name="Custom 2" Lower="  29.700000MHz" Upper="  49.999999MHz" Mod="Auto" Step="Auto" />\r  <CS_BANK Index="4" Name="Custom 3" Lower="  50.000000MHz" Upper="  53.999999MHz" Mod="Auto" Step="Auto" />\r  <CS_BANK Index="5" Name="Custom 4" Lower=" 137.000000MHz" Upper=" 143.999999MHz" Mod="Auto" Step="Auto" />\r  <CS_BANK Index="6" Name="Custom 5" Lower=" 144.000000MHz" Upper=" 147.999999MHz" Mod="Auto" Step="Auto" />\r  <CS_BANK Index="7" Name="Custom 6" Lower=" 406.000000MHz" Upper=" 419.999999MHz" Mod="Auto" Step="Auto" />\r  <CS_BANK Index="8" Name="Custom 7" Lower=" 420.000000MHz" Upper=" 449.999999MHz" Mod="Auto" Step="Auto" />\r  <CS_BANK Index="9" Name="Custom 8" Lower=" 450.000000MHz" Upper=" 469.999999MHz" Mod="Auto" Step="Auto" />\r  <Footer No="1" EOT="0"/>\r</GLT>\rGLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <CS_BANK Index="10" Name="Custom 9" Lower=" 806.000000MHz" Upper=" 960.000000MHz" Mod="Auto" Step="Auto" />\r  <Footer No="2" EOT="1"/>\r</GLT>\r
+
+>>> glt_inner_rec             cmd='GLT,IREC_FILE'
+<<< 90 bytes in 116 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_user_rec_folders      cmd='GLT,UREC'
+<<< 490 bytes in 115 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FL Index="4294967295" Name="Full Database" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4261412864" Name="Search with Scan" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="0" Name="Alachua" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="2" Name="Home" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4" Name="Williston" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FL Index="4294967295" Name="Full Database" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4261412864" Name="Search with Scan" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="0" Name="Alachua" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="2" Name="Home" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4" Name="Williston" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_trunk_discovery       cmd='GLT,TRN_DISCOV'
+<<< 90 bytes in 110 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_conv_discovery        cmd='GLT,CNV_DISCOV'
+<<< 90 bytes in 110 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glcd_info                 cmd='GLG'
+<<< 85 bytes in 110 ms
+    raw  : b'GLG,2187,NFM,0,0,Simulcast,University of Florida Police,Primary Operations,1,0,,,4D2\r'
+    show : GLG,2187,NFM,0,0,Simulcast,University of Florida Police,Primary Operations,1,0,,,4D2\r
+
+>>> power_freq                cmd='PWR'
+<<< 18 bytes in 109 ms
+    raw  : b'PWR,-999,08517750\r'
+    show : PWR,-999,08517750\r
+
+>>> volume                    cmd='VOL'
+<<< 7 bytes in 107 ms
+    raw  : b'VOL,15\r'
+    show : VOL,15\r
+
+>>> squelch                   cmd='SQL'
+<<< 6 bytes in 109 ms
+    raw  : b'SQL,0\r'
+    show : SQL,0\r
+
+>>> rsi                       cmd='RSI'
+<<< 4 bytes in 115 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> battery                   cmd='BAV'
+<<< 4 bytes in 110 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> backlight                 cmd='BLT'
+<<< 4 bytes in 108 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> contrast                  cmd='CNT'
+<<< 4 bytes in 107 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> display_mode              cmd='DMA'
+<<< 4 bytes in 109 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> scan_state                cmd='SCN'
+<<< 4 bytes in 109 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> close_call_band           cmd='CBP'
+<<< 4 bytes in 109 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> custom_search_status      cmd='CSP'
+<<< 4 bytes in 110 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> location_get              cmd='LOC'
+<<< 4 bytes in 109 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> gps_get                   cmd='GIN,GPS'
+<<< 4 bytes in 109 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> clock                     cmd='CLK'
+<<< 4 bytes in 109 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> owner_info                cmd='OMS'
+<<< 4 bytes in 109 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> backlight_info            cmd='BLI'
+<<< 4 bytes in 110 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> memory_info               cmd='MEM'
+<<< 4 bytes in 110 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> priority_state            cmd='PRI'
+<<< 4 bytes in 110 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> alert_status              cmd='ALT'
+<<< 4 bytes in 109 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> get_remote_id             cmd='GID'
+<<< 4 bytes in 107 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> number_tag                cmd='NTG'
+<<< 4 bytes in 108 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> waterfall_setting         cmd='WFL'
+<<< 4 bytes in 108 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> favorite_list             cmd='FAV'
+<<< 4 bytes in 109 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> rangelist_get             cmd='RLG'
+<<< 4 bytes in 108 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> model_qform               cmd='MDL,?'
+<<< 8 bytes in 110 ms
+    raw  : b'MDL,ERR\r'
+    show : MDL,ERR\r
+
+>>> firmware_qform            cmd='VER,?'
+<<< 8 bytes in 110 ms
+    raw  : b'VER,ERR\r'
+    show : VER,ERR\r
+
+>>> status_qform              cmd='STS,?'
+<<< 8 bytes in 108 ms
+    raw  : b'STS,ERR\r'
+    show : STS,ERR\r
+
+>>> glcd_qform                cmd='GLG,?'
+<<< 8 bytes in 108 ms
+    raw  : b'GLG,ERR\r'
+    show : GLG,ERR\r
+
+>>> volume_qform              cmd='VOL,?'
+<<< 7 bytes in 137 ms
+    raw  : b'VOL,OK\r'
+    show : VOL,OK\r
+
+>>> squelch_qform             cmd='SQL,?'
+<<< 7 bytes in 109 ms
+    raw  : b'SQL,OK\r'
+    show : SQL,OK\r
+
+>>> svc_qform                 cmd='SVC,?'
+<<< 8 bytes in 109 ms
+    raw  : b'SVC,ERR\r'
+    show : SVC,ERR\r
+
+>>> dtm_qform                 cmd='DTM,?'
+<<< 8 bytes in 109 ms
+    raw  : b'DTM,ERR\r'
+    show : DTM,ERR\r
+
+>>> lcr_qform                 cmd='LCR,?'
+<<< 8 bytes in 114 ms
+    raw  : b'LCR,ERR\r'
+    show : LCR,ERR\r
+
+>>> fqk_qform                 cmd='FQK,?'
+<<< 8 bytes in 109 ms
+    raw  : b'FQK,ERR\r'
+    show : FQK,ERR\r
+
+>>> gcs_qform                 cmd='GCS,?'
+<<< 4 bytes in 107 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> kal_qform                 cmd='KAL,?'
+<<< 4 bytes in 110 ms
+    raw  : b'ERR\r'
+    show : ERR\r
+
+>>> gsi_xml                   cmd='GSI,XML'
+<<< 1048 bytes in 126 ms
+    raw  : b'GSI,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">\r  <MonitorList Name="Home" Index="2" ListType="FL" Q_Key="0" N_Tag="None" DB_Counter="0" />\r  <System Name="Gainesville Regional Utilities (GRUCom)" Index="6" Avoid="Off" SystemType="P25 Trunk" Q_Key="0" N_Tag="None" Hold="Off" />\r  <Department Name="University of Florida Police" Index="80" Avoid="Off" Q_Key="0" Hold="Off" />\r  <TGID Name="Primary Operations" Index="84" Avoid="Off" TGID="TGID:2187" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Law Dispatch" P_Ch="Off" LVL="0" />\r  <UnitID />\r  <Site Name="Simulcast" Index="9" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />\r  <SiteFrequency Freq=" 853.187500MHz" IFX="Off" SAS="NAC 4D2h" SAD="None" />\r  <DualWatch PRI="Off" CC="Off" WX="Off" />\r  <Property F="Off" VOL="0" SQL="0" Sig="0" Att="Off" Rec="Off" KeyLock="Off" P25Status="Data" Mute="Mute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-999" />\r  <ViewDescription>\r  </ViewDescription>\r</ScannerInfo>\r'
+    show : GSI,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">\r  <MonitorList Name="Home" Index="2" ListType="FL" Q_Key="0" N_Tag="None" DB_Counter="0" />\r  <System Name="Gainesville Regional Utilities (GRUCom)" Index="6" Avoid="Off" SystemType="P25 Trunk" Q_Key="0" N_Tag="None" Hold="Off" />\r  <Department Name="University of Florida Police" Index="80" Avoid="Off" Q_Key="0" Hold="Off" />\r  <TGID Name="Primary Operations" Index="84" Avoid="Off" TGID="TGID:2187" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Law Dispatch" P_Ch="Off" LVL="0" />\r  <UnitID />\r  <Site Name="Simulcast" Index="9" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />\r  <SiteFrequency Freq=" 853.187500MHz" IFX="Off" SAS="NAC 4D2h" SAD="None" />\r  <DualWatch PRI="Off" CC="Off" WX="Off" />\r  <Property F="Off" VOL="0" SQL="0" Sig="0" Att="Off" Rec="Off" KeyLock="Off" P25Status="Data" Mute="Mute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-999" />\r  <ViewDescription>\r  </ViewDescription>\r</ScannerInfo>\r
+
+>>> gsi_raw                   cmd='GSI,RAW'
+<<< 1048 bytes in 126 ms
+    raw  : b'GSI,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">\r  <MonitorList Name="Home" Index="2" ListType="FL" Q_Key="0" N_Tag="None" DB_Counter="0" />\r  <System Name="Gainesville Regional Utilities (GRUCom)" Index="6" Avoid="Off" SystemType="P25 Trunk" Q_Key="0" N_Tag="None" Hold="Off" />\r  <Department Name="University of Florida Police" Index="80" Avoid="Off" Q_Key="0" Hold="Off" />\r  <TGID Name="Primary Operations" Index="84" Avoid="Off" TGID="TGID:2187" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Law Dispatch" P_Ch="Off" LVL="0" />\r  <UnitID />\r  <Site Name="Simulcast" Index="9" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />\r  <SiteFrequency Freq=" 853.187500MHz" IFX="Off" SAS="NAC 4D2h" SAD="None" />\r  <DualWatch PRI="Off" CC="Off" WX="Off" />\r  <Property F="Off" VOL="0" SQL="0" Sig="0" Att="Off" Rec="Off" KeyLock="Off" P25Status="Data" Mute="Mute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-999" />\r  <ViewDescription>\r  </ViewDescription>\r</ScannerInfo>\r'
+    show : GSI,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">\r  <MonitorList Name="Home" Index="2" ListType="FL" Q_Key="0" N_Tag="None" DB_Counter="0" />\r  <System Name="Gainesville Regional Utilities (GRUCom)" Index="6" Avoid="Off" SystemType="P25 Trunk" Q_Key="0" N_Tag="None" Hold="Off" />\r  <Department Name="University of Florida Police" Index="80" Avoid="Off" Q_Key="0" Hold="Off" />\r  <TGID Name="Primary Operations" Index="84" Avoid="Off" TGID="TGID:2187" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Law Dispatch" P_Ch="Off" LVL="0" />\r  <UnitID />\r  <Site Name="Simulcast" Index="9" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />\r  <SiteFrequency Freq=" 853.187500MHz" IFX="Off" SAS="NAC 4D2h" SAD="None" />\r  <DualWatch PRI="Off" CC="Off" WX="Off" />\r  <Property F="Off" VOL="0" SQL="0" Sig="0" Att="Off" Rec="Off" KeyLock="Off" P25Status="Data" Mute="Mute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-999" />\r  <ViewDescription>\r  </ViewDescription>\r</ScannerInfo>\r
+
+>>> gsi_prop                  cmd='GSI,PROP'
+<<< 1052 bytes in 126 ms
+    raw  : b'GSI,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">\r  <MonitorList Name="Home" Index="2" ListType="FL" Q_Key="0" N_Tag="None" DB_Counter="0" />\r  <System Name="Gainesville Regional Utilities (GRUCom)" Index="6" Avoid="Off" SystemType="P25 Trunk" Q_Key="0" N_Tag="None" Hold="Off" />\r  <Department Name="University of Florida Police" Index="80" Avoid="Off" Q_Key="0" Hold="Off" />\r  <TGID Name="Primary Operations" Index="84" Avoid="Off" TGID="TGID:2187" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Law Dispatch" P_Ch="Off" LVL="0" />\r  <UnitID />\r  <Site Name="Simulcast" Index="9" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />\r  <SiteFrequency Freq=" 853.187500MHz" IFX="Off" SAS="NAC 4D2h" SAD="NAC 4D2h" />\r  <DualWatch PRI="Off" CC="Off" WX="Off" />\r  <Property F="Off" VOL="0" SQL="0" Sig="0" Att="Off" Rec="Off" KeyLock="Off" P25Status="Data" Mute="Mute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-999" />\r  <ViewDescription>\r  </ViewDescription>\r</ScannerInfo>\r'
+    show : GSI,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">\r  <MonitorList Name="Home" Index="2" ListType="FL" Q_Key="0" N_Tag="None" DB_Counter="0" />\r  <System Name="Gainesville Regional Utilities (GRUCom)" Index="6" Avoid="Off" SystemType="P25 Trunk" Q_Key="0" N_Tag="None" Hold="Off" />\r  <Department Name="University of Florida Police" Index="80" Avoid="Off" Q_Key="0" Hold="Off" />\r  <TGID Name="Primary Operations" Index="84" Avoid="Off" TGID="TGID:2187" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Law Dispatch" P_Ch="Off" LVL="0" />\r  <UnitID />\r  <Site Name="Simulcast" Index="9" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />\r  <SiteFrequency Freq=" 853.187500MHz" IFX="Off" SAS="NAC 4D2h" SAD="NAC 4D2h" />\r  <DualWatch PRI="Off" CC="Off" WX="Off" />\r  <Property F="Off" VOL="0" SQL="0" Sig="0" Att="Off" Rec="Off" KeyLock="Off" P25Status="Data" Mute="Mute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-999" />\r  <ViewDescription>\r  </ViewDescription>\r</ScannerInfo>\r
+
+>>> gsi_full                  cmd='GSI,FULL'
+<<< 1052 bytes in 125 ms
+    raw  : b'GSI,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">\r  <MonitorList Name="Home" Index="2" ListType="FL" Q_Key="0" N_Tag="None" DB_Counter="0" />\r  <System Name="Gainesville Regional Utilities (GRUCom)" Index="6" Avoid="Off" SystemType="P25 Trunk" Q_Key="0" N_Tag="None" Hold="Off" />\r  <Department Name="University of Florida Police" Index="80" Avoid="Off" Q_Key="0" Hold="Off" />\r  <TGID Name="Primary Operations" Index="84" Avoid="Off" TGID="TGID:2187" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Law Dispatch" P_Ch="Off" LVL="0" />\r  <UnitID />\r  <Site Name="Simulcast" Index="9" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />\r  <SiteFrequency Freq=" 853.187500MHz" IFX="Off" SAS="NAC 4D2h" SAD="NAC 4D2h" />\r  <DualWatch PRI="Off" CC="Off" WX="Off" />\r  <Property F="Off" VOL="0" SQL="0" Sig="0" Att="Off" Rec="Off" KeyLock="Off" P25Status="Data" Mute="Mute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-999" />\r  <ViewDescription>\r  </ViewDescription>\r</ScannerInfo>\r'
+    show : GSI,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">\r  <MonitorList Name="Home" Index="2" ListType="FL" Q_Key="0" N_Tag="None" DB_Counter="0" />\r  <System Name="Gainesville Regional Utilities (GRUCom)" Index="6" Avoid="Off" SystemType="P25 Trunk" Q_Key="0" N_Tag="None" Hold="Off" />\r  <Department Name="University of Florida Police" Index="80" Avoid="Off" Q_Key="0" Hold="Off" />\r  <TGID Name="Primary Operations" Index="84" Avoid="Off" TGID="TGID:2187" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Law Dispatch" P_Ch="Off" LVL="0" />\r  <UnitID />\r  <Site Name="Simulcast" Index="9" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />\r  <SiteFrequency Freq=" 853.187500MHz" IFX="Off" SAS="NAC 4D2h" SAD="NAC 4D2h" />\r  <DualWatch PRI="Off" CC="Off" WX="Off" />\r  <Property F="Off" VOL="0" SQL="0" Sig="0" Att="Off" Rec="Off" KeyLock="Off" P25Status="Data" Mute="Mute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-999" />\r  <ViewDescription>\r  </ViewDescription>\r</ScannerInfo>\r
+
+>>> sts_1                     cmd='STS,1'
+<<< 8 bytes in 108 ms
+    raw  : b'STS,ERR\r'
+    show : STS,ERR\r
+
+>>> sts_wide                  cmd='STS,WIDE'
+<<< 8 bytes in 110 ms
+    raw  : b'STS,ERR\r'
+    show : STS,ERR\r
+
+>>> sts_full                  cmd='STS,FULL'
+<<< 8 bytes in 110 ms
+    raw  : b'STS,ERR\r'
+    show : STS,ERR\r
+
+>>> glt_chn                   cmd='GLT,CHN'
+<<< 490 bytes in 113 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FL Index="4294967295" Name="Full Database" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4261412864" Name="Search with Scan" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="0" Name="Alachua" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="2" Name="Home" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4" Name="Williston" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FL Index="4294967295" Name="Full Database" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4261412864" Name="Search with Scan" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="0" Name="Alachua" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="2" Name="Home" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4" Name="Williston" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_grp                   cmd='GLT,GRP'
+<<< 490 bytes in 110 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FL Index="4294967295" Name="Full Database" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4261412864" Name="Search with Scan" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="0" Name="Alachua" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="2" Name="Home" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4" Name="Williston" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FL Index="4294967295" Name="Full Database" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4261412864" Name="Search with Scan" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="0" Name="Alachua" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="2" Name="Home" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4" Name="Williston" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_sys                   cmd='GLT,SYS'
+<<< 225 bytes in 109 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <SYS Index="6" CountyId="0" Name="Gainesville Regional Utilities (GRUCom)" Avoid="Off" Type="P25 Trunk" Q_Key="None" N_Tag="None" />\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <SYS Index="6" CountyId="0" Name="Gainesville Regional Utilities (GRUCom)" Avoid="Off" Type="P25 Trunk" Q_Key="None" N_Tag="None" />\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_dept                  cmd='GLT,DEPT'
+<<< 90 bytes in 109 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_site                  cmd='GLT,SITE'
+<<< 90 bytes in 108 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_uid                   cmd='GLT,UID'
+<<< 490 bytes in 109 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FL Index="4294967295" Name="Full Database" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4261412864" Name="Search with Scan" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="0" Name="Alachua" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="2" Name="Home" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4" Name="Williston" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FL Index="4294967295" Name="Full Database" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4261412864" Name="Search with Scan" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="0" Name="Alachua" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="2" Name="Home" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4" Name="Williston" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_rx                    cmd='GLT,RX'
+<<< 490 bytes in 109 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FL Index="4294967295" Name="Full Database" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4261412864" Name="Search with Scan" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="0" Name="Alachua" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="2" Name="Home" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4" Name="Williston" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FL Index="4294967295" Name="Full Database" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4261412864" Name="Search with Scan" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="0" Name="Alachua" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="2" Name="Home" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4" Name="Williston" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_log                   cmd='GLT,LOG'
+<<< 490 bytes in 127 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FL Index="4294967295" Name="Full Database" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4261412864" Name="Search with Scan" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="0" Name="Alachua" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="2" Name="Home" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4" Name="Williston" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FL Index="4294967295" Name="Full Database" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4261412864" Name="Search with Scan" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="0" Name="Alachua" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="2" Name="Home" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4" Name="Williston" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_bnd                   cmd='GLT,BND'
+<<< 490 bytes in 110 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FL Index="4294967295" Name="Full Database" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4261412864" Name="Search with Scan" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="0" Name="Alachua" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="2" Name="Home" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4" Name="Williston" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FL Index="4294967295" Name="Full Database" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4261412864" Name="Search with Scan" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="0" Name="Alachua" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="2" Name="Home" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4" Name="Williston" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_bank                  cmd='GLT,BANK'
+<<< 490 bytes in 110 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FL Index="4294967295" Name="Full Database" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4261412864" Name="Search with Scan" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="0" Name="Alachua" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="2" Name="Home" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4" Name="Williston" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <FL Index="4294967295" Name="Full Database" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4261412864" Name="Search with Scan" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="0" Name="Alachua" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <FL Index="2" Name="Home" Monitor="On" Q_Key="None" N_Tag="None" />\r  <FL Index="4" Name="Williston" Monitor="Off" Q_Key="None" N_Tag="None" />\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> msi_stat                  cmd='MSI,STAT'
+<<< 112 bytes in 108 ms
+    raw  : b'MSI,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<MSI MenuType="TypeError" >\r  <Footer No="1" EOT="1"/>\r</MSI>\r'
+    show : MSI,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<MSI MenuType="TypeError" >\r  <Footer No="1" EOT="1"/>\r</MSI>\r
+
+>>> msi_peek                  cmd='MSI,PEEK'
+<<< 112 bytes in 108 ms
+    raw  : b'MSI,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<MSI MenuType="TypeError" >\r  <Footer No="1" EOT="1"/>\r</MSI>\r'
+    show : MSI,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<MSI MenuType="TypeError" >\r  <Footer No="1" EOT="1"/>\r</MSI>\r
+
+>>> msi_curr                  cmd='MSI,CURR'
+<<< 112 bytes in 109 ms
+    raw  : b'MSI,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<MSI MenuType="TypeError" >\r  <Footer No="1" EOT="1"/>\r</MSI>\r'
+    show : MSI,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<MSI MenuType="TypeError" >\r  <Footer No="1" EOT="1"/>\r</MSI>\r
+
+>>> gst_1                     cmd='GST,1'
+<<< 8 bytes in 110 ms
+    raw  : b'GST,ERR\r'
+    show : GST,ERR\r
+
+>>> gst_x                     cmd='GST,X'
+<<< 8 bytes in 110 ms
+    raw  : b'GST,ERR\r'
+    show : GST,ERR\r
+
+>>> gst_full                  cmd='GST,FULL'
+<<< 8 bytes in 109 ms
+    raw  : b'GST,ERR\r'
+    show : GST,ERR\r
+
+>>> gsi_qform2                cmd='GSI,XML,?'
+<<< 1023 bytes in 127 ms
+    raw  : b'GSI,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">\r  <MonitorList Name="Home" Index="2" ListType="FL" Q_Key="0" N_Tag="None" DB_Counter="0" />\r  <System Name="Gainesville Regional Utilities (GRUCom)" Index="6" Avoid="Off" SystemType="P25 Trunk" Q_Key="0" N_Tag="None" Hold="Off" />\r  <Department Index="4294967295" Avoid="Off" Q_Key="0" Hold="Off" />\r  <TGID Index="4294967295" Avoid="Off" TGID="TGID: ---" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" P_Ch="Off" LVL="0" />\r  <UnitID />\r  <Site Name="Simulcast" Index="9" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />\r  <SiteFrequency Freq=" 853.187500MHz" IFX="Off" SAS="NAC 4D2h" SAD="NAC 4D2h" />\r  <DualWatch PRI="Off" CC="Off" WX="Off" />\r  <Property F="Off" VOL="0" SQL="0" Sig="0" Att="Off" Rec="Off" KeyLock="Off" P25Status="Data" Mute="Mute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-999" />\r  <ViewDescription>\r    <OverWrite Text="ID Scanning..." />\r  </ViewDescription>\r</ScannerInfo>\r'
+    show : GSI,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">\r  <MonitorList Name="Home" Index="2" ListType="FL" Q_Key="0" N_Tag="None" DB_Counter="0" />\r  <System Name="Gainesville Regional Utilities (GRUCom)" Index="6" Avoid="Off" SystemType="P25 Trunk" Q_Key="0" N_Tag="None" Hold="Off" />\r  <Department Index="4294967295" Avoid="Off" Q_Key="0" Hold="Off" />\r  <TGID Index="4294967295" Avoid="Off" TGID="TGID: ---" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" P_Ch="Off" LVL="0" />\r  <UnitID />\r  <Site Name="Simulcast" Index="9" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />\r  <SiteFrequency Freq=" 853.187500MHz" IFX="Off" SAS="NAC 4D2h" SAD="NAC 4D2h" />\r  <DualWatch PRI="Off" CC="Off" WX="Off" />\r  <Property F="Off" VOL="0" SQL="0" Sig="0" Att="Off" Rec="Off" KeyLock="Off" P25Status="Data" Mute="Mute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-999" />\r  <ViewDescription>\r    <OverWrite Text="ID Scanning..." />\r  </ViewDescription>\r</ScannerInfo>\r
+
+>>> glt_stgid_bare            cmd='GLT,STGID'
+<<< 90 bytes in 110 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_stgid_0               cmd='GLT,STGID,0'
+<<< 90 bytes in 110 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_cc_bare               cmd='GLT,CC'
+<<< 90 bytes in 109 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_wx_bare               cmd='GLT,WX'
+<<< 90 bytes in 109 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_sws_freq_bare         cmd='GLT,SWS_FREQ'
+<<< 90 bytes in 122 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_sws_freq_0            cmd='GLT,SWS_FREQ,0'
+<<< 90 bytes in 109 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_cchit_bare            cmd='GLT,CCHIT'
+<<< 90 bytes in 110 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_cchit_0               cmd='GLT,CCHIT,0'
+<<< 90 bytes in 108 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_cs_freq_bare          cmd='GLT,CS_FREQ'
+<<< 90 bytes in 110 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_cs_freq_0             cmd='GLT,CS_FREQ,0'
+<<< 90 bytes in 107 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_qs_freq_bare          cmd='GLT,QS_FREQ'
+<<< 90 bytes in 107 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_rptr_freq_bare        cmd='GLT,RPTR_FREQ'
+<<< 90 bytes in 109 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_urec_folder_bare      cmd='GLT,UREC_FOLDER'
+<<< 90 bytes in 107 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_band_scope_bare       cmd='GLT,BAND_SCOPE'
+<<< 90 bytes in 108 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_sys_0                 cmd='GLT,SYS,0'
+<<< 90 bytes in 110 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_dept_0                cmd='GLT,DEPT,0'
+<<< 90 bytes in 110 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_site_0                cmd='GLT,SITE,0'
+<<< 90 bytes in 110 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_cfreq_0               cmd='GLT,CFREQ,0'
+<<< 90 bytes in 107 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_tgid_0                cmd='GLT,TGID,0'
+<<< 90 bytes in 107 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_sfreq_0               cmd='GLT,SFREQ,0'
+<<< 90 bytes in 110 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r  <Footer No="1" EOT="1"/>\r</GLT>\r
+
+>>> glt_atgid_0               cmd='GLT,ATGID,0'
+<<< 56 bytes in 106 ms
+    raw  : b'GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r'
+    show : GLT,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<GLT>\r
+
+>>> glt_urec_file_0           cmd='GLT,UREC_FILE,0'
+<<< (no response, 1505 ms timeout)
+
+# probe complete.
