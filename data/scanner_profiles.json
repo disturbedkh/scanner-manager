@@ -1,11 +1,31 @@
 {
-  "manifest_version": 1,
+  "manifest_version": 2,
   "profiles": [
     {
       "id": "uniden_bt885",
       "display": "Uniden BearTracker 885",
       "family": "uniden_beartracker",
-      "match_target_model": ["Beartracker885", "BearTracker885", "BT885"]
+      "match_target_model": ["Beartracker885", "BearTracker885", "BT885", "BCDx36HP"],
+      "match_scanner_inf": ["BT885-SCN"],
+      "match_product_name": ["BT885", "BT885-SCN"],
+      "supports_serial_mode": false,
+      "supports_waterfall": false,
+      "supports_favorites_lists": false,
+      "supports_profile_cfg": false
+    },
+    {
+      "id": "uniden_sds100",
+      "display": "Uniden SDS100 / SDS200",
+      "family": "uniden_bcdx36hp",
+      "match_target_model": ["BCDx36HP"],
+      "match_scanner_inf": ["SDS100", "SDS200"],
+      "match_product_name": ["SDS100", "SDS200"],
+      "usb_vid_pid_main": [6501, 26],
+      "usb_vid_pid_sub": [6501, 25],
+      "supports_serial_mode": true,
+      "supports_waterfall": true,
+      "supports_favorites_lists": true,
+      "supports_profile_cfg": true
     }
   ]
 }

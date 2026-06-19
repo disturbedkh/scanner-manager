@@ -42,6 +42,16 @@ build/
 logs/
 crash-*.log
 
+# Local dev-only debug bridge. The dev_mcp/ tree exposes raw HTTP +
+# MCP access to the running app and the scanner driver layer so an
+# AI assistant (or any developer) can poke at internals without going
+# through the GUI. It MUST NEVER ship - the /app/eval endpoint will
+# happily eval arbitrary Python and the scanner endpoints will drive
+# any byte to the radio. Drop the package locally to enable; delete
+# to disable. The main app gracefully no-ops if it isn't installed.
+dev_mcp/
+.scanner-manager/dev_mcp.token
+
 # Reverse-engineering tooling artifacts.
 #
 # Strategy: keep raw, PII-bearing or vendor-copyrighted captures + binaries

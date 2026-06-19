@@ -21,3 +21,18 @@ zeep>=4.2
 keyring>=24.0
 tkintermapview>=1.29
 qrcode>=7.4
+
+# Qt rebuild (Phases 1+) - optional for the legacy Tk app, required
+# for `scanner-manager-qt`. Pulled in by `pip install -e .[qt]` /
+# `[full]` from pyproject.toml as well.
+PySide6>=6.6
+pyqtgraph>=0.13
+pyserial>=3.5
+sounddevice>=0.4.6
+numpy>=1.21
+
+# Streaming dock (Phase 4)
+fastapi>=0.110
+uvicorn[standard]>=0.27
+httpx>=0.27
+websockets>=12.0

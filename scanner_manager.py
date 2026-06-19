@@ -56,7 +56,12 @@ from metastore import (
     system_id_for,
     write_session_snapshot,
 )
-from scanner_profiles import DEFAULT_PROFILE_ID, get_profile
+from scanner_profiles import (
+    DEFAULT_PROFILE_ID,
+    get_active_profile,
+    get_profile,
+    set_active_profile,
+)
 
 # ---------------------------------------------------------------------------
 # Project-level constants (single source of truth for version + URLs)
@@ -139,10 +144,35 @@ except Exception:  # pragma: no cover - module always imports
 # Constants
 # ---------------------------------------------------------------------------
 
-# Active scanner profile. Currently defaults to the BearTracker 885 for
-# every HPD we touch; when multi-scanner support lands, the workspace
-# open path flips this to match the HPD's TargetModel header.
-ACTIVE_PROFILE = get_profile(DEFAULT_PROFILE_ID)
+# Active scanner profile. The default is the BearTracker 885; the
+# desktop app reassigns it (via ``scanner_profiles.set_active_profile``)
+# whenever the user opens a new SD card or picks a different Device
+# in the top selector. We expose it through a thin proxy so that
+# every attribute access (``ACTIVE_PROFILE.scannable_service_types()``)
+# resolves against the *current* registry value rather than a snapshot
+# captured at import time.
+set_active_profile(DEFAULT_PROFILE_ID)
+
+
+class _ActiveProfileProxy:
+    """Always-fresh view of ``scanner_profiles.get_active_profile()``.
+
+    Behaves like a ``ScannerProfile`` for every attribute lookup; the
+    indirection lets the rest of this module write
+    ``ACTIVE_PROFILE.scannable_service_types()`` without caring that
+    a Device swap could have replaced the profile under it.
+    """
+
+    __slots__ = ()
+
+    def __getattr__(self, item: str):
+        return getattr(get_active_profile(), item)
+
+    def __repr__(self) -> str:
+        return f"<ActiveProfile -> {get_active_profile()!r}>"
+
+
+ACTIVE_PROFILE = _ActiveProfileProxy()
 
 SERVICE_TYPES = {
     1: "Multi Dispatch",

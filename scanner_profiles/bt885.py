@@ -114,10 +114,21 @@ _PREFERRED_INSTALLERS: List[str] = [
 ]
 
 _TARGET_MODEL_ALIASES: Sequence[str] = (
+    # Historical aliases kept for backwards-compatibility with old
+    # workspace sidecars + tests; real BT885 firmware writes
+    # `BCDx36HP` here (verified 2026-04-27 against a real card -
+    # see AI/Dev/RE/docs/BT885.md). The BCDx36HP family alias is
+    # what we'll match on going forward; identity is disambiguated
+    # via `scanner.inf` Scanner field 1 (`BT885-SCN`).
     "Beartracker885",
     "BearTracker885",
     "BT885",
+    "BCDx36HP",
 )
+
+_SCANNER_INF_ALIASES: Sequence[str] = ("BT885-SCN",)
+
+_PRODUCT_NAME_ALIASES: Sequence[str] = ("BT885", "BT885-SCN")
 
 _EDITABLE_CARD_FILE_SUFFIXES = (".hpd", ".cfg", ".HPD", ".CFG")
 
@@ -251,12 +262,46 @@ class Bt885Profile(ScannerProfile):
     # ---- Card layout -------------------------------------------------
 
     def card_identity_files(self) -> List[str]:
-        return ["hpdb.cfg"]
+        # Real BT885 cards keep HPDB at BCDx36HP/HPDB/hpdb.cfg, plus a
+        # scanner.inf fingerprint at BCDx36HP/scanner.inf. The legacy
+        # bare "hpdb.cfg" entry stays so older fingerprints keep
+        # matching.
+        return [
+            "BCDx36HP/HPDB/hpdb.cfg",
+            "BCDx36HP/scanner.inf",
+            "hpdb.cfg",
+        ]
 
     def is_editable_config_file(self, relpath: str) -> bool:
         if not relpath:
             return False
         return relpath.endswith(_EDITABLE_CARD_FILE_SUFFIXES)
+
+    # ---- Live-mode capability flags (BT885 has no serial mode) ------
+
+    @property
+    def supports_serial_mode(self) -> bool:
+        return False
+
+    @property
+    def supports_waterfall(self) -> bool:
+        return False
+
+    @property
+    def supports_favorites_lists(self) -> bool:
+        return False
+
+    @property
+    def supports_profile_cfg(self) -> bool:
+        return False
+
+    @property
+    def scanner_inf_aliases(self) -> Sequence[str]:
+        return _SCANNER_INF_ALIASES
+
+    @property
+    def product_name_aliases(self) -> Sequence[str]:
+        return _PRODUCT_NAME_ALIASES
 
 
 from .registry import register_profile

@@ -25,7 +25,12 @@ from pathlib import Path
 # inside the spec body. Anchor paths to the current working directory
 # instead (the build command is always run from the repo root).
 REPO_ROOT = Path(os.getcwd()).resolve()
-ENTRY = str(REPO_ROOT / "scanner_manager.py")
+# Phase 6 cutover: the Qt shell (gui/app.py) is now the default
+# packaged entry. The legacy Tk app at scanner_manager.py is still
+# importable as the `scanner-manager-tk` console script for users
+# who explicitly opt into it, but we no longer ship the Tk shell as
+# the default frozen binary.
+ENTRY = str(REPO_ROOT / "gui" / "app.py")
 
 IS_WINDOWS = sys.platform == "win32"
 IS_MACOS = sys.platform == "darwin"
@@ -61,17 +66,55 @@ if optional.exists():
 # the build environment. Listing them as hiddenimports just ensures
 # they *do* get included when they are present.
 hiddenimports = [
-    "tkintermapview",
+    # Optional third-party deps - guarded with try/except in app code.
     "zeep",
     "keyring",
     "qrcode",
+    # Scanner-profile registry: each profile self-registers at import,
+    # so we hint PyInstaller to keep them all bundled.
     "scanner_profiles",
     "scanner_profiles.base",
     "scanner_profiles.registry",
     "scanner_profiles.bt885",
-    "scanner_profiles.compat",
+    "scanner_profiles.sds100",
+    # Backend modules.
     "coverage_maps",
     "updater",
+    "metastore",
+    "device_manager",
+    "uniden_tools",
+    "scanner_drivers",
+    "scanner_drivers.serial_main",
+    "scanner_drivers.serial_sub",
+    "scanner_drivers.usb_detect",
+    "audio",
+    "audio.capture",
+    "audio.encoder",
+    "streaming",
+    "streaming.server",
+    "streaming.icecast",
+    "streaming.broadcastify",
+    "firmware",
+    "firmware.ftp_client",
+    "firmware.library",
+    "firmware.updater",
+    # Qt shell.
+    "PySide6",
+    "PySide6.QtCore",
+    "PySide6.QtGui",
+    "PySide6.QtWidgets",
+    "PySide6.QtWebEngineCore",
+    "PySide6.QtWebEngineWidgets",
+    "pyqtgraph",
+    "pyserial",
+    "sounddevice",
+    "numpy",
+    "fastapi",
+    "uvicorn",
+    "websockets",
+    "httpx",
+    "lameenc",
+    "pyogg",
 ]
 
 block_cipher = None
@@ -88,15 +131,18 @@ a = Analysis(
     runtime_hooks=[],
     excludes=[
         # Cut-outs: we don't use any of these and they balloon the EXE.
+        # NOTE: PySide6 is no longer excluded - it's the default UI now.
         "matplotlib",
-        "numpy",
         "pandas",
         "scipy",
         "PIL",
         "PyQt5",
         "PyQt6",
         "PySide2",
-        "PySide6",
+        # Tk drag-along: we still ship the legacy Tk app via the
+        # `scanner-manager-tk` entry, but the frozen build targets the
+        # Qt shell, so we can drop tkintermapview to shed weight.
+        "tkintermapview",
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

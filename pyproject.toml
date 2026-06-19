@@ -38,17 +38,57 @@ classifiers = [
     "Topic :: Communications :: Ham Radio",
     "Topic :: Utilities",
 ]
-dependencies = []
+dependencies = [
+    # Qt + supporting libs are now required - the default
+    # ``scanner-manager`` console script targets the PySide6 shell.
+    # Audio + serial are imported lazily so the app still boots if
+    # sounddevice / pyserial fail to load (e.g. headless CI).
+    "PySide6>=6.6",
+    "pyqtgraph>=0.13",
+    "pyserial>=3.5",
+    "sounddevice>=0.4.6",
+    "numpy>=1.21",
+]
 
 [project.optional-dependencies]
 radioreference = ["zeep>=4.2", "keyring>=24.0"]
 map = ["tkintermapview>=1.29"]
 donate-qr = ["qrcode>=7.4"]
+# Legacy Tk dependency group; only needed if the user pins the
+# ``scanner-manager-tk`` entry. Tk itself ships with CPython on
+# Windows + macOS, so this group is a no-op on those platforms.
+tk = []
+qt = [
+    "PySide6>=6.6",
+    "pyqtgraph>=0.13",
+    "pyserial>=3.5",
+    "sounddevice>=0.4.6",
+    "numpy>=1.21",
+]
+streaming = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "httpx>=0.27",
+    "websockets>=12.0",
+    "qrcode>=7.4",
+]
+firmware = [
+    # ftplib is stdlib; nothing extra required for FTP discovery.
+]
 full = [
     "zeep>=4.2",
     "keyring>=24.0",
     "tkintermapview>=1.29",
     "qrcode>=7.4",
+    "PySide6>=6.6",
+    "pyqtgraph>=0.13",
+    "pyserial>=3.5",
+    "sounddevice>=0.4.6",
+    "numpy>=1.21",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "httpx>=0.27",
+    "websockets>=12.0",
 ]
 
 [project.urls]
@@ -59,22 +99,46 @@ Changelog = "https://github.com/disturbedkh/scanner-manager/blob/main/CHANGELOG.
 Donate = "https://paypal.me/gvillescanner"
 
 [project.scripts]
-scanner-manager = "scanner_manager:main"
+# Phase 6 cutover: the Qt rebuild is now the default `scanner-manager`
+# entry. The legacy Tkinter app is still shipped as
+# `scanner-manager-tk` for one release as an emergency fallback.
+scanner-manager = "gui.app:main"
+scanner-manager-qt = "gui.app:main"
+scanner-manager-tk = "scanner_manager:main"
 
 [tool.setuptools]
 py-modules = [
     "scanner_manager",
     "coverage_maps",
+    "device_manager",
     "metastore",
     "rr_api",
     "sdcard",
     "uniden_tools",
     "updater",
 ]
-packages = ["scanner_profiles"]
+packages = [
+    "scanner_profiles",
+    "scanner_drivers",
+    "audio",
+    "streaming",
+    "firmware",
+    "gui",
+    "gui.editor",
+    "gui.live",
+    "gui.streaming",
+    "gui.firmware",
+    "gui.dialogs",
+]
 
 [tool.setuptools.package-data]
 "*" = ["data/*.json"]
+
+[tool.pytest.ini_options]
+# Limit test discovery to the canonical tests/ tree so RE lab scripts
+# (AI/Dev/RE/tools/...) that happen to start with `test_` aren't
+# scooped up. Those scripts live or die on a real serial port.
+testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100

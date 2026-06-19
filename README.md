@@ -1,17 +1,39 @@
 # Scanner Manager
 
-**A desktop companion for the Uniden BearTracker 885 — edit your scanner's
-SD card, import channels from RadioReference, preview what your scanner
-will actually scan at a given ZIP/GPS, and keep a full audit trail of
-every change.**
+**A desktop companion for Uniden scanners — BearTracker 885 and
+SDS100/200 — with a multi-scanner Qt UI, live serial-mode mirror,
+soundcard-fed audio + telemetry streaming over LAN, FTP-discovered
+firmware updates, RadioReference import, ZIP/GPS coverage preview,
+and a full revertable change log.**
 
 > Unofficial, community-built. Not affiliated with or endorsed by Uniden.
 > See [DISCLAIMER.md](DISCLAIMER.md).
+
+> **v0.10.0 cutover**: the default `scanner-manager` console script now
+> launches the [Qt UI](https://github.com/disturbedkh/scanner-manager/wiki/Qt-UI)
+> (PySide6). The legacy Tkinter shell is still available as
+> `scanner-manager-tk` for one release.
 
 ---
 
 ## What it does
 
+- **Multi-scanner shell.** A top-of-window device selector swaps the
+  UI between BearTracker 885 and SDS100/200 (one device active at a
+  time). See the
+  [Qt UI page](https://github.com/disturbedkh/scanner-manager/wiki/Qt-UI).
+- **Live mirror (SDS100/200).** Real-time GSI mirror, GLG call feed,
+  RSSI meters, and `pyqtgraph` FFT waterfall via the official
+  GSI/GLG protocol on the MAIN serial port plus the RE'd SUB port
+  debug commands.
+- **Streaming.** Soundcard input → Opus/MP3/WAV encoder → LAN HTTP
+  listener (Icecast2-compatible) + WebSocket telemetry + optional
+  Broadcastify/Icecast push. See
+  [Streaming Server](https://github.com/disturbedkh/scanner-manager/wiki/Streaming-Server).
+- **Firmware updater.** FTP discovery against Uniden's two update
+  endpoints, SHA-256 verified local cache, atomic copy to the SD card,
+  post-flash verify by re-reading `scanner.inf`. See
+  [Firmware Updater](https://github.com/disturbedkh/scanner-manager/wiki/Firmware-Updater).
 - **Browse and edit** `hpdb.cfg` + per-state `s_*.hpd` files from the
   scanner's SD card. Add/delete/rename at every level — entries,
   groups, and whole systems.

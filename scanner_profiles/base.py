@@ -13,7 +13,7 @@ scanner today.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Sequence, Set
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 
 class ScannerProfile(ABC):
@@ -168,3 +168,134 @@ class ScannerProfile(ABC):
     def is_editable_config_file(self, relpath: str) -> bool:
         """True if ``relpath`` (relative to the SD card root) is a user-
         editable config file this profile knows how to round-trip."""
+
+    # ------------------------------------------------------------------
+    # Live-mode capabilities (defaults: not supported)
+    #
+    # New profiles that DO support these features should override the
+    # property to return True / a real value. Existing profiles
+    # (``Bt885Profile``) keep the default False/None and the GUI hides
+    # the matching docks for them.
+    # ------------------------------------------------------------------
+
+    @property
+    def supports_serial_mode(self) -> bool:
+        """True if this scanner exposes the Uniden Remote Command
+        Protocol over USB CDC. SDS100/200/150 = yes; BT885 = no.
+        """
+        return False
+
+    @property
+    def supports_waterfall(self) -> bool:
+        """True if this scanner supports a live FFT/waterfall display
+        (either via the MAIN-port ``GST`` waterfall data or the
+        SUB-port ``m`` debug command). SDS100/200 = yes.
+        """
+        return False
+
+    @property
+    def supports_favorites_lists(self) -> bool:
+        """True if user can create multiple Favorites Lists with their
+        own quick keys. SDS100/200 = yes; BT885 = no (single list stub).
+        """
+        return False
+
+    @property
+    def supports_profile_cfg(self) -> bool:
+        """True if this scanner writes a ``BCDx36HP/profile.cfg``
+        global-settings file (waterfall, GPS, weather, display
+        layout, etc.). SDS100/200 = yes; BT885 = no.
+        """
+        return False
+
+    @property
+    def supports_audio_stream(self) -> bool:
+        """True if the GUI's streaming dock should expose audio
+        capture for this scanner. We always read audio from the
+        host's soundcard input fed by the scanner's headphone jack -
+        no scanner has USB-audio - so this is True for every model
+        that has an audio output. Override to False for headless
+        / DSP-only profiles.
+        """
+        return True
+
+    @property
+    def supports_coverage_simulation(self) -> bool:
+        """True if the GUI should expose ZIP/GPS coverage simulation +
+        the heatmap/map panels for this scanner.
+
+        BT885 is the canonical use case (the scanner itself filters by
+        location, so previewing 'what would scan if I were at ZIP X'
+        is core to its workflow).
+
+        SDS100/200 has on-device GPS + Favorites Lists, so its scan
+        set is computed by the scanner in real time. Coverage preview
+        and ZIP/GPS what-if tooling don't add value there - we hide
+        the panel by default and surface the heatmap as an opt-in
+        Tools menu item.
+        """
+        return True
+
+    @property
+    def supports_scanner_control(self) -> bool:
+        """True if the live dock should expose a scanner-control panel
+        (volume / squelch / hold / resume / avoid / next / prev).
+
+        Requires :attr:`supports_serial_mode` because all control
+        commands go through the MAIN serial port.
+        """
+        return self.supports_serial_mode
+
+    def supported_connection_modes(self) -> tuple:
+        """Return the connection modes this scanner exposes to the user.
+
+        The radio is mutually exclusive between Serial Mode and Mass
+        Storage at the hardware level, so the GUI gates entire dock
+        groups by the operator's choice. Defaults to ``("storage",)``;
+        SDS100/200 (which exposes USB CDC) overrides to add ``"live"``.
+
+        Order matters - the first entry is the preferred default for
+        a freshly-added device.
+        """
+        if self.supports_serial_mode:
+            return ("live", "storage")
+        return ("storage",)
+
+    @property
+    def usb_vid_pid_main(self) -> Optional[Tuple[int, int]]:
+        """The (VID, PID) the scanner enumerates as on its MAIN
+        command port in serial mode. ``None`` = scanner has no
+        serial mode.
+        """
+        return None
+
+    @property
+    def usb_vid_pid_sub(self) -> Optional[Tuple[int, int]]:
+        """The (VID, PID) the scanner enumerates as on its SUB
+        command port (DSP/debug). ``None`` = scanner has no SUB
+        processor exposed over USB.
+        """
+        return None
+
+    # ------------------------------------------------------------------
+    # Card detection helpers
+    # ------------------------------------------------------------------
+
+    @property
+    def scanner_inf_aliases(self) -> Sequence[str]:
+        """Values that ``BCDx36HP/scanner.inf``'s ``Scanner`` field 1
+        can take for this profile. This is the canonical model
+        fingerprint on the BCDx36HP-family cards (BT885 + SDS100 +
+        SDS200) - both BT885 and SDS100 write ``TargetModel BCDx36HP``,
+        so target_model_aliases is no longer enough on its own.
+        Default: empty tuple = profile not detectable from scanner.inf.
+        """
+        return ()
+
+    @property
+    def product_name_aliases(self) -> Sequence[str]:
+        """Values that ``BCDx36HP/profile.cfg``'s ``ProductName`` row
+        can take for this profile. Used as a fallback when
+        ``scanner.inf`` is missing/unreadable. Default: empty.
+        """
+        return ()

@@ -10,6 +10,9 @@
 
 **Features**
 
+- [Qt UI (PySide6 rebuild)](Qt-UI)
+- [Streaming Server](Streaming-Server)
+- [Firmware Updater](Firmware-Updater)
 - [ZIP & GPS Simulation](ZIP-and-GPS-Simulation)
 - [Coverage Tools](Coverage-Tools)
 - [RadioReference Import](RadioReference-Import)

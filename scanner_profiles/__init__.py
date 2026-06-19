@@ -27,21 +27,36 @@ scanner itself writes), use
 
 from __future__ import annotations
 
-from . import bt885 as _bt885_module  # noqa: F401  (side-effect import: registers Bt885Profile)
+# Side-effect imports: each module registers its profile with the
+# registry at import time. Order doesn't matter today (the registry
+# is a dict keyed by ID), but keep BT885 first so it stays the
+# default for the BCDx36HP family alias.
+from . import bt885 as _bt885_module  # noqa: F401
+from . import sds100 as _sds100_module  # noqa: F401
 from .base import ScannerProfile
 from .registry import (
     DEFAULT_PROFILE_ID,
+    add_active_profile_listener,
+    detect_from_card,
+    get_active_profile,
     get_profile,
     list_profiles,
     profiles_for_target_model,
     register_profile,
+    remove_active_profile_listener,
+    set_active_profile,
 )
 
 __all__ = [
     "ScannerProfile",
     "DEFAULT_PROFILE_ID",
+    "add_active_profile_listener",
+    "detect_from_card",
+    "get_active_profile",
     "get_profile",
     "list_profiles",
     "profiles_for_target_model",
     "register_profile",
+    "remove_active_profile_listener",
+    "set_active_profile",
 ]

@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "devices": [
+    {
+      "id": "ff13464f-b5f4-43b7-a976-435dc6121437",
+      "label": "My SDS100",
+      "scanner_profile_id": "uniden_sds100",
+      "metastore_profile_id": null,
+      "sd_card_path": null,
+      "last_known_main_fw": null,
+      "last_known_sub_fw": null,
+      "last_seen": null,
+      "connection_mode": "live"
+    }
+  ],
+  "default_device_id": "ff13464f-b5f4-43b7-a976-435dc6121437"
+}

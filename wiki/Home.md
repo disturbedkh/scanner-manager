@@ -1,15 +1,29 @@
 # Scanner Manager
 
-A desktop companion for the Uniden BearTracker 885. Browse and edit the
-SD card's HPD files, import channels from RadioReference, preview what
-the scanner will scan at a given ZIP/GPS, and keep a full audit trail
-of every change.
+A desktop companion for Uniden scanners — **BearTracker 885 and
+SDS100/200** as of v0.10.0. Browse and edit the SD card's HPD files,
+import channels from RadioReference, preview what the scanner will scan
+at a given ZIP/GPS, mirror live activity (SDS100/200) over LAN, and
+keep a full audit trail of every change.
+
+> **Phase 6 cutover (v0.10.0+)**: the default `scanner-manager` console
+> script now launches the [Qt UI](Qt-UI) (PySide6 rebuild). The legacy
+> Tkinter shell is still available as `scanner-manager-tk` for one
+> release while users migrate.
 
 > Unofficial, community-built. Not affiliated with or endorsed by
 > Uniden. See `DISCLAIMER.md` in the repo root.
 
 ## Feature tour
 
+- **Multi-scanner shell.** Top-of-window device selector swaps the UI
+  between BearTracker 885 and SDS100/200. See [Qt UI](Qt-UI).
+- **Live mirror (SDS100/200).** Real-time GSI mirror, GLG call feed,
+  RSSI meters, and FFT waterfall via the official + RE'd serial APIs.
+- **Streaming.** Soundcard capture + Opus/MP3 encoder + LAN listener
+  + optional Broadcastify / Icecast push. See [Streaming Server](Streaming-Server).
+- **Firmware updater.** FTP discovery, SHA-256 verified cache, atomic
+  apply, post-flash verify. See [Firmware Updater](Firmware-Updater).
 - **HPD editor.** Full tree view (System → Group → Entry) with filters,
   bulk operations at every level, and a revertable change log.
 - **ZIP / GPS simulation.** See exactly what your scanner will scan
