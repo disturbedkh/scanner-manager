@@ -38,6 +38,24 @@ def test_is_newer_handles_v_prefix_and_invalid():
     assert info is not None
     assert info.version == "0.9.0a3"
     assert updater.parse_release_payload({"tag_name": "banana"}) is None
+    assert updater.parse_release_payload([]) is None
+    assert updater.parse_release_payload({"tag_name": ""}) is None
+
+
+def test_parse_release_payload_skips_bad_assets():
+    info = updater.parse_release_payload(
+        {
+            "tag_name": "v1.0.0",
+            "assets": [
+                {"name": "", "browser_download_url": "https://x/a"},
+                {"name": "good.zip", "browser_download_url": "https://x/good.zip", "size": 10},
+                "not-a-dict",
+            ],
+        }
+    )
+    assert info is not None
+    assert len(info.assets) == 1
+    assert info.assets[0].name == "good.zip"
 
 
 # ---------------------------------------------------------------------------
@@ -229,8 +247,8 @@ def test_build_windows_swap_bat_has_expected_shape(tmp_path: Path):
     bat = tmp_path / "swap.bat"
     updater.build_windows_swap_bat(
         bat,
-        new_exe=tmp_path / "new.exe",
-        current_exe=tmp_path / "current.exe",
+        tmp_path / "new.exe",
+        tmp_path / "current.exe",
     )
     content = bat.read_text(encoding="ascii")
     assert content.startswith("@echo off")

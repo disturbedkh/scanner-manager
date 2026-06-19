@@ -129,6 +129,16 @@ def test_metastore_mark_reverted_persists_and_hides_from_later_queries(tmp_path:
     assert reloaded_e2.reverted is True
 
 
+def test_metastore_clear_reverted_and_events_reverse(tmp_path: Path) -> None:
+    store = _make_bound_store(tmp_path)
+    e1 = store.record(op=OP_EDIT_ENTRY, target_id="t1", payload={})
+    e2 = store.record(op=OP_EDIT_ENTRY, target_id="t2", payload={})
+    store.mark_reverted(e1.event_id)
+    assert store.events_reverse()[0].event_id == e2.event_id
+    store.clear_reverted(e1.event_id)
+    assert store.get_event(e1.event_id).reverted is False
+
+
 def test_metastore_atomic_write_leaves_no_tempfiles(tmp_path: Path):
     store = _make_bound_store(tmp_path)
     store.ensure_baseline("x", origin="t", snapshot={"name": "A"})

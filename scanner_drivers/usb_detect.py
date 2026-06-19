@@ -104,6 +104,26 @@ def find_ports_for_profile(profile: ScannerProfile) -> ScannerPorts:
     return out
 
 
+def _find_sub_for_main(
+    main: DetectedPort,
+    sub_ports: List[DetectedPort],
+    used_subs: set,
+) -> Optional[DetectedPort]:
+    if main.serial_number:
+        for sub in sub_ports:
+            if (
+                sub.serial_number == main.serial_number
+                and id(sub) not in used_subs
+            ):
+                used_subs.add(id(sub))
+                return sub
+    for sub in sub_ports:
+        if id(sub) not in used_subs:
+            used_subs.add(id(sub))
+            return sub
+    return None
+
+
 def find_all_uniden_pairs() -> List[ScannerPorts]:
     """Return every Uniden VID port grouped by serial-number into pairs.
 
@@ -124,22 +144,7 @@ def find_all_uniden_pairs() -> List[ScannerPorts]:
     pairs: List[ScannerPorts] = []
     used_subs = set()
     for main in main_ports:
-        match = None
-        if main.serial_number:
-            for sub in sub_ports:
-                if (
-                    sub.serial_number == main.serial_number
-                    and id(sub) not in used_subs
-                ):
-                    match = sub
-                    used_subs.add(id(sub))
-                    break
-        if match is None:
-            for sub in sub_ports:
-                if id(sub) not in used_subs:
-                    match = sub
-                    used_subs.add(id(sub))
-                    break
+        match = _find_sub_for_main(main, sub_ports, used_subs)
         pairs.append(ScannerPorts(main=main, sub=match))
     # Stragglers: SUB without a MAIN
     for sub in sub_ports:

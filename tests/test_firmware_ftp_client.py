@@ -20,6 +20,8 @@ from typing import List, Tuple
 
 import pytest
 
+pytestmark = pytest.mark.integration
+
 from firmware import ftp_client as ftp_module
 from firmware.ftp_client import (
     BT885_FTP,

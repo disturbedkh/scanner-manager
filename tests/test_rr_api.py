@@ -290,3 +290,64 @@ def test_fetch_via_url_unknown_raises() -> None:
     client = _make_client({})
     with pytest.raises(RRError):
         fetch_via_url(client, "https://example.com/not-rr")
+
+
+def test_classify_url_empty_returns_none() -> None:
+    assert classify_url("") is None
+
+
+def test_hpd_import_to_dict_round_trip() -> None:
+    from core.rr_api import HpdImport
+
+    imp = HpdImport(
+        source="trs",
+        source_id="123",
+        title="System",
+        entries=[{"type": "talkgroup", "tgid": "100"}],
+    )
+    d = imp.to_dict()
+    assert d["source"] == "trs"
+    assert d["entries"][0]["tgid"] == "100"
+
+
+def test_client_county_and_state_wrappers() -> None:
+    client = _make_client(
+        {
+            "getCountySystems": {"countyName": "Alachua"},
+            "getStateSystems": {"stateName": "Florida"},
+        }
+    )
+    assert client.get_county_systems(12)["countyName"] == "Alachua"
+    assert client.get_state_systems(12)["stateName"] == "Florida"
+
+
+def test_fetch_via_url_county_and_state() -> None:
+    client = _make_client(
+        {
+            "getCountySystems": {"countyName": "Alachua", "systems": []},
+            "getStateSystems": {"stateName": "Florida", "counties": []},
+        }
+    )
+    county = fetch_via_url(client, "https://www.radioreference.com/db/county/12")
+    assert county.source == "county"
+    state = fetch_via_url(client, "https://www.radioreference.com/db/state/12")
+    assert state.source == "state"
+
+
+def test_to_hpd_import_generic_mapper_for_unknown_source() -> None:
+    imp = to_hpd_import({"title": "Fallback"}, source="unknown", source_id="1")
+    assert imp.title == "Fallback"
+    assert imp.source == "generic"
+
+
+def test_as_dict_and_flatten_handle_object_fallback() -> None:
+    from core.rr_api import _as_dict, _flatten
+
+    class _Obj:
+        def __init__(self) -> None:
+            self.name = "x"
+
+    assert _as_dict(_Obj())["name"] == "x"
+    assert _flatten({"a": 1}) == [{"a": 1}]
+    assert _flatten([{"a": 1}, {"b": 2}]) == [{"a": 1}, {"b": 2}]
+    assert _flatten(None) == []

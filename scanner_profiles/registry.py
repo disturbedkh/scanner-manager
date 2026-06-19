@@ -21,6 +21,8 @@ from .base import ScannerProfile
 
 DEFAULT_PROFILE_ID = "uniden_bt885"
 
+_HPDB_CFG = "hpdb.cfg"
+
 _PROFILES: Dict[str, ScannerProfile] = {}
 
 
@@ -146,9 +148,9 @@ def _profile_cfg_product_name(card_root: Path) -> str:
 def _hpdb_target_model(card_root: Path) -> str:
     """Return the ``TargetModel`` value from HPDB/hpdb.cfg, or ''."""
     candidates = (
-        card_root / "BCDx36HP" / "HPDB" / "hpdb.cfg",
-        card_root / "HPDB" / "hpdb.cfg",
-        card_root / "hpdb.cfg",
+        card_root / "BCDx36HP" / "HPDB" / _HPDB_CFG,
+        card_root / "HPDB" / _HPDB_CFG,
+        card_root / _HPDB_CFG,
     )
     for path in candidates:
         if not path.exists():

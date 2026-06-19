@@ -1,0 +1,14 @@
+# Persistent-host overlay for self-hosted SonarQube CE.
+# Usage: docker compose -f docker-compose.sonar.yml -f docker-compose.sonar.prod.yml up -d
+
+services:
+  sonarqube:
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+    environment:
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
+      SONAR_WEB_JAVAADDITIONALOPTS: "-Xmx512m"
+      SONAR_CE_JAVAADDITIONALOPTS: "-Xmx512m"
+    restart: always

@@ -22,6 +22,8 @@ import urllib.request
 
 import pytest
 
+pytestmark = pytest.mark.integration
+
 dev_mcp = pytest.importorskip("dev_mcp")
 pytest.importorskip("fastapi")
 pytest.importorskip("uvicorn")

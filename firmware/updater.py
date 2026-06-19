@@ -124,6 +124,73 @@ def backup_card(card_root: Path, dst_root: Optional[Path] = None) -> Path:
 # ----------------------------------------------------------------------
 
 
+def _preflight_model_check(
+    model: str, _profile: ScannerProfile
+) -> Optional[PreflightResult]:
+    if model:
+        return None
+    return PreflightResult(False, "scanner.inf field 1 is empty")
+
+
+def _preflight_alias_check(
+    model: str,
+    profile: ScannerProfile,
+    ver_main: str,
+    ver_sub: str,
+) -> Optional[PreflightResult]:
+    aliases = set(profile.scanner_inf_aliases or ()) | {profile.id}
+    if model in aliases or model.upper() in {a.upper() for a in aliases}:
+        return None
+    return PreflightResult(
+        False,
+        f"Card reports model {model!r}, but the active profile is {profile.id!r}",
+        detected_model=model,
+        current_main=ver_main,
+        current_sub=ver_sub,
+    )
+
+
+def _preflight_cache_check(
+    profile_id: str,
+    cache: FirmwareCache,
+    version: Optional[FirmwareVersion],
+    label: str,
+    model: str,
+    ver_main: str,
+    ver_sub: str,
+) -> Optional[PreflightResult]:
+    if version is None or cache.verify(profile_id, version):
+        return None
+    return PreflightResult(
+        False,
+        f"Cached {label} firmware {version.filename} failed SHA-256 verification",
+        detected_model=model,
+        current_main=ver_main,
+        current_sub=ver_sub,
+    )
+
+
+def _preflight_sub_min_check(
+    ver_sub: str,
+    requires_sub_min: Optional[Tuple[int, int, int]],
+    model: str,
+    ver_main: str,
+) -> Optional[PreflightResult]:
+    if requires_sub_min is None or not ver_sub:
+        return None
+    cur = _parse_version_text(ver_sub)
+    if cur is None or cur >= requires_sub_min:
+        return None
+    need = "{}.{}.{}".format(*requires_sub_min)
+    return PreflightResult(
+        False,
+        f"This main firmware requires sub firmware >= {need}; card has {ver_sub}",
+        detected_model=model,
+        current_main=ver_main,
+        current_sub=ver_sub,
+    )
+
+
 def preflight(
     card_root: Path,
     profile: ScannerProfile,
@@ -141,46 +208,22 @@ def preflight(
     if not card_scanner_inf(card_root).exists():
         return PreflightResult(False, "Card has no BCDx36HP/scanner.inf")
     model, _hw, ver_main, ver_sub = read_scanner_inf(card_root)
-    if not model:
-        return PreflightResult(False, "scanner.inf field 1 is empty")
-    aliases = set(profile.scanner_inf_aliases or ()) | {profile.id}
-    if model not in aliases and model.upper() not in {a.upper() for a in aliases}:
-        return PreflightResult(
-            False,
-            f"Card reports model {model!r}, but the active profile is {profile.id!r}",
-            detected_model=model,
-            current_main=ver_main,
-            current_sub=ver_sub,
-        )
-    if main_version is not None:
-        if not cache.verify(profile.id, main_version):
-            return PreflightResult(
-                False,
-                f"Cached main firmware {main_version.filename} failed SHA-256 verification",
-                detected_model=model,
-                current_main=ver_main,
-                current_sub=ver_sub,
-            )
-    if sub_version is not None:
-        if not cache.verify(profile.id, sub_version):
-            return PreflightResult(
-                False,
-                f"Cached sub firmware {sub_version.filename} failed SHA-256 verification",
-                detected_model=model,
-                current_main=ver_main,
-                current_sub=ver_sub,
-            )
-    if requires_sub_min is not None and ver_sub:
-        cur = _parse_version_text(ver_sub)
-        if cur is not None and cur < requires_sub_min:
-            need = "{}.{}.{}".format(*requires_sub_min)
-            return PreflightResult(
-                False,
-                f"This main firmware requires sub firmware >= {need}; card has {ver_sub}",
-                detected_model=model,
-                current_main=ver_main,
-                current_sub=ver_sub,
-            )
+    for check in (
+        lambda: _preflight_model_check(model, profile),
+        lambda: _preflight_alias_check(model, profile, ver_main, ver_sub),
+        lambda: _preflight_cache_check(
+            profile.id, cache, main_version, "main", model, ver_main, ver_sub
+        ),
+        lambda: _preflight_cache_check(
+            profile.id, cache, sub_version, "sub", model, ver_main, ver_sub
+        ),
+        lambda: _preflight_sub_min_check(
+            ver_sub, requires_sub_min, model, ver_main
+        ),
+    ):
+        result = check()
+        if result is not None:
+            return result
     return PreflightResult(
         True,
         "ok",
@@ -268,7 +311,7 @@ def apply_sub_firmware(
 def apply_hpdb(
     card_root: Path,
     src_path: Path,
-    version: Optional[HpdbVersion] = None,
+    _version: Optional[HpdbVersion] = None,
     purge_existing: bool = True,
 ) -> Path:
     """Copy a HPDB snapshot ``.gz`` into ``BCDx36HP/HPDB/``.

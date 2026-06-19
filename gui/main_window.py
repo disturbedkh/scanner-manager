@@ -548,13 +548,6 @@ class MainWindow(QMainWindow):
 
     def _on_check_updates(self) -> None:
         try:
-            import core.app_updater as updater
-            info = updater.check_for_update()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Update check failed: %s", exc)
-            info = None
-
-        try:
             from importlib.metadata import PackageNotFoundError, version
             try:
                 current = version("beartracker-885-scanner-manager")
@@ -562,6 +555,13 @@ class MainWindow(QMainWindow):
                 current = "dev"
         except Exception:
             current = "dev"
+
+        try:
+            import core.app_updater as updater
+            info = updater.check_for_update(current)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Update check failed: %s", exc)
+            info = None
 
         if info is None:
             mode = UpdateAvailableDialog.MODE_OFFLINE

@@ -38,6 +38,25 @@ except Exception:  # pragma: no cover - optional dep
     HAS_PYQTGRAPH = False
 
 
+def _trim_iq_arrays(frame: IqFrame, n: int):
+    i = np.asarray(frame.i_samples[:n], dtype=np.float32)
+    q = np.asarray(frame.q_samples[:n], dtype=np.float32)
+    nz = np.flatnonzero(np.abs(i) + np.abs(q))
+    if nz.size:
+        cut = nz[-1] + 1
+        i, q = i[:cut], q[:cut]
+    return i, q
+
+
+def _log_spectrum_from_iq(i, q):
+    i = i - float(i.mean())
+    q = q - float(q.mean())
+    complex_signal = i + 1j * q
+    windowed = complex_signal * np.hanning(complex_signal.size)
+    spectrum = np.fft.fftshift(np.fft.fft(windowed))
+    return 20.0 * np.log10(np.abs(spectrum) + 1e-3)
+
+
 class GsiMirrorWidget(QGroupBox):
     """Read-only mirror of the most recent GSI snapshot."""
 
@@ -395,28 +414,10 @@ class IqWaterfallWidget(QGroupBox):
         if n < 8:
             return
 
-        # Build complex baseband from I + jQ; trim trailing zero pairs.
-        i = np.asarray(frame.i_samples[:n], dtype=np.float32)
-        q = np.asarray(frame.q_samples[:n], dtype=np.float32)
-        nz = np.flatnonzero(np.abs(i) + np.abs(q))
-        if nz.size:
-            cut = nz[-1] + 1
-            i, q = i[:cut], q[:cut]
+        i, q = _trim_iq_arrays(frame, n)
         if i.size < 8:
             return
-        # DC-block (I and Q independently).
-        i = i - float(i.mean())
-        q = q - float(q.mean())
-        complex_signal = i + 1j * q
-
-        # Window to reduce spectral leakage (Hanning).
-        window = np.hanning(complex_signal.size)
-        windowed = complex_signal * window
-
-        # Complex FFT, then fftshift so DC is in the middle.
-        spectrum = np.fft.fftshift(np.fft.fft(windowed))
-        mag = np.abs(spectrum)
-        log_spec = 20.0 * np.log10(mag + 1e-3)
+        log_spec = _log_spectrum_from_iq(i, q)
 
         # Lock width across frames.
         if self._fft_size is None:

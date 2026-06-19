@@ -77,6 +77,8 @@ from .widgets import (
 
 logger = logging.getLogger(__name__)
 
+_DIAG_CAPTURE_TITLE = "Diagnostic capture"
+
 
 class LiveDock(QWidget):
     """Phase 3 live serial-mode dock."""
@@ -284,28 +286,27 @@ class LiveDock(QWidget):
     # Port discovery
     # ------------------------------------------------------------------
 
-    def refresh_ports(self) -> None:
-        if self._profile is None:
-            return
-        all_ports = enumerate_ports()
-        matched = find_ports_for_profile(self._profile)
+    def _populate_port_combo(
+        self, combo, all_ports, default_port
+    ) -> None:
+        for port in all_ports:
+            tag = (
+                " (detected)"
+                if default_port and port.device == default_port.device
+                else ""
+            )
+            combo.addItem(
+                f"{port.device} - {port.description}{tag}",
+                userData=port.device,
+            )
+        if default_port is not None:
+            idx = combo.findData(default_port.device)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
 
-        self._main_combo.clear()
-        self._sub_combo.clear()
-
-        # Populate every visible port; mark detected matches with a hint.
-        for combo, default_port, _label in (
-            (self._main_combo, matched.main, "MAIN"),
-            (self._sub_combo, matched.sub, "SUB"),
-        ):
-            for port in all_ports:
-                tag = " (detected)" if default_port and port.device == default_port.device else ""
-                combo.addItem(f"{port.device} - {port.description}{tag}", userData=port.device)
-            if default_port is not None:
-                idx = combo.findData(default_port.device)
-                if idx >= 0:
-                    combo.setCurrentIndex(idx)
-
+    def _update_port_discovery_status(
+        self, all_ports, matched
+    ) -> None:
         if not all_ports:
             self._status_label.setText(
                 "No serial ports visible. Make sure the scanner is plugged in "
@@ -330,6 +331,23 @@ class LiveDock(QWidget):
                 f"{len(all_ports)} port(s) visible but none match Uniden's USB IDs."
             )
             self.connectionStateChanged.emit("red")
+
+    def refresh_ports(self) -> None:
+        if self._profile is None:
+            return
+        all_ports = enumerate_ports()
+        matched = find_ports_for_profile(self._profile)
+
+        self._main_combo.clear()
+        self._sub_combo.clear()
+
+        for combo, default_port, _label in (
+            (self._main_combo, matched.main, "MAIN"),
+            (self._sub_combo, matched.sub, "SUB"),
+        ):
+            self._populate_port_combo(combo, all_ports, default_port)
+
+        self._update_port_discovery_status(all_ports, matched)
 
     # ------------------------------------------------------------------
     # Connect / poll
@@ -442,6 +460,87 @@ class LiveDock(QWidget):
     # Diagnostic capture
     # ------------------------------------------------------------------
 
+    def _fill_diagnostic_capture(
+        self, capture: dict, main_driver, sub_driver
+    ) -> None:
+        for i in range(5):
+            try:
+                raw_gsi = main_driver.send_query("GSI")
+                snap = main_driver.poll_gsi()
+                capture["gsi_samples"].append({
+                    "iteration": i,
+                    "raw_bytes_hex": raw_gsi.hex(),
+                    "raw_text": raw_gsi.decode("utf-8", errors="replace"),
+                    "parsed": {
+                        "mode": snap.mode,
+                        "system_name": snap.system_name,
+                        "department_name": snap.department_name,
+                        "tg_name": snap.tg_name,
+                        "tgid": snap.tgid,
+                        "unit_id": snap.unit_id,
+                        "rssi_dbm": snap.rssi_dbm,
+                        "signal_pct": snap.signal_pct,
+                        "is_receiving": snap.is_receiving,
+                        "frequency_hz": snap.frequency_hz,
+                        "properties_keys": sorted(snap.properties.keys()),
+                    },
+                })
+            except Exception as exc:  # noqa: BLE001
+                capture["errors"].append(f"GSI iteration {i}: {exc!r}")
+            time.sleep(0.05)
+
+        for i in range(5):
+            try:
+                evt = main_driver.poll_glg()
+                capture["glg_samples"].append({
+                    "iteration": i,
+                    "raw_text": evt.raw,
+                    "parsed": {
+                        "frq": evt.frq,
+                        "mod": evt.mod,
+                        "name1": evt.name1,
+                        "name2": evt.name2,
+                        "name3": evt.name3,
+                        "sql": evt.sql,
+                        "mut": evt.mut,
+                        "sys_tag": evt.sys_tag,
+                        "chan_tag": evt.chan_tag,
+                        "p25_nac": evt.p25_nac,
+                        "is_receiving": evt.is_receiving,
+                    },
+                })
+            except Exception as exc:  # noqa: BLE001
+                capture["errors"].append(f"GLG iteration {i}: {exc!r}")
+            time.sleep(0.05)
+
+        for cmd in ("STS", "PWR", "MNU", "GLT", "PWR"):
+            try:
+                raw = main_driver.send_query(cmd)
+                capture.setdefault("aux_queries", []).append({
+                    "cmd": cmd,
+                    "raw_text": raw.decode("utf-8", errors="replace"),
+                })
+            except Exception as exc:  # noqa: BLE001
+                capture.setdefault("aux_queries", []).append({
+                    "cmd": cmd,
+                    "error": repr(exc),
+                })
+
+        if sub_driver is not None:
+            for i in range(3):
+                try:
+                    raw = sub_driver.send_command("m")
+                    capture["fft_samples"].append({
+                        "iteration": i,
+                        "byte_count": len(raw),
+                        "raw_text_excerpt": raw.decode(
+                            "ascii", errors="replace"
+                        )[:1024],
+                    })
+                except Exception as exc:  # noqa: BLE001
+                    capture["errors"].append(f"FFT iteration {i}: {exc!r}")
+                time.sleep(0.1)
+
     def _on_diagnostic_capture(self) -> None:
         """Capture raw GSI / GLG / FFT bytes to a JSON file.
 
@@ -454,7 +553,7 @@ class LiveDock(QWidget):
         if self._main_controller is None:
             QMessageBox.information(
                 self,
-                "Diagnostic capture",
+                _DIAG_CAPTURE_TITLE,
                 "Connect the scanner first.",
             )
             return
@@ -499,87 +598,12 @@ class LiveDock(QWidget):
                 self._sub_controller.stop()
 
             main_driver = self._main_controller.driver
-            for i in range(5):
-                try:
-                    raw_gsi = main_driver.send_query("GSI")
-                    snap = main_driver.poll_gsi()
-                    capture["gsi_samples"].append({
-                        "iteration": i,
-                        "raw_bytes_hex": raw_gsi.hex(),
-                        "raw_text": raw_gsi.decode("utf-8", errors="replace"),
-                        "parsed": {
-                            "mode": snap.mode,
-                            "system_name": snap.system_name,
-                            "department_name": snap.department_name,
-                            "tg_name": snap.tg_name,
-                            "tgid": snap.tgid,
-                            "unit_id": snap.unit_id,
-                            "rssi_dbm": snap.rssi_dbm,
-                            "signal_pct": snap.signal_pct,
-                            "is_receiving": snap.is_receiving,
-                            "frequency_hz": snap.frequency_hz,
-                            "properties_keys": sorted(snap.properties.keys()),
-                        },
-                    })
-                except Exception as exc:  # noqa: BLE001
-                    capture["errors"].append(f"GSI iteration {i}: {exc!r}")
-                time.sleep(0.05)
-
-            for i in range(5):
-                try:
-                    evt = main_driver.poll_glg()
-                    capture["glg_samples"].append({
-                        "iteration": i,
-                        "raw_text": evt.raw,
-                        "parsed": {
-                            "frq": evt.frq,
-                            "mod": evt.mod,
-                            "name1": evt.name1,
-                            "name2": evt.name2,
-                            "name3": evt.name3,
-                            "sql": evt.sql,
-                            "mut": evt.mut,
-                            "sys_tag": evt.sys_tag,
-                            "chan_tag": evt.chan_tag,
-                            "p25_nac": evt.p25_nac,
-                            "is_receiving": evt.is_receiving,
-                        },
-                    })
-                except Exception as exc:  # noqa: BLE001
-                    capture["errors"].append(f"GLG iteration {i}: {exc!r}")
-                time.sleep(0.05)
-
-            # Probe a few additional read-only commands that are on
-            # our docs but not currently surfaced - they may carry
-            # the receive-state info we're missing from GSI.
-            for cmd in ("STS", "PWR", "MNU", "GLT", "PWR"):
-                try:
-                    raw = main_driver.send_query(cmd)
-                    capture.setdefault("aux_queries", []).append({
-                        "cmd": cmd,
-                        "raw_text": raw.decode("utf-8", errors="replace"),
-                    })
-                except Exception as exc:  # noqa: BLE001
-                    capture.setdefault("aux_queries", []).append({
-                        "cmd": cmd,
-                        "error": repr(exc),
-                    })
-
-            if was_sub_running and self._sub_controller is not None:
-                sub_driver = self._sub_controller.driver
-                for i in range(3):
-                    try:
-                        raw = sub_driver.send_command("m")
-                        capture["fft_samples"].append({
-                            "iteration": i,
-                            "byte_count": len(raw),
-                            "raw_text_excerpt": raw.decode(
-                                "ascii", errors="replace"
-                            )[:1024],
-                        })
-                    except Exception as exc:  # noqa: BLE001
-                        capture["errors"].append(f"FFT iteration {i}: {exc!r}")
-                    time.sleep(0.1)
+            sub_driver = (
+                self._sub_controller.driver
+                if was_sub_running and self._sub_controller is not None
+                else None
+            )
+            self._fill_diagnostic_capture(capture, main_driver, sub_driver)
         finally:
             if was_main_running and self._main_controller is not None:
                 self._main_controller.start()
@@ -593,14 +617,14 @@ class LiveDock(QWidget):
             )
         except OSError as exc:
             QMessageBox.critical(
-                self, "Diagnostic capture", f"Could not write {target}: {exc}"
+                self, _DIAG_CAPTURE_TITLE, f"Could not write {target}: {exc}"
             )
             return
 
         logger.info("Diagnostic capture written to %s", target)
         QMessageBox.information(
             self,
-            "Diagnostic capture",
+            _DIAG_CAPTURE_TITLE,
             (
                 f"Wrote {len(capture['gsi_samples'])} GSI + "
                 f"{len(capture['glg_samples'])} GLG + "

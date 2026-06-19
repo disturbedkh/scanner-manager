@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.qt
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 PySide6 = pytest.importorskip("PySide6")  # noqa: N816
@@ -63,6 +65,99 @@ def test_hpdb_tree_loads_real_file(qtbot, card_root: Path) -> None:
     assert hpd.systems[0].name == "Miami-Dade"
     assert len(hpd.systems[0].groups) == 1
     assert len(hpd.systems[0].groups[0].entries) == 2
+
+
+_TRUNK_HPD = (
+    "TargetModel\tBCDx36HP\n"
+    "Trunk\tTrunkId=900\tStateId=12\tAlachua Trunk\n"
+    "AreaState\tStateId=12\tFL\n"
+    "Site\tSiteId=1\tTrunkId=900\tSite1\tOff\t29.65\t-82.33\t25.0\n"
+    "T-Freq\t460500000\n"
+    "T-Group\tTGroupId=1\tTrunkId=900\tTrunk Group A\tOff\t29.65\t-82.33\t25.0\n"
+    "TGID\tTid=1\tTGroupId=1\tTGA1\tOff\t1234\tDE\t2\n"
+)
+
+
+@pytest.fixture
+def trunk_card_root(tmp_path: Path) -> Path:
+    root = tmp_path / "trunk-card"
+    hpdb = root / "BCDx36HP" / "HPDB"
+    hpdb.mkdir(parents=True)
+    (root / "BCDx36HP" / "scanner.inf").write_text(
+        "TargetModel\tBCDx36HP\nFormatVersion\t1.00\nScanner\tBT885-SCN\t1\t1.00\t01\t\t1.00\t1.00\t0\n",
+        encoding="utf-8",
+    )
+    (hpdb / "hpdb.cfg").write_text(_BT885_CFG, encoding="utf-8")
+    (hpdb / "s_000012.hpd").write_text(_TRUNK_HPD, encoding="utf-8")
+    return root
+
+
+def test_hpdb_tree_search_filter_and_selection(qtbot, trunk_card_root: Path) -> None:
+    from gui.editor.hpdb_tree import HpdbTreeWidget
+
+    tree = HpdbTreeWidget()
+    qtbot.addWidget(tree)
+    tree.set_profile(get_profile("uniden_bt885"))
+    assert tree.try_load_from_card(str(trunk_card_root))
+
+    selected: list = []
+    tree.entrySelected.connect(selected.append)
+    root_item = tree._model.item(0, 0)
+    idx = root_item.index()
+    tree._view.setCurrentIndex(idx)
+    assert selected and selected[0]["kind"] == "file"
+
+    tree._search.setText("TGA1")
+    assert tree._search_text == "tga1"
+    tree._search.clear()
+    tree._search.setText("missing-node")
+    tree._restore_all()
+
+
+def test_hpdb_tree_missing_hpdb_shows_message(qtbot, tmp_path: Path) -> None:
+    from gui.editor.hpdb_tree import HpdbTreeWidget
+
+    missing = tmp_path / "no-such-card"
+    tree = HpdbTreeWidget()
+    qtbot.addWidget(tree)
+    assert tree.try_load_from_card(str(missing)) is False
+    assert tree._model.rowCount() == 1
+    assert "No HPDB folder" in tree._model.item(0, 0).text()
+
+
+def test_hpdb_tree_empty_hpd_dir_shows_message(qtbot, tmp_path: Path) -> None:
+    from gui.editor.hpdb_tree import HpdbTreeWidget
+
+    root = tmp_path / "card"
+    hpdb = root / "BCDx36HP" / "HPDB"
+    hpdb.mkdir(parents=True)
+    (hpdb / "hpdb.cfg").write_text(_BT885_CFG, encoding="utf-8")
+    tree = HpdbTreeWidget()
+    qtbot.addWidget(tree)
+    assert tree.try_load_from_card(str(root)) is False
+    assert "No s_*.hpd" in tree._model.item(0, 0).text()
+
+
+def test_hpdb_tree_skips_unparseable_files(
+    qtbot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from legacy_tk.scanner_manager import HpdFile
+
+    from gui.editor.hpdb_tree import HpdbTreeWidget
+
+    root = tmp_path / "card"
+    hpdb = root / "BCDx36HP" / "HPDB"
+    hpdb.mkdir(parents=True)
+    (hpdb / "s_000012.hpd").write_text("x", encoding="utf-8")
+
+    def _boom(self, _path: str) -> None:
+        raise ValueError("bad hpd")
+
+    monkeypatch.setattr(HpdFile, "load", _boom)
+
+    tree = HpdbTreeWidget()
+    qtbot.addWidget(tree)
+    assert tree.try_load_from_card(str(root)) is False
 
 
 def test_hpdb_tree_reports_no_changes_initially(qtbot, card_root: Path) -> None:
@@ -168,3 +263,196 @@ def test_profile_cfg_panel_handles_missing_file(qtbot, tmp_path: Path) -> None:
     panel.set_card_path(str(tmp_path))
     # Empty / placeholder path
     assert panel._view.toPlainText() == ""
+
+
+def test_editor_dock_request_close_paths(
+    qtbot, card_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    from core.device_manager import Device
+    from gui.editor.editor_dock import EditorDock
+
+    dock = EditorDock()
+    qtbot.addWidget(dock)
+    profile = get_profile("uniden_bt885")
+    device = Device.make("uniden_bt885", "Test", sd_card_path=str(card_root))
+    dock.set_active_device(device, profile)
+    assert dock.request_close() is True
+
+    hpd = dock._tree.loaded_files()[0]
+    hpd.update_service_type(hpd.systems[0].groups[0].entries[0], 14)
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Discard)
+    assert dock.request_close() is True
+
+    hpd.update_service_type(hpd.systems[0].groups[0].entries[0], 15)
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Cancel)
+    assert dock.request_close() is False
+
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Save)
+    dock.save_all()
+    assert dock.request_close() is True
+
+
+def test_editor_dock_reload_audit_and_after_edit(
+    qtbot, trunk_card_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    from core.device_manager import Device
+    from gui.editor.editor_dock import EditorDock
+
+    dock = EditorDock()
+    qtbot.addWidget(dock)
+    profile = get_profile("uniden_bt885")
+    device = Device.make("uniden_bt885", "Trunk", sd_card_path=str(trunk_card_root))
+    dock.set_active_device(device, profile)
+
+    informed: list = []
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: informed.append(a))
+    dock._on_audit_modes()
+    assert informed and "encrypted" in informed[0][2].lower()
+
+    dock._on_reload()
+    assert "Reloaded" in dock._status_label.text()
+
+    dock._on_after_edit()
+    assert "not saved" in dock._status_label.text().lower()
+
+    dock.set_mode_hint("Serial mode active")
+    assert dock._mode_hint.text() == "Serial mode active"
+    dock.set_mode_hint("")
+    assert dock._mode_hint.text() == ""
+
+
+def test_editor_dock_save_failure_and_no_sd_path(
+    qtbot, card_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    from core.device_manager import Device
+    from gui.editor.editor_dock import EditorDock
+
+    dock = EditorDock()
+    qtbot.addWidget(dock)
+    profile = get_profile("uniden_bt885")
+    device = Device.make("uniden_bt885", "Test", sd_card_path=str(card_root))
+    dock.set_active_device(device, profile)
+
+    hpd = dock._tree.loaded_files()[0]
+    hpd.update_service_type(hpd.systems[0].groups[0].entries[0], 14)
+
+    def _boom(self) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(type(hpd), "save", _boom)
+    crit: list = []
+    monkeypatch.setattr(QMessageBox, "critical", lambda *a, **k: crit.append(a))
+    dock.save_all()
+    assert crit
+
+    dock.save_current()
+    assert dock.current_hpd_path()
+    assert dock.coverage_panel() is dock._coverage
+
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
+    no_path = Device.make("uniden_bt885", "Empty")
+    dock.set_active_device(no_path, profile)
+    assert "no SD card path" in dock._status_label.text()
+
+
+def test_editor_dock_audit_with_no_hpdb(qtbot, monkeypatch: pytest.MonkeyPatch) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    from gui.editor.editor_dock import EditorDock
+
+    dock = EditorDock()
+    qtbot.addWidget(dock)
+    informed: list = []
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: informed.append(a))
+    dock._on_audit_modes()
+    assert "No HPDB loaded" in informed[0][2]
+
+
+def test_editor_dock_refresh_coverage_swallows_errors(
+    qtbot, card_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from core.device_manager import Device
+    from gui.editor.editor_dock import EditorDock
+
+    dock = EditorDock()
+    qtbot.addWidget(dock)
+    profile = get_profile("uniden_bt885")
+    device = Device.make("uniden_bt885", "Test", sd_card_path=str(card_root))
+    dock.set_active_device(device, profile)
+    monkeypatch.setattr(
+        dock._coverage,
+        "refresh_from_hpdb",
+        lambda: (_ for _ in ()).throw(RuntimeError("map offline")),
+    )
+    dock.refresh_coverage()
+
+
+def test_editor_dock_switch_device_with_unsaved_changes(
+    qtbot, card_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    from core.device_manager import Device
+    from gui.editor.editor_dock import EditorDock
+
+    dock = EditorDock()
+    qtbot.addWidget(dock)
+    profile = get_profile("uniden_bt885")
+    device = Device.make("uniden_bt885", "Test", sd_card_path=str(card_root))
+    dock.set_active_device(device, profile)
+    hpd = dock._tree.loaded_files()[0]
+    hpd.update_service_type(hpd.systems[0].groups[0].entries[0], 14)
+
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.No)
+    other = Device.make("uniden_bt885", "Other", sd_card_path=str(card_root))
+    dock.set_active_device(other, profile)
+    assert dock._current_device is other
+
+
+def test_button_filter_panel_emits_selection(qtbot) -> None:
+    from gui.editor.profile_panels import ButtonFilterPanel
+
+    panel = ButtonFilterPanel()
+    qtbot.addWidget(panel)
+    selected: list = []
+    panel.selectionChanged.connect(selected.append)
+    panel._checks["POLICE"].setChecked(False)
+    assert "POLICE" not in panel.selected_buttons()
+    assert selected
+
+
+def test_favorites_panel_lists_files(qtbot, tmp_path: Path) -> None:
+    from gui.editor.profile_panels import FavoritesListsPanel
+
+    root = tmp_path / "card"
+    fav = root / "BCDx36HP" / "favorites_lists"
+    fav.mkdir(parents=True)
+    (fav / "f_000001.hpd").write_text("x", encoding="utf-8")
+    panel = FavoritesListsPanel()
+    qtbot.addWidget(panel)
+    emitted: list = []
+    panel.favoriteSelected.connect(emitted.append)
+    panel.set_card_path(str(root))
+    assert panel._list.count() == 1
+    panel._list.item(0).setSelected(True)
+    panel._on_double_clicked(panel._list.item(0))
+    assert emitted == [str(fav / "f_000001.hpd")]
+
+
+def test_profile_cfg_panel_loads_file(qtbot, tmp_path: Path) -> None:
+    from gui.editor.profile_panels import ProfileCfgPanel
+
+    root = tmp_path / "card"
+    cfg = root / "BCDx36HP" / "profile.cfg"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text("ProfileName\tHome\n", encoding="utf-8")
+    panel = ProfileCfgPanel()
+    qtbot.addWidget(panel)
+    panel.set_card_path(str(root))
+    assert "ProfileName" in panel._view.toPlainText()

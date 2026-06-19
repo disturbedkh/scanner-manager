@@ -104,10 +104,52 @@ def _set_app_metadata() -> None:
         QCoreApplication.setApplicationVersion("0.9.0b3-dev")
 
 
+def _bundle_root() -> Path:
+    """Read-only assets root (PyInstaller ``_MEIPASS`` or repo root)."""
+    mei = getattr(sys, "_MEIPASS", None)
+    if mei:
+        return Path(mei)
+    return Path(__file__).resolve().parents[1]
+
+
+def run_smoke() -> int:
+    """Headless frozen-build smoke check (``--smoke``). No GUI."""
+    root = _bundle_root()
+    required = [
+        root / "data" / "uniden_installers.json",
+        root / "data" / "scanner_profiles.json",
+    ]
+    missing = [str(p) for p in required if not p.is_file()]
+    if missing:
+        print("smoke FAIL: missing bundled files:", ", ".join(missing), file=sys.stderr)
+        return 1
+
+    # Critical imports (fail fast if PyInstaller omitted a module).
+    import core.metastore  # noqa: F401
+    import core.uniden_tools  # noqa: F401
+    import gui.main_window  # noqa: F401
+    import scanner_profiles.registry  # noqa: F401
+
+    version = "unknown"
+    try:
+        from importlib.metadata import version as pkg_version
+
+        version = pkg_version("beartracker-885-scanner-manager")
+    except Exception:
+        version = os.environ.get("SCANNER_MANAGER_VERSION", "unknown")
+
+    frozen = bool(getattr(sys, "frozen", False))
+    print(f"smoke OK: version={version} frozen={frozen} root={root}")
+    return 0
+
+
 def main(argv: Optional[list] = None) -> int:
     """Launch the Qt main window. Returns the Qt exit code."""
     if argv is None:
         argv = sys.argv
+
+    if "--smoke" in argv:
+        return run_smoke()
 
     logging.basicConfig(
         level=logging.INFO,

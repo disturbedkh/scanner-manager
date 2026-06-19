@@ -304,6 +304,36 @@ class VirtualCard:
     # Apply to physical
     # ------------------------------------------------------------------
 
+    def _apply_staged_row(
+        self,
+        row: StagedFile,
+        sd_card_root: Path,
+        report: ApplyReport,
+    ) -> bool:
+        src = self.pending_dir / row.relative_path
+        dst = sd_card_root / row.relative_path
+        try:
+            if not src.exists():
+                raise VirtualCardError(
+                    f"Staged file vanished before apply: {src}"
+                )
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            if (dst.exists() and row.kind in
+                    (StageKind.MAIN_FIRMWARE.value,
+                     StageKind.SUB_FIRMWARE.value)):
+                backup = dst.with_suffix(dst.suffix + ".bak")
+                try:
+                    shutil.copy2(dst, backup)
+                except Exception:
+                    logger.exception("Could not backup %s", dst)
+            shutil.copy2(src, dst)
+            report.applied.append(row)
+            return True
+        except Exception as exc:
+            logger.exception("apply_to_physical failed for %s", row.relative_path)
+            report.failed.append((row, str(exc)))
+            return False
+
     def apply_to_physical(
         self,
         sd_card_root: Path,
@@ -345,32 +375,8 @@ class VirtualCard:
 
         keep: List[StagedFile] = list(self._manifest)
         for row in plan:
-            src = self.pending_dir / row.relative_path
-            dst = sd_card_root / row.relative_path
-            try:
-                if not src.exists():
-                    raise VirtualCardError(
-                        f"Staged file vanished before apply: {src}"
-                    )
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                # Backup existing file (so a botched flash isn't
-                # immediately destructive) - skip for HPDB and config
-                # which can be huge and are themselves snapshotted by
-                # the editor's autosave path.
-                if (dst.exists() and row.kind in
-                        (StageKind.MAIN_FIRMWARE.value,
-                         StageKind.SUB_FIRMWARE.value)):
-                    backup = dst.with_suffix(dst.suffix + ".bak")
-                    try:
-                        shutil.copy2(dst, backup)
-                    except Exception:
-                        logger.exception("Could not backup %s", dst)
-                shutil.copy2(src, dst)
-                report.applied.append(row)
+            if self._apply_staged_row(row, sd_card_root, report):
                 keep = [k for k in keep if k.id != row.id]
-            except Exception as exc:
-                logger.exception("apply_to_physical failed for %s", row.relative_path)
-                report.failed.append((row, str(exc)))
 
         self._manifest = keep
         self._save()

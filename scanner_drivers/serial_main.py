@@ -30,6 +30,8 @@ from dataclasses import dataclass, field
 from typing import Dict, Optional
 from xml.etree import ElementTree as ET
 
+from scanner_drivers.serial_io import read_quiet_serial_response
+
 logger = logging.getLogger(__name__)
 
 
@@ -299,28 +301,9 @@ class SerialMainDriver:
             self._port.flush()
         except Exception:
             pass
-        deadline = time.perf_counter() + self._deadline_s
-        response = bytearray()
-        saw_terminator = False
-        while time.perf_counter() < deadline:
-            n = self._port.in_waiting
-            if n:
-                chunk = self._port.read(n)
-                response.extend(chunk)
-                saw_terminator = saw_terminator or response.endswith(b"\r") or response.endswith(b"\n")
-                if saw_terminator:
-                    quiet_until = time.perf_counter() + self._quiet_after_cr_s
-                    while time.perf_counter() < quiet_until and time.perf_counter() < deadline:
-                        n2 = self._port.in_waiting
-                        if n2:
-                            response.extend(self._port.read(n2))
-                            quiet_until = time.perf_counter() + self._quiet_after_cr_s
-                        else:
-                            time.sleep(0.005)
-                    break
-            else:
-                time.sleep(0.005)
-        return bytes(response)
+        return read_quiet_serial_response(
+            self._port, self._deadline_s, self._quiet_after_cr_s
+        )
 
     # ------------------------------------------------------------------
     # Public typed queries
@@ -448,168 +431,22 @@ class SerialMainDriver:
         raw = raw_bytes.decode("utf-8", errors="replace").strip()
         snap = GsiSnapshot(raw_xml=raw, captured_at=time.time())
 
-        # Real firmware (verified on FW 1.26.01 SDS100) returns
-        # ``GSI,<XML>,\r<?xml version="1.0" encoding="utf-8"?>\r<ScannerInfo ...>``
-        # i.e. there's a literal ``<XML>`` token wedged between the
-        # command echo and the actual XML. Strip everything up to the
-        # XML prolog (``<?xml``) or the root element (``<ScannerInfo``)
-        # so we always hand ET.fromstring a well-formed payload.
-        # Old fixtures / older firmware that just prefix ``GSI,`` are
-        # also handled by this same logic.
-        xml_text = raw
-        for marker in ("<?xml", "<ScannerInfo"):
-            idx = xml_text.find(marker)
-            if idx >= 0:
-                xml_text = xml_text[idx:]
-                break
-        else:
-            # Fall back to the legacy "strip GSI, prefix" path so older
-            # captures keep parsing.
-            if xml_text.startswith("GSI,"):
-                xml_text = xml_text.split(",", 1)[1].strip()
+        xml_text = _extract_gsi_xml_text(raw)
         if not xml_text or not xml_text.lstrip().startswith("<"):
             return snap
         try:
             root = ET.fromstring(xml_text)
         except ET.ParseError:
-            logger.debug("GSI XML parse failed; payload starts: %r", xml_text[:200])
+            logger.debug(
+                "GSI XML parse failed; payload starts: %r", xml_text[:200]
+            )
             return snap
 
-        snap.properties = _gsi_properties(root)
-        snap.mode = (
-            snap.properties.get("Mode", "")
-            or root.attrib.get("Mode", "")
-            or root.attrib.get("V_Screen", "")
-        )
-        # Direct top-level children on real SDS firmware; fall back to
-        # nested .//<X> for any older firmware variant or legacy fixture.
-        snap.system_name = _find_attr(
-            root, ("System", ".//System"), ("Name",)
-        )
-        snap.department_name = _find_attr(
-            root, ("Department", ".//Department"), ("Name",)
-        )
-        snap.tg_name = _find_attr(
-            root, ("TGID", ".//TGID"), ("Name",)
-        )
-        # TGID attribute on real firmware is either "TGID:2057" (active
-        # call) or "TGID: ---" (idle scan / no TG decoded yet). Strip
-        # the prefix and treat the placeholder as empty.
-        raw_tgid = _find_attr(
-            root, ("TGID", ".//TGID"), ("TGID", "Tgid")
-        )
-        if raw_tgid.lower().startswith("tgid:"):
-            raw_tgid = raw_tgid.split(":", 1)[1]
-        raw_tgid = raw_tgid.strip()
-        if raw_tgid in ("---", "", "0"):
-            raw_tgid = ""
-        snap.tgid = raw_tgid
-        snap.unit_id = _find_attr(
-            root, ("UnitID", ".//UnitID"), ("Uid", "Name")
-        )
-
-        # Real firmware exposes a sibling <Site Name="..." Mod="..."/>
-        # element on trunked systems. Capture the site name as its own
-        # field so the mirror can render a "Site" row without overloading
-        # the Talkgroup row.
-        snap.site_name = _find_attr(root, ("Site", ".//Site"), ("Name",))
-
-        # The GSI also has a <ViewDescription><OverWrite Text="..."/></ViewDescription>
-        # block which mirrors the on-screen status string ("ID Scanning...",
-        # "Receiving...", "Holding...", etc). Surface that as the mode
-        # when the trunked-state attribute is empty.
-        if not snap.mode:
-            ow = root.find(".//ViewDescription/OverWrite")
-            if ow is not None:
-                snap.mode = ow.attrib.get("Text", "") or snap.mode
-
-        # Property element is one self-closing tag with all attrs inline
-        prop_el = root.find("Property")
-        if prop_el is None:
-            prop_el = root.find(".//Property")
-        prop_attrs: Dict[str, str] = dict(prop_el.attrib) if prop_el is not None else {}
-
-        # Promote a few alias names so callers can look them up by
-        # either the old per-Property Name or the new attribute name.
-        for src, dst in (
-            ("Rssi", "RSSI"),
-            ("Sig", "SignalLevel"),
-            ("SQL", "Squelch"),
-            ("VOL", "Volume"),
-        ):
-            if src in prop_attrs and dst not in snap.properties:
-                snap.properties[dst] = prop_attrs[src]
-            if src in prop_attrs:
-                snap.properties[src] = prop_attrs[src]
-
-        rssi_text = prop_attrs.get("Rssi") or snap.properties.get("RSSI", "")
-        if rssi_text:
-            try:
-                snap.rssi_dbm = int(float(rssi_text))
-            except (TypeError, ValueError):
-                snap.rssi_dbm = None
-        sig_text = prop_attrs.get("Sig") or snap.properties.get("SignalLevel", "")
-        if sig_text:
-            try:
-                # Real firmware reports Sig 0-5 (signal-bar dots);
-                # rescale to a 0-100% bar so the meter is meaningful.
-                sig_raw = int(float(sig_text))
-                snap.signal_pct = max(0, min(100, sig_raw * 20)) if sig_raw <= 5 else max(0, min(100, sig_raw))
-            except (TypeError, ValueError):
-                snap.signal_pct = None
-
-        # Receiving-state heuristic: real firmware has a Mute attr
-        # ('Mute' = squelched, 'UnMute' = audio is open). Fall back
-        # to the legacy Squelch property for older firmware.
-        mute = (prop_attrs.get("Mute", "") or "").upper()
-        if mute:
-            snap.is_receiving = ("UNMUTE" in mute) or ("OPEN" in mute) or (mute == "")
-        else:
-            snap.is_receiving = (snap.properties.get("Squelch", "0") or "0") not in ("0", "")
-
-        # Frequency: try the new SiteFrequency element first, then
-        # the older Frequency_TGID / Frequency property names.
-        site_freq = root.find("SiteFrequency")
-        if site_freq is None:
-            site_freq = root.find(".//SiteFrequency")
-        if site_freq is not None:
-            freq_text = (
-                site_freq.attrib.get("Freq")
-                or site_freq.attrib.get("Frequency")
-                or ""
-            )
-        else:
-            freq_text = (
-                prop_attrs.get("Freq")
-                or snap.properties.get("Frequency_TGID", "")
-                or snap.properties.get("Frequency", "")
-            )
-        snap.frequency_hz = _parse_frequency_hz(freq_text)
-
-        # Diagnostic: if we parsed XML successfully but every visible
-        # field is still empty, log the raw payload so the operator
-        # can see *why* the GSI mirror stays blank. We rate-limit to
-        # one warning per unique XML root tag so the log doesn't get
-        # spammed at 5 Hz.
-        if not any((
-            snap.system_name, snap.department_name, snap.tg_name,
-            snap.tgid, snap.unit_id, snap.rssi_dbm, snap.signal_pct,
-            snap.frequency_hz,
-        )):
-            tag_key = (root.tag, len(xml_text))
-            seen = getattr(self, "_gsi_anomaly_keys", None)
-            if seen is None:
-                seen = set()
-                self._gsi_anomaly_keys = seen
-            if tag_key not in seen:
-                seen.add(tag_key)
-                logger.info(
-                    "GSI parsed to empty snapshot - raw payload (root=%r, "
-                    "%d chars): %s",
-                    root.tag,
-                    len(xml_text),
-                    xml_text[:600],
-                )
+        seen = getattr(self, "_gsi_anomaly_keys", None)
+        if seen is None:
+            seen = set()
+        _fill_gsi_snapshot_from_root(snap, root, xml_text, seen)
+        self._gsi_anomaly_keys = seen
         return snap
 
     def poll_glg(self) -> GlgEvent:
@@ -637,6 +474,183 @@ class SerialMainDriver:
         ) = parts[:12]
         evt.is_receiving = bool(evt.frq) or bool(evt.name3)
         return evt
+
+
+def _extract_gsi_xml_text(raw: str) -> str:
+    xml_text = raw
+    for marker in ("<?xml", "<ScannerInfo"):
+        idx = xml_text.find(marker)
+        if idx >= 0:
+            return xml_text[idx:]
+    if xml_text.startswith("GSI,"):
+        return xml_text.split(",", 1)[1].strip()
+    return xml_text
+
+
+def _normalize_gsi_tgid(raw_tgid: str) -> str:
+    if raw_tgid.lower().startswith("tgid:"):
+        raw_tgid = raw_tgid.split(":", 1)[1]
+    raw_tgid = raw_tgid.strip()
+    if raw_tgid in ("---", "", "0"):
+        return ""
+    return raw_tgid
+
+
+def _gsi_prop_element(root):
+    prop_el = root.find("Property")
+    if prop_el is None:
+        prop_el = root.find(".//Property")
+    return prop_el
+
+
+def _promote_gsi_property_aliases(
+    snap: GsiSnapshot, prop_attrs: Dict[str, str]
+) -> None:
+    for src, dst in (
+        ("Rssi", "RSSI"),
+        ("Sig", "SignalLevel"),
+        ("SQL", "Squelch"),
+        ("VOL", "Volume"),
+    ):
+        if src in prop_attrs and dst not in snap.properties:
+            snap.properties[dst] = prop_attrs[src]
+        if src in prop_attrs:
+            snap.properties[src] = prop_attrs[src]
+
+
+def _apply_gsi_rssi(
+    snap: GsiSnapshot, prop_attrs: Dict[str, str]
+) -> None:
+    rssi_text = prop_attrs.get("Rssi") or snap.properties.get("RSSI", "")
+    if not rssi_text:
+        return
+    try:
+        snap.rssi_dbm = int(float(rssi_text))
+    except (TypeError, ValueError):
+        snap.rssi_dbm = None
+
+
+def _apply_gsi_signal_pct(
+    snap: GsiSnapshot, prop_attrs: Dict[str, str]
+) -> None:
+    sig_text = prop_attrs.get("Sig") or snap.properties.get("SignalLevel", "")
+    if not sig_text:
+        return
+    try:
+        sig_raw = int(float(sig_text))
+        snap.signal_pct = (
+            max(0, min(100, sig_raw * 20))
+            if sig_raw <= 5
+            else max(0, min(100, sig_raw))
+        )
+    except (TypeError, ValueError):
+        snap.signal_pct = None
+
+
+def _apply_gsi_receiving_state(
+    snap: GsiSnapshot, prop_attrs: Dict[str, str]
+) -> None:
+    mute = (prop_attrs.get("Mute", "") or "").upper()
+    if mute:
+        snap.is_receiving = (
+            ("UNMUTE" in mute) or ("OPEN" in mute) or (mute == "")
+        )
+        return
+    snap.is_receiving = (
+        snap.properties.get("Squelch", "0") or "0"
+    ) not in ("0", "")
+
+
+def _apply_gsi_property_metrics(
+    snap: GsiSnapshot, prop_attrs: Dict[str, str]
+) -> None:
+    _promote_gsi_property_aliases(snap, prop_attrs)
+    _apply_gsi_rssi(snap, prop_attrs)
+    _apply_gsi_signal_pct(snap, prop_attrs)
+    _apply_gsi_receiving_state(snap, prop_attrs)
+
+
+def _gsi_frequency_text(root, prop_attrs: Dict[str, str], snap: GsiSnapshot) -> str:
+    site_freq = root.find("SiteFrequency")
+    if site_freq is None:
+        site_freq = root.find(".//SiteFrequency")
+    if site_freq is not None:
+        return (
+            site_freq.attrib.get("Freq")
+            or site_freq.attrib.get("Frequency")
+            or ""
+        )
+    return (
+        prop_attrs.get("Freq")
+        or snap.properties.get("Frequency_TGID", "")
+        or snap.properties.get("Frequency", "")
+    )
+
+
+def _log_empty_gsi_snapshot(
+    snap: GsiSnapshot, root, xml_text: str, seen: Optional[set]
+) -> None:
+    if any((
+        snap.system_name, snap.department_name, snap.tg_name,
+        snap.tgid, snap.unit_id, snap.rssi_dbm, snap.signal_pct,
+        snap.frequency_hz,
+    )):
+        return
+    tag_key = (root.tag, len(xml_text))
+    if seen is None:
+        seen = set()
+    if tag_key in seen:
+        return
+    seen.add(tag_key)
+    logger.info(
+        "GSI parsed to empty snapshot - raw payload (root=%r, "
+        "%d chars): %s",
+        root.tag,
+        len(xml_text),
+        xml_text[:600],
+    )
+
+
+def _fill_gsi_snapshot_from_root(
+    snap: GsiSnapshot,
+    root,
+    xml_text: str,
+    anomaly_seen: Optional[set],
+) -> None:
+    snap.properties = _gsi_properties(root)
+    snap.mode = (
+        snap.properties.get("Mode", "")
+        or root.attrib.get("Mode", "")
+        or root.attrib.get("V_Screen", "")
+    )
+    snap.system_name = _find_attr(root, ("System", ".//System"), ("Name",))
+    snap.department_name = _find_attr(
+        root, ("Department", ".//Department"), ("Name",)
+    )
+    snap.tg_name = _find_attr(root, ("TGID", ".//TGID"), ("Name",))
+    raw_tgid = _find_attr(
+        root, ("TGID", ".//TGID"), ("TGID", "Tgid")
+    )
+    snap.tgid = _normalize_gsi_tgid(raw_tgid)
+    snap.unit_id = _find_attr(
+        root, ("UnitID", ".//UnitID"), ("Uid", "Name")
+    )
+    snap.site_name = _find_attr(root, ("Site", ".//Site"), ("Name",))
+
+    if not snap.mode:
+        ow = root.find(".//ViewDescription/OverWrite")
+        if ow is not None:
+            snap.mode = ow.attrib.get("Text", "") or snap.mode
+
+    prop_el = _gsi_prop_element(root)
+    prop_attrs: Dict[str, str] = (
+        dict(prop_el.attrib) if prop_el is not None else {}
+    )
+    _apply_gsi_property_metrics(snap, prop_attrs)
+    snap.frequency_hz = _parse_frequency_hz(
+        _gsi_frequency_text(root, prop_attrs, snap)
+    )
+    _log_empty_gsi_snapshot(snap, root, xml_text, anomaly_seen)
 
 
 # ---------------------------------------------------------------------------

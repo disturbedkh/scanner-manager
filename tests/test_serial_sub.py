@@ -166,3 +166,64 @@ def test_fetch_wide_iq_handles_flat_two_per_record_stream():
     frame = driver.fetch_wide_iq()
     assert frame.i_samples == [10, 30, 50]
     assert frame.q_samples == [20, 40, 60]
+
+
+def test_open_raises_when_pyserial_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    import builtins
+
+    real_import = builtins.__import__
+
+    def _fake_import(name, *args, **kwargs):
+        if name == "serial":
+            raise ImportError("no pyserial")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _fake_import)
+    with pytest.raises(SubDriverError, match="pyserial not installed"):
+        SerialSubDriver.open("COM4")
+
+
+def test_open_wraps_port_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _SerialModule:
+        EIGHTBITS = 8
+        PARITY_NONE = "N"
+        STOPBITS_ONE = 1
+
+        class Serial:
+            def __init__(self, **kwargs) -> None:
+                raise OSError("port busy")
+
+    import builtins
+
+    real_import = builtins.__import__
+
+    def _fake_import(name, *args, **kwargs):
+        if name == "serial":
+            return _SerialModule()
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _fake_import)
+    with pytest.raises(SubDriverError, match="could not open"):
+        SerialSubDriver.open("COM4")
+
+
+def test_close_swallows_port_errors() -> None:
+    class _BrokenPort(FakeSerial):
+        def close(self) -> None:
+            raise OSError("close failed")
+
+    driver = SerialSubDriver(_BrokenPort())
+    driver.close()
+
+
+def test_send_unlocked_tolerates_buffer_and_flush_errors() -> None:
+    class _FlakyPort(FakeSerial):
+        def reset_input_buffer(self) -> None:
+            raise OSError("reset failed")
+
+        def flush(self) -> None:
+            raise OSError("flush failed")
+
+    fake = _FlakyPort(responses=[b"ok\r"])
+    driver = SerialSubDriver(fake)
+    assert driver.send_command("m") == b"ok\r"

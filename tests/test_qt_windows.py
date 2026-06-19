@@ -6,6 +6,8 @@ import os
 
 import pytest
 
+pytestmark = pytest.mark.qt
+
 pytest.importorskip("pytestqt")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")

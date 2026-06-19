@@ -185,7 +185,7 @@ def test_apply_hpdb_drops_into_hpdb_dir(tmp_path: Path):
     src = tmp_path / "MasterHpdb_05_03_2026.gz"
     src.write_bytes(b"\x1f\x8b\x08\x00fake-hpdb-payload")
     hpdb_v = HpdbVersion.parse("MasterHpdb_05_03_2026.gz")
-    dst = apply_hpdb(card, src, version=hpdb_v)
+    dst = apply_hpdb(card, src, hpdb_v)
     assert dst.parent == card_hpdb_dir(card)
     assert dst.read_bytes() == src.read_bytes()
 

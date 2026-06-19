@@ -1,19 +1,23 @@
 # Release checklist
 
-Follow this file every time you cut a new version.
+Follow this file every time you cut a new version. Build-system design:
+[`../Dev/BUILD_SYSTEM.md`](../Dev/BUILD_SYSTEM.md).
 
 ## 0. Pre-flight
 
 - [ ] `git status` is clean on `main`.
-- [ ] `pytest -q` is green locally.
+- [ ] `pytest -m "not requires_serial and not slow" -q` is green locally.
 - [ ] Scoped ruff passes on the product tree:
 
   ```bash
   ruff check core/ gui/ legacy_tk/ scanner_profiles/ scanner_drivers/ \
     firmware/ streaming/ audio/ virtual_sd/ tests/ scripts/ Metacache/Dev/RE/tools/
   ```
+- [ ] `requirements.lock` is fresh (`.\scripts\refresh_lockfile.ps1` if
+      `pyproject.toml` deps changed).
+- [ ] Optional: `.\scripts\sonar_scan.ps1` passes quality gate locally.
 - [ ] `CHANGELOG.md` has a heading for the new version (move content
-      from `[Unreleased]` into `[0.9.0b3] - YYYY-MM-DD`).
+      from `[Unreleased]`).
 - [ ] `pyproject.toml` `version` matches.
 - [ ] `data/uniden_installers.json` hashes are pinned when rotating
       installers (re-run `scripts/pin_uniden_hashes.py` or verify
@@ -22,64 +26,69 @@ Follow this file every time you cut a new version.
 Install path for local checks and CI:
 
 ```bash
-python -m pip install -e ".[full,dev]"
+pip install -r requirements.lock
+pip install -e . --no-deps
 ```
 
 ## 1. GitLab CI (primary gate)
 
-Every push to `main` runs `.gitlab-ci.yml` (lint + test matrix).
+Every push to `main` runs `.gitlab-ci.yml` (lint + tiered tests + coverage
+gate + optional SonarQube).
 
 For a release candidate or final tag:
 
 ```bash
-git tag -a v0.9.0b3 -m "v0.9.0b3 - layout reorg and GitLab CI parity"
-git push origin v0.9.0b3
+git tag -a v0.10.1 -m "v0.10.1 - description"
+git push origin v0.10.1
 ```
 
-GitLab CI builds release artifacts under `build/<OS>/Release/` on
-`v*` tags (`release:windows`, `release:macos`, `release:linux`):
+GitLab CI on `v*` tags:
 
-| OS | Artifact path |
-| -- | ------------- |
-| Windows | `build/Windows/Release/ScannerManager.exe` (+ zip) |
-| macOS | `build/macOS/Release/ScannerManager-macos.tar.gz` |
-| Linux | `build/Linux/Release/ScannerManager-linux-x64.tar.gz` |
+1. Builds release artifacts under `build/<OS>/Release/`
+2. Runs frozen `--smoke` verification + SHA-256 sidecar checks
+3. Publishes a **GitLab Release** with permanent assets
 
-Local PyInstaller smoke (Development default):
+| OS | Artifact |
+| -- | -------- |
+| Windows | `ScannerManager-windows-x64.zip` (+ `.sha256`) |
+| macOS | `ScannerManager-macos.tar.gz` (+ `.sha256`) |
+| Linux | `ScannerManager-linux-x64.tar.gz` (+ `.sha256`) |
+
+Also attached: wheel/sdist, `build-provenance.json`.
+
+Local PyInstaller smoke:
 
 ```powershell
-pyinstaller packaging/scanner-manager.spec --noconfirm
-dir build\Windows\Development\
+python scripts/build_release.py --type Release --smoke
 ```
 
-Release-mode local smoke: `$env:SCANNER_MANAGER_BUILD_TYPE='Release'`
-
 **Deprecated mirror:** GitHub Actions `.github/workflows/release.yml` is
-manual (`workflow_dispatch`) only — use it to publish public GitHub
-Release assets after a GitLab-validated tag.
+manual (`workflow_dispatch`) only — use after GitLab-validated tag.
 
 ## 2. Smoke test
 
+### CI (automatic on tag)
+
+Frozen binaries run `--smoke` in the `verify` stage (bundled data,
+imports, version print).
+
+### Manual (clean machine)
+
 On a clean Windows 10 / 11 machine:
 
-1. Download the EXE + its `.sha256` from GitLab job artifacts (or
-   GitHub Release if mirroring publicly).
-2. Verify the hash matches.
+1. Download assets from the **GitLab Release** page (not ephemeral job
+   artifacts).
+2. Verify the `.sha256` sidecar matches.
 3. Run the EXE. SmartScreen warns because it's unsigned; click
    *More info → Run anyway*.
-4. First-run notice appears. Dismiss.
-5. Load an SD card; basic tree browsing works in the Qt UI.
-6. `Help → About` shows the new version.
-7. Import smoke (dev/CI also runs this):
+4. Optional CLI smoke: `ScannerManager.exe --smoke`
+5. Full UI: first-run notice, load an SD card, `Help → About` version.
+6. Import smoke (dev/CI also runs this):
 
    ```bash
    python -c "import gui.app; import core.metastore, core.uniden_tools"
    python -c "import legacy_tk.scanner_manager"
    ```
-
-8. Trigger an intentional error (e.g. mangle a `.meta.json`) to
-   confirm the crash hook writes a log and offers a pre-filled issue
-   URL.
 
 If anything fails, fix on `main`, bump to `-rc2` or a new beta tag, and
 repeat. Do **not** re-use a tag for a second attempt.

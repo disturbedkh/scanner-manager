@@ -1,18 +1,26 @@
 # GitLab CI — primary gate for scanner-manager (private mirror).
-# Install path matches local dev: pip install -e ".[full,dev]"
+# Install path: pip-sync requirements.lock + pip install -e . --no-deps
 
 stages:
   - lint
   - test
+  - quality
   - release
+  - verify
+  - publish
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  PYTEST_CI: "1"
+
+.lockfile_install:
+  before_script:
+    - python -m pip install -U pip pip-tools
+    - python -m pip install -r requirements.lock
+    - python -m pip install -e . --no-deps
 
 .default_before:
-  before_script:
-    - python -m pip install -U pip
-    - python -m pip install -e ".[full,dev]"
+  extends: .lockfile_install
 
 .release_vars:
   variables:
@@ -25,29 +33,69 @@ lint:
   script:
     - ruff check core/ gui/ legacy_tk/ scanner_profiles/ scanner_drivers/ firmware/ streaming/ audio/ virtual_sd/ tests/ scripts/ Metacache/Dev/RE/tools/
 
-.test_linux:
+lockfile:check:
+  stage: lint
+  image: python:3.12
+  before_script:
+    - python -m pip install -U pip pip-tools
+  script:
+    - python scripts/check_lockfile_stale.py
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+.test_linux_base:
   stage: test
   before_script:
     - apt-get update -qq
     - apt-get install -y -qq xvfb python3-tk
-    - python -m pip install -U pip
-    - python -m pip install -e ".[full,dev]"
+    - python -m pip install -U pip pip-tools
+    - python -m pip install -r requirements.lock
+    - python -m pip install -e . --no-deps
+  variables:
+    QT_QPA_PLATFORM: offscreen
+
+test:unit:
+  extends: .test_linux_base
+  image: python:3.12
   script:
-    - xvfb-run -a pytest -q
+    - pytest -m "unit and not slow" -q
+
+test:qt:
+  extends: .test_linux_base
+  image: python:3.12
+  script:
+    - xvfb-run -a pytest -m qt -q
+
+test:integration:
+  extends: .test_linux_base
+  image: python:3.12
+  script:
+    - pytest -m integration -q
+
+.test_matrix:
+  script:
+    - pytest -m "not requires_serial and not slow" -q
     - python -c "import gui.app; import core.metastore, core.uniden_tools; print('import ok')"
     - python -c "import legacy_tk.scanner_manager; print('legacy tk ok')"
 
 test:linux:3.9:
-  extends: .test_linux
+  extends: .test_linux_base
   image: python:3.9
+  script:
+    - !reference [.test_matrix, script]
 
 test:linux:3.11:
-  extends: .test_linux
+  extends: .test_linux_base
   image: python:3.11
+  script:
+    - !reference [.test_matrix, script]
 
 test:linux:3.12:
-  extends: .test_linux
+  extends: .test_linux_base
   image: python:3.12
+  script:
+    - !reference [.test_matrix, script]
 
 test:windows:3.12:
   stage: test
@@ -55,9 +103,7 @@ test:windows:3.12:
     - saas-windows-medium-amd64
   extends: .default_before
   script:
-    - pytest -q
-    - python -c "import gui.app; import core.metastore, core.uniden_tools; print('import ok')"
-    - python -c "import legacy_tk.scanner_manager; print('legacy tk ok')"
+    - !reference [.test_matrix, script]
 
 test:macos:3.12:
   stage: test
@@ -65,70 +111,190 @@ test:macos:3.12:
     - saas-macos-medium-m1
   extends: .default_before
   script:
-    - pytest -q
-    - python -c "import gui.app; import core.metastore, core.uniden_tools; print('import ok')"
-    - python -c "import legacy_tk.scanner_manager; print('legacy tk ok')"
+    - !reference [.test_matrix, script]
 
-release:windows:
-  stage: release
+test:coverage:
+  stage: quality
+  extends: .test_linux_base
+  image: python:3.12
+  needs: ["test:unit", "test:qt", "test:integration"]
+  script:
+    - pytest -m "not requires_serial and not slow" --cov --cov-report=xml:coverage.xml --cov-fail-under=75 -q
+  artifacts:
+    paths:
+      - coverage.xml
+    expire_in: 7 days
+
+sonarqube:
+  stage: quality
+  image: sonarsource/sonar-scanner-cli:latest
   tags:
-    - saas-windows-medium-amd64
+    - sonar
+  needs: ["test:coverage"]
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+    GIT_DEPTH: "0"
+  script:
+    - sonar-scanner
+      -Dsonar.projectKey=scanner-manager
+      -Dsonar.host.url=${SONAR_HOST_URL}
+      -Dsonar.token=${SONAR_TOKEN}
+      -Dsonar.python.coverage.reportPaths=coverage.xml
+      -Dsonar.qualitygate.wait=true
   rules:
-    - if: $CI_COMMIT_TAG =~ /^v/
+    - if: $SONAR_HOST_URL && $SONAR_TOKEN && ($CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH)
+
+.release_build:
   extends:
     - .default_before
     - .release_vars
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
   script:
-    - pyinstaller packaging/scanner-manager.spec --noconfirm
-    - powershell -Command "$root='build/Windows/Release'; $hash = (Get-FileHash -Algorithm SHA256 \"$root/ScannerManager.exe\").Hash.ToLower(); $hash | Out-File -Encoding ascii \"$root/ScannerManager.exe.sha256\"; Compress-Archive -Path \"$root/ScannerManager.exe\" -DestinationPath \"$root/ScannerManager-windows-x64.zip\" -Force; (Get-FileHash -Algorithm SHA256 \"$root/ScannerManager-windows-x64.zip\").Hash.ToLower() | Out-File -Encoding ascii \"$root/ScannerManager-windows-x64.zip.sha256\""
+    - export SCANNER_MANAGER_VERSION="${CI_COMMIT_TAG#v}"
+    - python scripts/build_release.py --type Release --smoke --skip-sync
+  artifacts:
+    expire_in: 30 days
+
+release:windows:
+  extends: .release_build
+  stage: release
+  tags:
+    - saas-windows-medium-amd64
   artifacts:
     paths:
       - build/Windows/Release/ScannerManager.exe
       - build/Windows/Release/ScannerManager.exe.sha256
       - build/Windows/Release/ScannerManager-windows-x64.zip
       - build/Windows/Release/ScannerManager-windows-x64.zip.sha256
-    expire_in: 30 days
+      - build/Windows/Release/build-provenance.json
 
 release:macos:
+  extends: .release_build
   stage: release
   tags:
     - saas-macos-medium-m1
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v/
-  extends:
-    - .default_before
-    - .release_vars
-  script:
-    - export SCANNER_MANAGER_VERSION="${CI_COMMIT_TAG#v}"
-    - pyinstaller packaging/scanner-manager.spec --noconfirm
-    - cd build/macOS/Release && tar -czf ScannerManager-macos.tar.gz ScannerManager.app
-    - cd build/macOS/Release && shasum -a 256 ScannerManager-macos.tar.gz > ScannerManager-macos.tar.gz.sha256
   artifacts:
     paths:
       - build/macOS/Release/ScannerManager.app
       - build/macOS/Release/ScannerManager-macos.tar.gz
       - build/macOS/Release/ScannerManager-macos.tar.gz.sha256
-    expire_in: 30 days
+      - build/macOS/Release/build-provenance.json
 
 release:linux:
+  extends: .release_build
   stage: release
   image: python:3.12
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v/
-  extends: .release_vars
   before_script:
     - apt-get update -qq
     - apt-get install -y -qq tk
-    - python -m pip install -U pip
-    - python -m pip install -e ".[full,dev]"
-  script:
-    - pyinstaller packaging/scanner-manager.spec --noconfirm
-    - cd build/Linux/Release && chmod +x ScannerManager
-    - cd build/Linux/Release && tar -czf ScannerManager-linux-x64.tar.gz ScannerManager
-    - cd build/Linux/Release && sha256sum ScannerManager-linux-x64.tar.gz > ScannerManager-linux-x64.tar.gz.sha256
+    - python -m pip install -U pip pip-tools
+    - python -m pip install -r requirements.lock
+    - python -m pip install -e . --no-deps
   artifacts:
     paths:
       - build/Linux/Release/ScannerManager
       - build/Linux/Release/ScannerManager-linux-x64.tar.gz
       - build/Linux/Release/ScannerManager-linux-x64.tar.gz.sha256
-    expire_in: 30 days
+      - build/Linux/Release/build-provenance.json
+
+.verify_linux:
+  stage: verify
+  image: python:3.12
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+  script:
+    - chmod +x build/Linux/Release/ScannerManager
+    - build/Linux/Release/ScannerManager --smoke
+    - bash scripts/verify_release_artifact.sh build/Linux/Release/ScannerManager-linux-x64.tar.gz
+
+verify:linux:
+  extends: .verify_linux
+  needs: ["release:linux"]
+
+verify:windows:
+  stage: verify
+  tags:
+    - saas-windows-medium-amd64
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+  needs: ["release:windows"]
+  script:
+    - powershell -File scripts/verify_release_artifact.ps1 -ArtifactPath build/Windows/Release/ScannerManager-windows-x64.zip
+    - build/Windows/Release/ScannerManager.exe --smoke
+
+verify:macos:
+  stage: verify
+  tags:
+    - saas-macos-medium-m1
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+  needs: ["release:macos"]
+  script:
+    - bash scripts/verify_release_artifact.sh build/macOS/Release/ScannerManager-macos.tar.gz
+    - build/macOS/Release/ScannerManager.app/Contents/MacOS/ScannerManager --smoke
+
+release:packages:
+  stage: publish
+  image: python:3.12
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+  needs:
+    - verify:windows
+    - verify:macos
+    - verify:linux
+  extends: .default_before
+  script:
+    - python -m pip install -U build
+    - python -m build
+    - python scripts/extract_changelog.py "$CI_COMMIT_TAG" > release_notes.md
+  artifacts:
+    paths:
+      - dist/
+      - release_notes.md
+    expire_in: never
+
+release:publish:
+  stage: publish
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+  needs:
+    - job: release:windows
+      artifacts: true
+    - job: release:macos
+      artifacts: true
+    - job: release:linux
+      artifacts: true
+    - job: release:packages
+      artifacts: true
+  script:
+    - echo "Publishing GitLab Release for ${CI_COMMIT_TAG}"
+  release:
+    tag_name: $CI_COMMIT_TAG
+    name: "Scanner Manager ${CI_COMMIT_TAG}"
+    description: ./release_notes.md
+    assets:
+      artifacts:
+        - path: build/Windows/Release/ScannerManager-windows-x64.zip
+          job: release:windows
+        - path: build/Windows/Release/ScannerManager-windows-x64.zip.sha256
+          job: release:windows
+        - path: build/macOS/Release/ScannerManager-macos.tar.gz
+          job: release:macos
+        - path: build/macOS/Release/ScannerManager-macos.tar.gz.sha256
+          job: release:macos
+        - path: build/Linux/Release/ScannerManager-linux-x64.tar.gz
+          job: release:linux
+        - path: build/Linux/Release/ScannerManager-linux-x64.tar.gz.sha256
+          job: release:linux
+        - path: build/Windows/Release/build-provenance.json
+          job: release:windows
+        - path: build/macOS/Release/build-provenance.json
+          job: release:macos
+        - path: build/Linux/Release/build-provenance.json
+          job: release:linux
+        - path: dist/*.whl
+          job: release:packages
+        - path: dist/*.tar.gz
+          job: release:packages

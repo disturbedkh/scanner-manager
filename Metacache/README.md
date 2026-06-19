@@ -5,6 +5,7 @@ developer/agent notebook.
 
 | Subtree | Former location | Purpose |
 | ------- | --------------- | ------- |
+| [`ROADMAP.md`](ROADMAP.md) | — | Build-system phases and north star |
 | [`docs/`](docs/) | repo-root `docs/` | Release checklist, contributor guides, format notes |
 | [`Dev/`](Dev/) | `AI/Dev/` | Agent handoff, workstreams, RE notes, conventions |
 

@@ -71,3 +71,273 @@ def test_list_input_devices_returns_list_or_empty():
     from audio.capture import list_input_devices
     devices = list_input_devices()
     assert isinstance(devices, list)
+
+
+def test_list_input_devices_when_query_devices_raises(monkeypatch):
+    """query_devices failure must not crash list enumeration."""
+    from audio import capture as cap
+
+    class _FakeSD:
+        @staticmethod
+        def query_hostapis():
+            return [{"name": "Fake API"}]
+
+        @staticmethod
+        def query_devices():
+            raise RuntimeError("no audio backend")
+
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    assert cap.list_input_devices() == []
+
+
+def test_list_input_devices_skips_output_only_devices(monkeypatch):
+    from audio import capture as cap
+
+    class _FakeSD:
+        @staticmethod
+        def query_hostapis():
+            return [{"name": "WASAPI"}]
+
+        @staticmethod
+        def query_devices():
+            return [
+                {"name": "Speakers", "max_input_channels": 0, "hostapi": 0},
+                {
+                    "name": "Mic",
+                    "max_input_channels": 2,
+                    "hostapi": 0,
+                    "default_samplerate": 44100.0,
+                },
+            ]
+
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    devices = cap.list_input_devices()
+    assert len(devices) == 1
+    assert devices[0].name == "Mic"
+    assert devices[0].max_input_channels == 2
+
+
+def test_audio_capture_start_raises_without_sounddevice(monkeypatch):
+    from audio import capture as cap
+
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: None)
+    ac = cap.AudioCapture()
+    with pytest.raises(RuntimeError, match="sounddevice not installed"):
+        ac.start()
+
+
+def test_audio_capture_start_stop_with_mock_stream(monkeypatch):
+    from audio import capture as cap
+
+    class _FakeStream:
+        def __init__(self, callback):
+            self._callback = callback
+            self.started = False
+
+        def start(self):
+            self.started = True
+
+        def stop(self):
+            self.started = False
+
+        def close(self):
+            pass
+
+        def invoke(self, block):
+            self._callback(block, len(block), None, None)
+
+    class _FakeSD:
+        last_stream = None
+
+        @classmethod
+        def InputStream(cls, **kwargs):
+            stream = _FakeStream(kwargs["callback"])
+            cls.last_stream = stream
+            return stream
+
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    ac = cap.AudioCapture(sample_rate=48000, channels=1, block_size=4)
+    assert not ac.is_running
+    ac.start()
+    assert ac.is_running
+    ac.stop()
+    assert not ac.is_running
+
+
+def test_audio_capture_callback_receives_frame(monkeypatch):
+    from audio import capture as cap
+
+    class _FakeStream:
+        def __init__(self, callback):
+            self._callback = callback
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def close(self):
+            pass
+
+        def invoke(self, block):
+            self._callback(block, len(block), None, None)
+
+    class _FakeSD:
+        last_stream = None
+
+        @classmethod
+        def InputStream(cls, **kwargs):
+            stream = _FakeStream(kwargs["callback"])
+            cls.last_stream = stream
+            return stream
+
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    received = []
+    ac = cap.AudioCapture(sample_rate=48000, channels=1, block_size=4)
+    ac.set_callback(received.append)
+    ac.start()
+    block = np.array([[0.5], [-0.5], [0.25], [-0.25]], dtype=np.float32)
+    assert _FakeSD.last_stream is not None
+    _FakeSD.last_stream.invoke(block)
+    assert len(received) == 1
+    frame = received[0]
+    assert frame.sample_rate == 48000
+    assert frame.channels == 1
+    assert frame.rms > 0.0
+    assert frame.peak > 0.0
+    ac.stop()
+
+
+def test_audio_capture_start_is_idempotent(monkeypatch):
+    from audio import capture as cap
+
+    class _FakeStream:
+        def __init__(self, callback):  # noqa: ARG002
+            pass
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def close(self):
+            pass
+
+    created = []
+
+    class _FakeSD:
+        @classmethod
+        def InputStream(cls, **kwargs):
+            created.append(kwargs)
+            return _FakeStream(kwargs.get("callback"))
+
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    ac = cap.AudioCapture()
+    ac.start()
+    ac.start()
+    assert len(created) == 1
+    ac.stop()
+
+
+def test_lame_encoder_with_mock(monkeypatch):
+    """Exercise _LameEncoder when lameenc is present (mocked)."""
+    import sys
+
+    from audio.encoder import make_encoder
+
+    class _FakeEncoder:
+        def set_bit_rate(self, _kbps):
+            pass
+
+        def set_in_sample_rate(self, _rate):
+            pass
+
+        def set_channels(self, _ch):
+            pass
+
+        def set_quality(self, _q):
+            pass
+
+        def encode(self, data):
+            return b"MP3" + data[:4]
+
+        def flush(self):
+            return b"TAIL"
+
+    monkeypatch.setitem(sys.modules, "lameenc", type("lameenc", (), {"Encoder": _FakeEncoder}))
+    enc = make_encoder(codec="mp3", sample_rate=48000, channels=1, bitrate_kbps=128)
+    assert enc.mime_type == "audio/mpeg"
+    enc.feed(_sine_frame(0.05))
+    chunk = enc.drain()
+    assert chunk.startswith(b"MP3")
+    tail = enc.flush()
+    assert b"TAIL" in tail
+
+
+def test_opus_encoder_fallback_when_pyogg_missing(monkeypatch):
+    from audio.encoder import PassthroughWavEncoder, make_encoder
+
+    monkeypatch.setitem(__import__("sys").modules, "pyogg", None)
+    enc = make_encoder(codec="opus", sample_rate=48000, channels=1)
+    assert isinstance(enc, PassthroughWavEncoder)
+
+
+def test_opus_encoder_with_mock(monkeypatch):
+    from audio.encoder import make_encoder
+
+    class _FakeOpusEncoder:
+        def set_application(self, _app):
+            pass
+
+        def set_sampling_frequency(self, _rate):
+            pass
+
+        def set_channels(self, _ch):
+            pass
+
+        def encode(self, data):
+            return b"OPUS" + data[:2]
+
+    fake_pyogg = type("pyogg", (), {"OpusEncoder": _FakeOpusEncoder})
+    monkeypatch.setitem(__import__("sys").modules, "pyogg", fake_pyogg)
+    enc = make_encoder(codec="opus", sample_rate=48000, channels=1)
+    enc.feed(_sine_frame(0.05))
+    assert enc.drain().startswith(b"OPUS")
+
+
+def test_lame_encoder_import_error_raises(monkeypatch):
+    import builtins
+
+    from audio.encoder import _LameEncoder
+
+    real_import = builtins.__import__
+
+    def _block_lame(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "lameenc":
+            raise ImportError("lameenc not installed")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", _block_lame)
+    with pytest.raises(RuntimeError, match="lameenc not installed"):
+        _LameEncoder()
+
+
+def test_passthrough_encoder_without_numpy(monkeypatch):
+    import builtins
+
+    from audio.encoder import PassthroughWavEncoder
+
+    enc = PassthroughWavEncoder()
+    real_import = builtins.__import__
+
+    def _block_numpy(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "numpy":
+            raise ImportError("no numpy")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", _block_numpy)
+    frame = _sine_frame(0.01)
+    enc.feed(frame)
+    assert enc.drain()[:4] == b"RIFF"

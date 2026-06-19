@@ -67,44 +67,9 @@ class EntryEditDialog(QDialog):
         form.addRow("Name:", self._name_edit)
 
         if entry.entry_type == "C-Freq":
-            self._freq_spin = QDoubleSpinBox()
-            self._freq_spin.setRange(0.0, 9999.99999)
-            self._freq_spin.setDecimals(5)
-            self._freq_spin.setSuffix(" MHz")
-            current_hz_str = entry.record.get_field(5, "")
-            try:
-                self._freq_spin.setValue(int(current_hz_str) / 1e6)
-            except (TypeError, ValueError):
-                self._freq_spin.setValue(0.0)
-            form.addRow("Frequency:", self._freq_spin)
-
-            self._mode_combo = QComboBox()
-            self._mode_combo.addItems(["FM", "NFM", "AM", "AUTO"])
-            current_mode = entry.record.get_field(6, "AUTO")
-            idx = self._mode_combo.findText(current_mode)
-            if idx >= 0:
-                self._mode_combo.setCurrentIndex(idx)
-            form.addRow("Mode:", self._mode_combo)
-
-            self._tone_edit = QLineEdit(entry.record.get_field(7, ""))
-            self._tone_edit.setPlaceholderText("CTCSS / DCS, e.g. 100.0 or D023N (blank = none)")
-            form.addRow("Tone / NAC:", self._tone_edit)
+            self._build_cfreq_fields(form, entry)
         else:
-            self._tgid_spin = QSpinBox()
-            self._tgid_spin.setRange(0, 0xFFFFFF)
-            try:
-                self._tgid_spin.setValue(int(entry.record.get_field(5, "0")))
-            except (TypeError, ValueError):
-                self._tgid_spin.setValue(0)
-            form.addRow("TGID:", self._tgid_spin)
-
-            self._mode_combo = QComboBox()
-            self._mode_combo.addItems(["ALL", "ANALOG", "DIGITAL"])
-            current_mode = (entry.record.get_field(6, "ALL") or "ALL").upper()
-            idx = self._mode_combo.findText(current_mode)
-            if idx >= 0:
-                self._mode_combo.setCurrentIndex(idx)
-            form.addRow("Mode:", self._mode_combo)
+            self._build_tgid_fields(form, entry)
 
         # Service-type dropdown driven by the active profile
         self._service_combo = QComboBox()
@@ -125,6 +90,49 @@ class EntryEditDialog(QDialog):
         buttons.accepted.connect(self._on_save)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def _build_cfreq_fields(self, form: QFormLayout, entry) -> None:
+        self._freq_spin = QDoubleSpinBox()
+        self._freq_spin.setRange(0.0, 9999.99999)
+        self._freq_spin.setDecimals(5)
+        self._freq_spin.setSuffix(" MHz")
+        current_hz_str = entry.record.get_field(5, "")
+        try:
+            self._freq_spin.setValue(int(current_hz_str) / 1e6)
+        except (TypeError, ValueError):
+            self._freq_spin.setValue(0.0)
+        form.addRow("Frequency:", self._freq_spin)
+
+        self._mode_combo = QComboBox()
+        self._mode_combo.addItems(["FM", "NFM", "AM", "AUTO"])
+        current_mode = entry.record.get_field(6, "AUTO")
+        idx = self._mode_combo.findText(current_mode)
+        if idx >= 0:
+            self._mode_combo.setCurrentIndex(idx)
+        form.addRow("Mode:", self._mode_combo)
+
+        self._tone_edit = QLineEdit(entry.record.get_field(7, ""))
+        self._tone_edit.setPlaceholderText(
+            "CTCSS / DCS, e.g. 100.0 or D023N (blank = none)"
+        )
+        form.addRow("Tone / NAC:", self._tone_edit)
+
+    def _build_tgid_fields(self, form: QFormLayout, entry) -> None:
+        self._tgid_spin = QSpinBox()
+        self._tgid_spin.setRange(0, 0xFFFFFF)
+        try:
+            self._tgid_spin.setValue(int(entry.record.get_field(5, "0")))
+        except (TypeError, ValueError):
+            self._tgid_spin.setValue(0)
+        form.addRow("TGID:", self._tgid_spin)
+
+        self._mode_combo = QComboBox()
+        self._mode_combo.addItems(["ALL", "ANALOG", "DIGITAL"])
+        current_mode = (entry.record.get_field(6, "ALL") or "ALL").upper()
+        idx = self._mode_combo.findText(current_mode)
+        if idx >= 0:
+            self._mode_combo.setCurrentIndex(idx)
+        form.addRow("Mode:", self._mode_combo)
 
     def _on_save(self) -> None:
         try:

@@ -137,6 +137,56 @@ class HeatResult:
     circles_considered: int
 
 
+def _circle_offsets_mi(
+    clat: float,
+    clon: float,
+    center_lat: float,
+    center_lon: float,
+    mi_lon: float,
+) -> Tuple[float, float]:
+    dlat_mi = (clat - center_lat) * MI_PER_DEG_LAT
+    dlon_mi = (clon - center_lon) * mi_lon
+    return dlat_mi, dlon_mi
+
+
+def _circle_outside_span_box(
+    dlat_mi: float, dlon_mi: float, crange: float, span_mi: float
+) -> bool:
+    return (
+        abs(dlat_mi) - crange > span_mi or abs(dlon_mi) - crange > span_mi
+    )
+
+
+def _accumulate_circle_row_counts(
+    counts: List[List[int]],
+    r: int,
+    grid: int,
+    span_mi: float,
+    mi_per_cell: float,
+    dlat_mi: float,
+    dlon_mi: float,
+    crange: float,
+    max_count: int,
+) -> int:
+    pixel_lat_mi = span_mi - (r + 0.5) * mi_per_cell
+    lat_diff_mi = pixel_lat_mi - dlat_mi
+    if abs(lat_diff_mi) > crange:
+        return max_count
+    dx_max_sq = crange * crange - lat_diff_mi * lat_diff_mi
+    if dx_max_sq < 0:
+        return max_count
+    dx_max = dx_max_sq ** 0.5
+    min_x_mi = dlon_mi - dx_max
+    max_x_mi = dlon_mi + dx_max
+    col_lo = max(0, int((min_x_mi + span_mi) / mi_per_cell))
+    col_hi = min(grid - 1, int((max_x_mi + span_mi) / mi_per_cell))
+    for c in range(col_lo, col_hi + 1):
+        counts[r][c] += 1
+        if counts[r][c] > max_count:
+            max_count = counts[r][c]
+    return max_count
+
+
 def heat_cells(
     circles: Iterable[Tuple[float, float, float]],
     center_lat: float,
@@ -166,28 +216,24 @@ def heat_cells(
     for (clat, clon, crange) in circles:
         if crange is None or crange <= 0:
             continue
-        dlat_mi = (clat - center_lat) * MI_PER_DEG_LAT
-        dlon_mi = (clon - center_lon) * mi_lon
-        if abs(dlat_mi) - crange > span_mi or abs(dlon_mi) - crange > span_mi:
+        dlat_mi, dlon_mi = _circle_offsets_mi(
+            clat, clon, center_lat, center_lon, mi_lon
+        )
+        if _circle_outside_span_box(dlat_mi, dlon_mi, crange, span_mi):
             continue
         considered += 1
         for r in range(grid):
-            pixel_lat_mi = span_mi - (r + 0.5) * mi_per_cell
-            lat_diff_mi = pixel_lat_mi - dlat_mi
-            if abs(lat_diff_mi) > crange:
-                continue
-            dx_max_sq = crange * crange - lat_diff_mi * lat_diff_mi
-            if dx_max_sq < 0:
-                continue
-            dx_max = dx_max_sq ** 0.5
-            min_x_mi = dlon_mi - dx_max
-            max_x_mi = dlon_mi + dx_max
-            col_lo = max(0, int((min_x_mi + span_mi) / mi_per_cell))
-            col_hi = min(grid - 1, int((max_x_mi + span_mi) / mi_per_cell))
-            for c in range(col_lo, col_hi + 1):
-                counts[r][c] += 1
-                if counts[r][c] > max_count:
-                    max_count = counts[r][c]
+            max_count = _accumulate_circle_row_counts(
+                counts,
+                r,
+                grid,
+                span_mi,
+                mi_per_cell,
+                dlat_mi,
+                dlon_mi,
+                crange,
+                max_count,
+            )
 
     return HeatResult(
         counts=counts,
@@ -233,6 +279,57 @@ class HeatRectangle:
     color: str
 
 
+def _heat_row_runs(
+    result: HeatResult, r: int, grid: int, buckets: int
+) -> List[Tuple[int, int, int]]:
+    def bucket_for(c: int) -> int:
+        n = result.counts[r][c]
+        if n <= 0:
+            return 0
+        t = n / result.max_count
+        return quantize_intensity(t, buckets=buckets)
+
+    runs: List[Tuple[int, int, int]] = []
+    c = 0
+    while c < grid:
+        b = bucket_for(c)
+        if b == 0:
+            c += 1
+            continue
+        c_start = c
+        while c + 1 < grid and bucket_for(c + 1) == b:
+            c += 1
+        runs.append((c_start, c, b))
+        c += 1
+    return runs
+
+
+def _merge_heat_row_runs(
+    runs: List[Tuple[int, int, int]],
+    active: Dict[Tuple[int, int, int], HeatRectangle],
+    r: int,
+    finished: List[HeatRectangle],
+) -> Dict[Tuple[int, int, int], HeatRectangle]:
+    keys_this_row: Dict[Tuple[int, int, int], HeatRectangle] = {}
+    for (c_start, c_end, b) in runs:
+        key = (c_start, c_end, b)
+        carried = active.pop(key, None)
+        if carried is not None and carried.r_end == r - 1:
+            carried.r_end = r
+            keys_this_row[key] = carried
+        else:
+            keys_this_row[key] = HeatRectangle(
+                r_start=r,
+                r_end=r,
+                c_start=c_start,
+                c_end=c_end,
+                bucket=b,
+                color="",
+            )
+    finished.extend(active.values())
+    return keys_this_row
+
+
 def heat_rectangles(
     result: "HeatResult", buckets: int = 6
 ) -> List[HeatRectangle]:
@@ -260,50 +357,12 @@ def heat_rectangles(
         return []
     grid = result.grid
 
-    def bucket_for(r: int, c: int) -> int:
-        n = result.counts[r][c]
-        if n <= 0:
-            return 0
-        t = n / result.max_count
-        return quantize_intensity(t, buckets=buckets)
-
     active: Dict[Tuple[int, int, int], HeatRectangle] = {}
     finished: List[HeatRectangle] = []
 
     for r in range(grid):
-        runs: List[Tuple[int, int, int]] = []
-        c = 0
-        while c < grid:
-            b = bucket_for(r, c)
-            if b == 0:
-                c += 1
-                continue
-            c_start = c
-            while c + 1 < grid and bucket_for(r, c + 1) == b:
-                c += 1
-            runs.append((c_start, c, b))
-            c += 1
-
-        keys_this_row: Dict[Tuple[int, int, int], HeatRectangle] = {}
-        for (c_start, c_end, b) in runs:
-            key = (c_start, c_end, b)
-            carried = active.pop(key, None)
-            if carried is not None and carried.r_end == r - 1:
-                carried.r_end = r
-                keys_this_row[key] = carried
-            else:
-                rect = HeatRectangle(
-                    r_start=r,
-                    r_end=r,
-                    c_start=c_start,
-                    c_end=c_end,
-                    bucket=b,
-                    color="",
-                )
-                keys_this_row[key] = rect
-
-        finished.extend(active.values())
-        active = keys_this_row
+        runs = _heat_row_runs(result, r, grid, buckets)
+        active = _merge_heat_row_runs(runs, active, r, finished)
 
     finished.extend(active.values())
 
@@ -395,6 +454,53 @@ def iter_coverage_circles(
         yield (item["lat"], item["lon"], item["range_mi"], item["label"])
 
 
+def _coverage_site_item(sys_name: str, site) -> Optional[Dict[str, Any]]:
+    if site.lat is None or site.lon is None or not site.range_miles:
+        return None
+    child = getattr(site, "name", "") or ""
+    return {
+        "lat": float(site.lat),
+        "lon": float(site.lon),
+        "range_mi": float(site.range_miles),
+        "label": f"{sys_name} - {child}".strip(" -"),
+        "system": sys_name,
+        "kind": "site",
+        "child": child,
+        "service_types": set(),
+        "deleted": False,
+    }
+
+
+def _service_types_from_group(group) -> Set[int]:
+    svc_types: Set[int] = set()
+    for entry in getattr(group, "entries", []) or []:
+        st = getattr(entry, "service_type", None)
+        if st is None:
+            continue
+        try:
+            svc_types.add(int(st))
+        except Exception:
+            continue
+    return svc_types
+
+
+def _coverage_group_item(sys_name: str, group) -> Optional[Dict[str, Any]]:
+    if group.lat is None or group.lon is None or not group.range_miles:
+        return None
+    child = getattr(group, "name", "") or ""
+    return {
+        "lat": float(group.lat),
+        "lon": float(group.lon),
+        "range_mi": float(group.range_miles),
+        "label": f"{sys_name} - {child}".strip(" -"),
+        "system": sys_name,
+        "kind": "group",
+        "child": child,
+        "service_types": _service_types_from_group(group),
+        "deleted": False,
+    }
+
+
 def iter_coverage_items(
     systems,
 ) -> Iterable[Dict[str, Any]]:
@@ -420,49 +526,31 @@ def iter_coverage_items(
     for sys_node in systems:
         sys_name = getattr(sys_node, "name", "") or ""
         for site in getattr(sys_node, "sites", []):
-            if (
-                site.lat is not None
-                and site.lon is not None
-                and site.range_miles
-            ):
-                child = getattr(site, "name", "") or ""
-                yield {
-                    "lat": float(site.lat),
-                    "lon": float(site.lon),
-                    "range_mi": float(site.range_miles),
-                    "label": f"{sys_name} - {child}".strip(" -"),
-                    "system": sys_name,
-                    "kind": "site",
-                    "child": child,
-                    "service_types": set(),
-                    "deleted": False,
-                }
+            item = _coverage_site_item(sys_name, site)
+            if item is not None:
+                yield item
         for group in getattr(sys_node, "groups", []):
-            if (
-                group.lat is not None
-                and group.lon is not None
-                and group.range_miles
-            ):
-                child = getattr(group, "name", "") or ""
-                svc_types: Set[int] = set()
-                for entry in getattr(group, "entries", []) or []:
-                    st = getattr(entry, "service_type", None)
-                    if st is not None:
-                        try:
-                            svc_types.add(int(st))
-                        except Exception:
-                            continue
-                yield {
-                    "lat": float(group.lat),
-                    "lon": float(group.lon),
-                    "range_mi": float(group.range_miles),
-                    "label": f"{sys_name} - {child}".strip(" -"),
-                    "system": sys_name,
-                    "kind": "group",
-                    "child": child,
-                    "service_types": svc_types,
-                    "deleted": False,
-                }
+            item = _coverage_group_item(sys_name, group)
+            if item is not None:
+                yield item
+
+
+def _yield_deleted_event_items(event) -> Iterable[Dict[str, Any]]:
+    op = getattr(event, "op", "")
+    payload = getattr(event, "payload", {}) or {}
+    if op == "delete_group":
+        snapshot = payload.get("snapshot") or {}
+        item = _deleted_item_from_group_snapshot(snapshot, payload, event)
+        if item is not None:
+            yield item
+    elif op == "delete_system":
+        sys_name = (
+            (payload.get("snapshot") or {}).get("name")
+            or getattr(event, "target_name", "")
+            or ""
+        )
+        blob = payload.get("system_blob") or {}
+        yield from _items_from_system_blob(blob, sys_name)
 
 
 def iter_deleted_tower_items(metastore) -> Iterable[Dict[str, Any]]:
@@ -488,24 +576,7 @@ def iter_deleted_tower_items(metastore) -> Iterable[Dict[str, Any]]:
     for event in events:
         if getattr(event, "reverted", False):
             continue
-        op = getattr(event, "op", "")
-        payload = getattr(event, "payload", {}) or {}
-        if op == "delete_group":
-            snapshot = payload.get("snapshot") or {}
-            item = _deleted_item_from_group_snapshot(
-                snapshot, payload, event
-            )
-            if item is not None:
-                yield item
-        elif op == "delete_system":
-            sys_name = (
-                (payload.get("snapshot") or {}).get("name")
-                or getattr(event, "target_name", "")
-                or ""
-            )
-            blob = payload.get("system_blob") or {}
-            for item in _items_from_system_blob(blob, sys_name):
-                yield item
+        yield from _yield_deleted_event_items(event)
 
 
 def _deleted_item_from_group_snapshot(
@@ -572,6 +643,90 @@ def _safe_service_type(value: Any) -> Optional[int]:
             return None
 
 
+@dataclass
+class _RecordStreamState:
+    default_system_name: str = ""
+    current_system_name: str = ""
+    current_kind: Optional[str] = None
+    current_geo: Dict[str, Any] = field(default_factory=dict)
+    current_service_types: Set[int] = field(default_factory=set)
+
+    def __post_init__(self) -> None:
+        if not self.current_system_name:
+            self.current_system_name = self.default_system_name
+
+
+def _flush_record_stream_state(
+    state: _RecordStreamState,
+) -> Iterable[Dict[str, Any]]:
+    if not state.current_geo:
+        return
+    lat = _parse_float_or_none(state.current_geo.get("lat"))
+    lon = _parse_float_or_none(state.current_geo.get("lon"))
+    rng = _parse_float_or_none(state.current_geo.get("rng"))
+    if lat is None or lon is None or not rng:
+        return
+    child = state.current_geo.get("name") or ""
+    yield {
+        "lat": lat,
+        "lon": lon,
+        "range_mi": float(rng),
+        "label": f"{state.current_system_name} - {child}".strip(" -"),
+        "system": state.current_system_name,
+        "kind": state.current_kind or "group",
+        "child": child,
+        "service_types": set(state.current_service_types),
+        "deleted": True,
+    }
+
+
+def _reset_record_stream_geo(state: _RecordStreamState) -> None:
+    state.current_geo = {}
+    state.current_service_types = set()
+    state.current_kind = None
+
+
+def _handle_system_record(
+    state: _RecordStreamState, fields: List[str]
+) -> Iterable[Dict[str, Any]]:
+    yield from _flush_record_stream_state(state)
+    _reset_record_stream_geo(state)
+    state.current_system_name = (
+        fields[3] if len(fields) > 3 else ""
+    ) or state.default_system_name
+
+
+def _handle_group_site_record(
+    state: _RecordStreamState, rt: str, fields: List[str]
+) -> Iterable[Dict[str, Any]]:
+    yield from _flush_record_stream_state(state)
+
+    def _field(idx: int, default: str = "") -> str:
+        return fields[idx] if len(fields) > idx else default
+
+    lat = _field(_GEO_START)
+    lon = _field(_GEO_START + 1)
+    rng = _field(_GEO_START + 2)
+    state.current_kind = "site" if rt == "Site" else "group"
+    state.current_geo = {
+        "name": _field(3),
+        "lat": lat,
+        "lon": lon,
+        "rng": rng,
+    }
+    state.current_service_types = set()
+
+
+def _handle_service_type_record(
+    state: _RecordStreamState, fields: List[str], field_idx: int
+) -> None:
+    st = _safe_service_type(
+        fields[field_idx] if len(fields) > field_idx else None
+    )
+    if st is not None:
+        state.current_service_types.add(st)
+
+
 def _items_from_record_stream(
     records: Iterable[Dict[str, Any]],
     default_system_name: str = "",
@@ -584,77 +739,22 @@ def _items_from_record_stream(
     either the payload of an ``OP_DELETE_SYSTEM`` event or records
     parsed directly from a session-snapshot file.
     """
-    current_system_name = default_system_name
-    current_kind: Optional[str] = None  # "site" / "group"
-    current_geo: Dict[str, Any] = {}
-    current_service_types: Set[int] = set()
-
-    def flush() -> Iterable[Dict[str, Any]]:
-        if not current_geo:
-            return
-        lat = _parse_float_or_none(current_geo.get("lat"))
-        lon = _parse_float_or_none(current_geo.get("lon"))
-        rng = _parse_float_or_none(current_geo.get("rng"))
-        if lat is None or lon is None or not rng:
-            return
-        child = current_geo.get("name") or ""
-        yield {
-            "lat": lat,
-            "lon": lon,
-            "range_mi": float(rng),
-            "label": f"{current_system_name} - {child}".strip(" -"),
-            "system": current_system_name,
-            "kind": current_kind or "group",
-            "child": child,
-            "service_types": set(current_service_types),
-            "deleted": True,
-        }
-
-    def _field_at(fields: List[str], idx: int, default: str = "") -> str:
-        return fields[idx] if len(fields) > idx else default
+    state = _RecordStreamState(default_system_name=default_system_name)
 
     for rec in records:
         rt = rec.get("record_type") or ""
         fields = rec.get("fields") or []
 
-        def _field(idx: int, default: str = "", _f: List[str] = fields) -> str:
-            return _field_at(_f, idx, default)
-
         if rt in ("Conventional", "Trunk"):
-            for it in flush():
-                yield it
-            current_geo = {}
-            current_service_types = set()
-            current_kind = None
-            current_system_name = _field(3) or default_system_name
-
+            yield from _handle_system_record(state, fields)
         elif rt in ("C-Group", "T-Group", "Site"):
-            for it in flush():
-                yield it
-            lat = _field(_GEO_START)
-            lon = _field(_GEO_START + 1)
-            rng = _field(_GEO_START + 2)
-            current_kind = "site" if rt == "Site" else "group"
-            current_geo = {
-                "name": _field(3),
-                "lat": lat,
-                "lon": lon,
-                "rng": rng,
-            }
-            current_service_types = set()
-
+            yield from _handle_group_site_record(state, rt, fields)
         elif rt == "C-Freq":
-            st = _safe_service_type(_field(_CFREQ_SVC_FIELD))
-            if st is not None:
-                current_service_types.add(st)
-
+            _handle_service_type_record(state, fields, _CFREQ_SVC_FIELD)
         elif rt == "TGID":
-            st = _safe_service_type(_field(_TGID_SVC_FIELD))
-            if st is not None:
-                current_service_types.add(st)
+            _handle_service_type_record(state, fields, _TGID_SVC_FIELD)
 
-    for it in flush():
-        yield it
+    yield from _flush_record_stream_state(state)
 
 
 def _items_from_system_blob(
@@ -722,6 +822,30 @@ def _tower_key(item: Dict[str, Any], precision: int = 3) -> Tuple[str, str, floa
     return (sys_name, child, lat, lon)
 
 
+def _merge_deleted_tower_item(
+    seen: Dict[Tuple[str, str, float, float], Dict[str, Any]],
+    item: Dict[str, Any],
+) -> None:
+    item["deleted"] = True
+    key = _tower_key(item)
+    existing = seen.get(key)
+    if existing is None:
+        seen[key] = item
+        return
+    existing["service_types"] = set(
+        existing.get("service_types") or set()
+    ) | set(item.get("service_types") or set())
+
+
+def _live_tower_keys(live_systems: Any) -> Set[Tuple[str, str, float, float]]:
+    live_keys: Set[Tuple[str, str, float, float]] = set()
+    if live_systems is None:
+        return live_keys
+    for live_item in iter_coverage_items(live_systems):
+        live_keys.add(_tower_key(live_item))
+    return live_keys
+
+
 def iter_deleted_tower_items_comprehensive(
     live_systems: Any,
     *,
@@ -748,24 +872,7 @@ def iter_deleted_tower_items_comprehensive(
     ``deleted=True``.
     """
     seen: Dict[Tuple[str, str, float, float], Dict[str, Any]] = {}
-
-    def _add(item: Dict[str, Any]) -> None:
-        item["deleted"] = True
-        key = _tower_key(item)
-        existing = seen.get(key)
-        if existing is None:
-            seen[key] = item
-            return
-        # Merge service types so the button-filter sim isn't starved
-        # of signal just because one source forgot them.
-        existing["service_types"] = set(
-            existing.get("service_types") or set()
-        ) | set(item.get("service_types") or set())
-
-    live_keys: Set[Tuple[str, str, float, float]] = set()
-    if live_systems is not None:
-        for live_item in iter_coverage_items(live_systems):
-            live_keys.add(_tower_key(live_item))
+    live_keys = _live_tower_keys(live_systems)
 
     if session_snapshot_path:
         for snap_item in iter_hpd_session_snapshot_items(
@@ -773,13 +880,13 @@ def iter_deleted_tower_items_comprehensive(
         ):
             if _tower_key(snap_item) in live_keys:
                 continue
-            _add(snap_item)
+            _merge_deleted_tower_item(seen, snap_item)
 
     if metastore is not None:
         for ev_item in iter_deleted_tower_items(metastore):
             if _tower_key(ev_item) in live_keys:
                 continue
-            _add(ev_item)
+            _merge_deleted_tower_item(seen, ev_item)
 
     for item in seen.values():
         yield item

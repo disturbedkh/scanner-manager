@@ -80,6 +80,8 @@ from virtual_sd import StageKind, VirtualCard, VirtualCardError
 
 logger = logging.getLogger(__name__)
 
+_NOTHING_SELECTED = "(nothing selected)"
+
 
 # ----------------------------------------------------------------------
 # Worker threads
@@ -326,7 +328,7 @@ class FirmwareDock(QWidget):
 
         self._details_box = QGroupBox("Selected file")
         det_layout = QVBoxLayout(self._details_box)
-        self._details_label = QLabel("(nothing selected)")
+        self._details_label = QLabel(_NOTHING_SELECTED)
         self._details_label.setTextFormat(Qt.RichText)
         self._details_label.setWordWrap(True)
         self._details_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
@@ -443,7 +445,7 @@ class FirmwareDock(QWidget):
         self._download_btn.setEnabled(False)
         self._update_btn.setEnabled(False)
         self._current_label.setText("(no card loaded)")
-        self._details_label.setText("(nothing selected)")
+        self._details_label.setText(_NOTHING_SELECTED)
 
     def _reset_trees(self) -> None:
         self._main_tree.clear()
@@ -579,7 +581,7 @@ class FirmwareDock(QWidget):
     def _on_selection_changed(self) -> None:
         item = self._current_selected_item()
         if item is None:
-            self._details_label.setText("(nothing selected)")
+            self._details_label.setText(_NOTHING_SELECTED)
             self._download_btn.setEnabled(False)
             self._update_btn.setEnabled(False)
             return
@@ -677,6 +679,45 @@ class FirmwareDock(QWidget):
             return None
         return self._virtual_card
 
+    def _stage_firmware_file(
+        self, vcard: VirtualCard, kind: str, version, cached: Path
+    ) -> None:
+        rel = (
+            f"BCDx36HP/firmware/{cached.name}" if kind == "main"
+            else f"BCDx36HP/firmware/sub/{cached.name}"
+        )
+        stage_kind = (
+            StageKind.MAIN_FIRMWARE if kind == "main"
+            else StageKind.SUB_FIRMWARE
+        )
+        row = vcard.stage(
+            cached, rel, stage_kind,
+            source_label=cached.name,
+            note=f"version={version.version_string()}",
+        )
+        self._log(f"Staged {row.relative_path} ({row.kind})")
+
+    def _stage_hpdb_file(self, vcard: VirtualCard, version) -> bool:
+        staging_dir = self._cache.root / "_hpdb_staging"
+        source = staging_dir / version.filename
+        if not source.exists():
+            QMessageBox.information(
+                self,
+                "Not downloaded",
+                "Download the HPDB snapshot first (it will land "
+                f"in {staging_dir}).",
+            )
+            return False
+        rel = f"BCDx36HP/HPDB/{source.name}"
+        row = vcard.stage(
+            source, rel, StageKind.HPDB,
+            source_label=source.name,
+            note="HPDB snapshot - re-run editor's Audit dialog "
+                 "after applying so user-edited entries reconcile.",
+        )
+        self._log(f"Staged {row.relative_path} (HPDB)")
+        return True
+
     def _on_stage(self) -> None:
         if self._device is None or self._profile is None:
             return
@@ -700,42 +741,10 @@ class FirmwareDock(QWidget):
                         "Download the file to cache first, then stage it.",
                     )
                     return
-                rel = (
-                    f"BCDx36HP/firmware/{cached.name}" if kind == "main"
-                    else f"BCDx36HP/firmware/sub/{cached.name}"
-                )
-                stage_kind = (
-                    StageKind.MAIN_FIRMWARE if kind == "main"
-                    else StageKind.SUB_FIRMWARE
-                )
-                row = vcard.stage(
-                    cached, rel, stage_kind,
-                    source_label=cached.name,
-                    note=f"version={version.version}",
-                )
-                self._log(f"Staged {row.relative_path} ({row.kind})")
+                self._stage_firmware_file(vcard, kind, version, cached)
             elif kind == "hpdb":
-                # HPDB downloads land in the cache's HPDB staging dir
-                # rather than the firmware blob cache. Make sure it's
-                # actually downloaded first.
-                staging_dir = self._cache.root / "_hpdb_staging"
-                source = staging_dir / version.filename
-                if not source.exists():
-                    QMessageBox.information(
-                        self,
-                        "Not downloaded",
-                        "Download the HPDB snapshot first (it will land "
-                        f"in {staging_dir}).",
-                    )
+                if not self._stage_hpdb_file(vcard, version):
                     return
-                rel = f"BCDx36HP/HPDB/{source.name}"
-                row = vcard.stage(
-                    source, rel, StageKind.HPDB,
-                    source_label=source.name,
-                    note="HPDB snapshot - re-run editor's Audit dialog "
-                         "after applying so user-edited entries reconcile.",
-                )
-                self._log(f"Staged {row.relative_path} (HPDB)")
             else:
                 return
         except VirtualCardError as exc:
@@ -864,6 +873,98 @@ class FirmwareDock(QWidget):
     # Update wizard
     # ------------------------------------------------------------------
 
+    def _apply_selected_firmware(
+        self, kind: str, version, card_root: Path
+    ) -> bool:
+        if kind == "main":
+            dst = apply_main_firmware(
+                card_root, self._cache, self._profile.id, version
+            )
+            self._log(f"Wrote main firmware -> {dst}")
+            return True
+        if kind == "sub":
+            dst = apply_sub_firmware(
+                card_root, self._cache, self._profile.id, version
+            )
+            self._log(f"Wrote sub firmware -> {dst}")
+            return True
+        if kind == "hpdb":
+            self._run_hpdb_apply_in_background(version, card_root)
+            return False
+        return False
+
+    def _firmware_action_label(self, kind: str, version) -> str:
+        if kind == "main":
+            return f"Apply MAIN firmware {version.version_string()}"
+        if kind == "sub":
+            return f"Apply SUB firmware {version.version_string()}"
+        return f"Apply HPDB snapshot {version.date_string()}"
+
+    def _run_preflight_if_needed(
+        self, kind: str, version, card_root: Path
+    ) -> bool:
+        if kind not in ("main", "sub"):
+            return True
+        main_v = version if kind == "main" else None
+        sub_v = version if kind == "sub" else None
+        result = preflight(
+            card_root, self._profile, self._cache,
+            main_version=main_v, sub_version=sub_v,
+        )
+        if result.ok:
+            return True
+        QMessageBox.warning(self, "Pre-flight failed", result.reason)
+        return False
+
+    def _confirm_firmware_apply(
+        self, action_label: str, card_root: Path
+    ) -> bool:
+        confirm = QMessageBox.question(
+            self,
+            "Confirm update",
+            f"{action_label} to {card_root}?\n\n"
+            "A backup of the BCDx36HP/ folder will be created first.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        return confirm == QMessageBox.Yes
+
+    def _backup_card_or_abort(self, card_root: Path) -> bool:
+        try:
+            self._log(f"Backing up {card_root}/BCDx36HP …")
+            backup_path = backup_card(card_root)
+            self._log(f"Backup -> {backup_path}")
+            return True
+        except FirmwareError as exc:
+            QMessageBox.critical(self, "Backup failed", str(exc))
+            return False
+
+    def _post_flash_verify_ui(
+        self, card_root: Path, main_v, sub_v
+    ) -> None:
+        QMessageBox.information(
+            self,
+            "Eject and reboot",
+            "Firmware staged on the SD card.\n\n"
+            "1. Safely eject the SD card / scanner from your PC.\n"
+            "2. The scanner will apply the update on first boot.\n"
+            "3. After it reboots, click OK to verify.",
+        )
+        ok, msg = postflash_verify(
+            card_root,
+            expected_main=main_v,
+            expected_sub=sub_v,
+        )
+        if ok:
+            QMessageBox.information(
+                self, "Update verified", "scanner.inf reports the new version."
+            )
+            self._log("Post-flash verify: ok.")
+        else:
+            QMessageBox.warning(self, "Update not verified", msg)
+            self._log(f"Post-flash verify: {msg}")
+        self._populate_current_versions_from_card()
+
     def _on_run_update_wizard(self) -> None:
         if self._device is None or self._profile is None:
             return
@@ -880,84 +981,23 @@ class FirmwareDock(QWidget):
             return
         kind, version = item.data(0, Qt.UserRole)
         card_root = Path(self._device.sd_card_path)
-
-        # Pre-flight
         main_v = version if kind == "main" else None
         sub_v = version if kind == "sub" else None
-        result: PreflightResult
-        if kind in ("main", "sub"):
-            result = preflight(
-                card_root, self._profile, self._cache,
-                main_version=main_v, sub_version=sub_v,
-            )
-            if not result.ok:
-                QMessageBox.warning(self, "Pre-flight failed", result.reason)
-                return
 
-        # Confirm
-        action_label = {
-            "main": f"Apply MAIN firmware {version.version_string()}",
-            "sub": f"Apply SUB firmware {version.version_string()}",
-            "hpdb": f"Apply HPDB snapshot {version.date_string()}",
-        }[kind]
-        confirm = QMessageBox.question(
-            self,
-            "Confirm update",
-            f"{action_label} to {card_root}?\n\n"
-            "A backup of the BCDx36HP/ folder will be created first.",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-        if confirm != QMessageBox.Yes:
+        if not self._run_preflight_if_needed(kind, version, card_root):
             return
-
-        # Backup
-        try:
-            self._log(f"Backing up {card_root}/BCDx36HP …")
-            backup_path = backup_card(card_root)
-            self._log(f"Backup -> {backup_path}")
-        except FirmwareError as exc:
-            QMessageBox.critical(self, "Backup failed", str(exc))
+        action_label = self._firmware_action_label(kind, version)
+        if not self._confirm_firmware_apply(action_label, card_root):
             return
-
-        # Apply
+        if not self._backup_card_or_abort(card_root):
+            return
         try:
-            if kind == "main":
-                dst = apply_main_firmware(card_root, self._cache, self._profile.id, version)
-                self._log(f"Wrote main firmware -> {dst}")
-            elif kind == "sub":
-                dst = apply_sub_firmware(card_root, self._cache, self._profile.id, version)
-                self._log(f"Wrote sub firmware -> {dst}")
-            elif kind == "hpdb":
-                self._run_hpdb_apply_in_background(version, card_root)
+            if not self._apply_selected_firmware(kind, version, card_root):
                 return
         except FirmwareError as exc:
             QMessageBox.critical(self, "Apply failed", str(exc))
             return
-
-        # Post-flash modal
-        QMessageBox.information(
-            self,
-            "Eject and reboot",
-            "Firmware staged on the SD card.\n\n"
-            "1. Safely eject the SD card / scanner from your PC.\n"
-            "2. The scanner will apply the update on first boot.\n"
-            "3. After it reboots, click OK to verify.",
-        )
-
-        # Verify
-        ok, msg = postflash_verify(
-            card_root,
-            expected_main=main_v,
-            expected_sub=sub_v,
-        )
-        if ok:
-            QMessageBox.information(self, "Update verified", "scanner.inf reports the new version.")
-            self._log("Post-flash verify: ok.")
-        else:
-            QMessageBox.warning(self, "Update not verified", msg)
-            self._log(f"Post-flash verify: {msg}")
-        self._populate_current_versions_from_card()
+        self._post_flash_verify_ui(card_root, main_v, sub_v)
 
     def _run_hpdb_apply_in_background(self, version: HpdbVersion, card_root: Path) -> None:
         if self._profile is None:
@@ -975,7 +1015,7 @@ class FirmwareDock(QWidget):
                 QMessageBox.critical(self, "HPDB download failed", payload)
                 return
             try:
-                dst = apply_hpdb(card_root, Path(payload), version=version)
+                dst = apply_hpdb(card_root, Path(payload), version)
                 self._log(f"Wrote HPDB -> {dst}")
                 QMessageBox.information(
                     self,

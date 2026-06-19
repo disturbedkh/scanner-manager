@@ -41,6 +41,22 @@ from .profile_panels import ProfileSidePanel
 logger = logging.getLogger(__name__)
 
 
+def _entry_has_encrypted_mode(entry) -> bool:
+    mode = (entry.record.get_field(6, "") or "").upper()
+    return mode in {"DE", "TE", "AE"}
+
+
+def _count_encrypted_entries(files) -> int:
+    return sum(
+        1
+        for hpd in files
+        for sys_node in hpd.systems
+        for group in sys_node.groups
+        for entry in group.entries
+        if _entry_has_encrypted_mode(entry)
+    )
+
+
 class EditorDock(QWidget):
     """Main editor surface for the active scanner."""
 
@@ -300,14 +316,7 @@ class EditorDock(QWidget):
         if not files:
             QMessageBox.information(self, "Audit modes", "No HPDB loaded.")
             return
-        encrypted_total = 0
-        for hpd in files:
-            for sys_node in hpd.systems:
-                for group in sys_node.groups:
-                    for entry in group.entries:
-                        mode = (entry.record.get_field(6, "") or "").upper()
-                        if mode in {"DE", "TE", "AE"}:
-                            encrypted_total += 1
+        encrypted_total = _count_encrypted_entries(files)
         QMessageBox.information(
             self,
             "Audit modes",

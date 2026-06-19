@@ -171,47 +171,53 @@ class StreamingServer:
 
         @app.get("/audio")
         async def audio():
-            queue: "asyncio.Queue[bytes]" = asyncio.Queue(maxsize=64)
-            with self._lock:
-                self._audio_subscribers.add(queue)
-            mime = "audio/wav"
-            if self._encoder is not None:
-                mime = self._encoder.mime_type
-
-            async def gen():
-                try:
-                    # If we're not yet capturing, the queue stays empty
-                    # until the dock starts. Send a "starting" delay
-                    # so curl/ffplay can't time out instantly.
-                    while True:
-                        chunk = await queue.get()
-                        if chunk is None:
-                            break
-                        yield chunk
-                finally:
-                    with self._lock:
-                        self._audio_subscribers.discard(queue)
-
-            return StreamingResponse(gen(), media_type=mime)
+            return self._audio_streaming_response()
 
         @app.websocket("/telemetry")
         async def telemetry(websocket: _WebSocket) -> None:
-            await websocket.accept()
-            queue: "asyncio.Queue[Dict[str, Any]]" = asyncio.Queue(maxsize=200)
-            with self._lock:
-                self._telemetry_subscribers.add(queue)
+            await self._handle_telemetry_websocket(websocket)
+
+        return app
+
+    def _audio_streaming_response(self):
+        from fastapi.responses import StreamingResponse
+
+        queue: "asyncio.Queue[bytes]" = asyncio.Queue(maxsize=64)
+        with self._lock:
+            self._audio_subscribers.add(queue)
+        mime = "audio/wav"
+        if self._encoder is not None:
+            mime = self._encoder.mime_type
+
+        async def gen():
             try:
                 while True:
-                    msg = await queue.get()
-                    if msg is None:
+                    chunk = await queue.get()
+                    if chunk is None:
                         break
-                    await websocket.send_text(json.dumps(msg, default=str))
-            except _WebSocketDisconnect:
-                pass
+                    yield chunk
             finally:
                 with self._lock:
-                    self._telemetry_subscribers.discard(queue)
-        return app
+                    self._audio_subscribers.discard(queue)
+
+        return StreamingResponse(gen(), media_type=mime)
+
+    async def _handle_telemetry_websocket(self, websocket: _WebSocket) -> None:
+        await websocket.accept()
+        queue: "asyncio.Queue[Dict[str, Any]]" = asyncio.Queue(maxsize=200)
+        with self._lock:
+            self._telemetry_subscribers.add(queue)
+        try:
+            while True:
+                msg = await queue.get()
+                if msg is None:
+                    break
+                await websocket.send_text(json.dumps(msg, default=str))
+        except _WebSocketDisconnect:
+            pass
+        finally:
+            with self._lock:
+                self._telemetry_subscribers.discard(queue)
 
     # ------------------------------------------------------------------
     # Public API used by the streaming dock

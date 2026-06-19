@@ -7,6 +7,8 @@ from typing import List, Optional
 
 import pytest
 
+pytestmark = pytest.mark.qt
+
 pytest.importorskip("pytestqt")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -103,3 +105,61 @@ def test_hold_button_label_resolves_via_safe_control_keys():
     key, mode = SAFE_CONTROL_KEYS["Hold / Resume"]
     assert key == "H"
     assert mode == "P"
+
+
+def test_vol_sql_and_key_commands_with_driver(qtbot):
+    fake = _FakeSerial(
+        responses=[
+            b"VOL,7\r",
+            b"SQL,3\r",
+            b"VOL,OK\r",
+            b"SQL,OK\r",
+            b"KEY,OK\r",
+        ]
+    )
+    driver = SerialMainDriver(fake)
+    w = ScannerControlWidget()
+    qtbot.addWidget(w)
+    messages: list = []
+    w.statusMessage.connect(messages.append)
+    w.set_driver(driver)
+
+    qtbot.waitUntil(lambda: w._vol_value.text() == "7", timeout=3000)
+    qtbot.waitUntil(lambda: w._sql_value.text() == "3", timeout=3000)
+
+    w._vol_slider.setValue(9)
+    w._on_vol_committed()
+    qtbot.waitUntil(lambda: any("VOL" in m for m in messages), timeout=2000)
+
+    w._sql_slider.setValue(5)
+    w._on_sql_committed()
+    qtbot.waitUntil(lambda: sum("SQL" in m for m in messages) >= 1, timeout=2000)
+
+    w._on_key_clicked("Hold / Resume")
+    qtbot.waitUntil(lambda: any("KEY" in m for m in messages), timeout=2000)
+
+
+def test_read_state_handles_driver_errors(qtbot):
+    class _BrokenSerial(_FakeSerial):
+        def write(self, data: bytes) -> int:
+            raise OSError("serial gone")
+
+    driver = SerialMainDriver(_BrokenSerial())
+    w = ScannerControlWidget()
+    qtbot.addWidget(w)
+    w.set_driver(driver)
+    qtbot.waitUntil(lambda: w._vol_value.text() == "?", timeout=2000)
+    assert w._sql_value.text() == "?"
+
+
+def test_unknown_key_label_emits_status(qtbot):
+    fake = _FakeSerial(responses=[b"VOL,1\r", b"SQL,1\r"])
+    driver = SerialMainDriver(fake)
+    w = ScannerControlWidget()
+    qtbot.addWidget(w)
+    messages: list = []
+    w.statusMessage.connect(messages.append)
+    w.set_driver(driver)
+    w._on_key_clicked("Not A Real Button")
+    qtbot.waitUntil(lambda: bool(messages), timeout=2000)
+    assert any("Unknown key" in m for m in messages)
