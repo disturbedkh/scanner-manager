@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.qt
+
 # Headless: pytest-qt auto-discovers via setuptools entry points, so
 # we just need to set the offscreen platform before any Qt classes
 # import. Skip the whole module if PySide6 is missing (legacy envs).
@@ -33,7 +35,7 @@ def tmp_devices(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     the real data/devices.json."""
     target = tmp_path / "devices.json"
     monkeypatch.setattr(
-        "device_manager._default_devices_path", lambda: target
+        "core.device_manager._default_devices_path", lambda: target
     )
     return target
 
@@ -211,3 +213,197 @@ def test_status_light_state_transitions(qtbot) -> None:
         assert light.state() == state
     light.set_state("nonsense")
     assert light.state() == "unknown"
+
+
+def test_main_window_log_and_coverage_windows(qtbot, tmp_devices: Path, monkeypatch) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    mgr = DeviceManager(devices_path=tmp_devices)
+    bt = Device.make("uniden_bt885", "BT885")
+    mgr.add_device(bt)
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window._header.select_device(bt.id)
+
+    window._on_show_log_window()
+    assert window._log_window is not None
+    window._log_window.close()
+    window._on_log_window_closed()
+    assert window._log_window is None
+
+    window._on_show_log_window()
+    window._on_show_log_window()
+    assert window._log_window is not None
+
+    window._on_show_coverage_window()
+    assert window._coverage_window is not None
+    window._coverage_window.close()
+    window._on_coverage_window_closed()
+    assert window._coverage_window is None
+
+    monkeypatch.setattr(QMessageBox, "about", lambda *a, **k: None)
+    window._on_about()
+
+
+def test_main_window_live_telemetry_bridge(qtbot, tmp_devices: Path) -> None:
+    from scanner_drivers.serial_main import GlgEvent, GsiSnapshot
+    from scanner_drivers.serial_sub import WaterfallFrame
+
+    mgr = DeviceManager(devices_path=tmp_devices)
+    sds = Device.make("uniden_sds100", "SDS")
+    mgr.add_device(sds)
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window._header.select_device(sds.id)
+    window._on_connection_mode_changed("live")
+
+    window._live_dock.gsiUpdated.emit(GsiSnapshot(mode="Scan", system_name="BridgeTest"))
+    window._live_dock.glgUpdated.emit(GlgEvent(is_receiving=True, frq="154445000"))
+    window._live_dock.waterfallUpdated.emit(WaterfallFrame(samples=[1, 2, 3, 4]))
+
+
+def test_main_window_menu_dialogs_smoke(qtbot, tmp_devices: Path, monkeypatch) -> None:
+    from PySide6.QtWidgets import QDialog, QInputDialog, QMessageBox
+
+    mgr = DeviceManager(devices_path=tmp_devices)
+    bt = Device.make("uniden_bt885", "BT885")
+    mgr.add_device(bt)
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window._header.select_device(bt.id)
+
+    monkeypatch.setattr(QMessageBox, "about", lambda *a, **k: None)
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("", False))
+
+    class _InstantDialog(QDialog):
+        def exec(self):
+            return 0
+
+    monkeypatch.setattr(
+        "gui.main_window.WorkspaceManagerDialog",
+        lambda *a, **k: _InstantDialog(),
+    )
+    monkeypatch.setattr(
+        "gui.main_window.ProfileSnapshotsDialog",
+        lambda *a, **k: _InstantDialog(),
+    )
+    monkeypatch.setattr(
+        "gui.main_window.ChangesPanelDialog",
+        lambda *a, **k: _InstantDialog(),
+    )
+    monkeypatch.setattr(
+        "gui.main_window.CityManagerDialog",
+        lambda *a, **k: _InstantDialog(),
+    )
+    monkeypatch.setattr(
+        "gui.main_window.UnidenToolsDialog",
+        lambda *a, **k: _InstantDialog(),
+    )
+    monkeypatch.setattr(
+        "gui.main_window.ReportIssueDialog",
+        lambda *a, **k: _InstantDialog(),
+    )
+
+    from gui.dialogs.update_available import UpdateAvailableDialog as _RealUpdateDlg
+
+    class _FakeUpdateDlg:
+        MODE_OFFLINE = _RealUpdateDlg.MODE_OFFLINE
+        MODE_AVAILABLE = _RealUpdateDlg.MODE_AVAILABLE
+        MODE_CURRENT = _RealUpdateDlg.MODE_CURRENT
+
+        def __init__(self, info=None, current_version="", mode=None, parent=None):
+            self.info = info
+            self.mode = mode
+
+        def exec(self):
+            return 0
+
+    monkeypatch.setattr(
+        "gui.main_window.UpdateAvailableDialog",
+        _FakeUpdateDlg,
+    )
+    monkeypatch.setattr(
+        "core.app_updater.check_for_update",
+        lambda: None,
+    )
+
+    window._on_workspaces()
+    window._on_snapshots()
+    window._on_changes()
+    window._on_city_manager()
+    window._on_uniden_tools()
+    window._on_report_issue()
+    window._on_check_updates()
+
+
+def test_main_window_add_manage_and_firmware_menu(
+    qtbot, tmp_devices: Path, monkeypatch, tmp_path: Path
+) -> None:
+    from PySide6.QtWidgets import QDialog
+
+    class _FakeAddDlg:
+        Accepted = QDialog.DialogCode.Accepted
+
+        def __init__(self, dm, parent=None):
+            self._dm = dm
+            self.created_device = Device.make(
+                "uniden_bt885", "NewOne", sd_card_path=str(tmp_path)
+            )
+
+        def exec(self):
+            self._dm.add_device(self.created_device)
+            return self.Accepted
+
+    class _FakeManageDlg:
+        class _Sig:
+            def connect(self, _cb):
+                return None
+
+        devicesChanged = _Sig()
+
+        def __init__(self, dm, parent=None):
+            pass  # test double: intentionally empty
+
+        def exec(self):
+            return 0
+
+    monkeypatch.setattr("gui.main_window.AddDeviceDialog", _FakeAddDlg)
+    monkeypatch.setattr("gui.main_window.ManageDevicesDialog", _FakeManageDlg)
+
+    mgr = DeviceManager(devices_path=tmp_devices)
+    sds = Device.make("uniden_sds100", "SDS")
+    mgr.add_device(sds)
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window._header.select_device(sds.id)
+    window._on_add_device()
+    window._on_manage_devices()
+    window._on_update_firmware()
+    assert window._firmware_window is not None
+    window._firmware_window.close()
+
+
+def test_main_window_close_event_accepts(qtbot, tmp_devices: Path) -> None:
+    from PySide6.QtGui import QCloseEvent
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    event = QCloseEvent()
+    window.closeEvent(event)
+    assert event.isAccepted()
+
+
+def test_main_window_close_event_can_abort(qtbot, tmp_devices: Path, monkeypatch) -> None:
+    from PySide6.QtGui import QCloseEvent
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    monkeypatch.setattr(window._editor_dock, "request_close", lambda: False)
+    event = QCloseEvent()
+    window.closeEvent(event)
+    assert not event.isAccepted()

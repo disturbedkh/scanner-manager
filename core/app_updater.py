@@ -124,6 +124,26 @@ def _strip_v(tag: str) -> str:
     return (tag or "").strip().lstrip("vV")
 
 
+def _parse_release_assets(assets_raw: Any) -> List[Asset]:
+    assets: List[Asset] = []
+    for item in assets_raw or []:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name") or ""
+        url = item.get("browser_download_url") or ""
+        if not name or not url:
+            continue
+        assets.append(
+            Asset(
+                name=name,
+                browser_download_url=url,
+                size=int(item.get("size") or 0),
+                content_type=str(item.get("content_type") or ""),
+            )
+        )
+    return assets
+
+
 def parse_release_payload(payload: Any) -> Optional[UpdateInfo]:
     """Turn the raw GitHub JSON into an :class:`UpdateInfo`.
 
@@ -139,23 +159,7 @@ def parse_release_payload(payload: Any) -> Optional[UpdateInfo]:
         Version(version)
     except InvalidVersion:
         return None
-    assets_raw = payload.get("assets") or []
-    assets: List[Asset] = []
-    for item in assets_raw:
-        if not isinstance(item, dict):
-            continue
-        name = item.get("name") or ""
-        url = item.get("browser_download_url") or ""
-        if not name or not url:
-            continue
-        assets.append(
-            Asset(
-                name=name,
-                browser_download_url=url,
-                size=int(item.get("size") or 0),
-                content_type=str(item.get("content_type") or ""),
-            )
-        )
+    assets = _parse_release_assets(payload.get("assets"))
     return UpdateInfo(
         tag=tag,
         version=version,
@@ -195,7 +199,7 @@ def check_for_update(
     try:
         with opener(req, timeout=timeout) as resp:
             data = resp.read()
-    except (urllib.error.URLError, TimeoutError, OSError):
+    except OSError:
         return None
     except Exception:
         return None
@@ -260,6 +264,62 @@ def _parse_sha_document(text: str) -> Optional[str]:
     return m.group(0).lower() if m else None
 
 
+def _fetch_expected_sha256(
+    sha_asset: Asset,
+    opener: Callable[..., Any],
+    timeout: float,
+) -> Optional[str]:
+    req = urllib.request.Request(
+        sha_asset.browser_download_url,
+        headers={"User-Agent": _USER_AGENT},
+    )
+    with opener(req, timeout=timeout) as resp:
+        sha_body = resp.read().decode("utf-8", errors="replace")
+    return _parse_sha_document(sha_body)
+
+
+def _stream_asset_download(
+    asset: Asset,
+    partial: Path,
+    opener: Callable[..., Any],
+    timeout: float,
+    progress_cb: Optional[Callable[[int, int], bool]],
+) -> hashlib._Hash:
+    hasher = hashlib.sha256()
+    req = urllib.request.Request(
+        asset.browser_download_url, headers={"User-Agent": _USER_AGENT}
+    )
+    fetched = 0
+    with opener(req, timeout=timeout) as resp, partial.open("wb") as out:
+        total_header = (
+            resp.headers.get("Content-Length")
+            if hasattr(resp, "headers")
+            else None
+        )
+        total = (
+            int(total_header)
+            if total_header and str(total_header).isdigit()
+            else int(asset.size or 0)
+        )
+        while True:
+            chunk = resp.read(256 * 1024)
+            if not chunk:
+                break
+            out.write(chunk)
+            hasher.update(chunk)
+            fetched += len(chunk)
+            if progress_cb is not None and progress_cb(fetched, total) is False:
+                raise KeyboardInterrupt("update download cancelled")
+    return hasher
+
+
+def _unlink_quiet(path: Path) -> None:
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
 def download_and_verify(
     asset: Asset,
     dest: Path,
@@ -278,46 +338,20 @@ def download_and_verify(
 
     expected = (expected_sha256 or "").strip().lower() or None
     if expected is None and sha_asset is not None:
-        req = urllib.request.Request(
-            sha_asset.browser_download_url,
-            headers={"User-Agent": _USER_AGENT},
-        )
-        with opener(req, timeout=timeout) as resp:
-            sha_body = resp.read().decode("utf-8", errors="replace")
-        expected = _parse_sha_document(sha_body)
+        expected = _fetch_expected_sha256(sha_asset, opener, timeout)
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     partial = dest.with_suffix(dest.suffix + ".part")
-    hasher = hashlib.sha256()
-    req = urllib.request.Request(
-        asset.browser_download_url, headers={"User-Agent": _USER_AGENT}
-    )
-    fetched = 0
     try:
-        with opener(req, timeout=timeout) as resp, partial.open("wb") as out:
-            total_header = resp.headers.get("Content-Length") if hasattr(resp, "headers") else None
-            total = int(total_header) if total_header and str(total_header).isdigit() else int(asset.size or 0)
-            while True:
-                chunk = resp.read(256 * 1024)
-                if not chunk:
-                    break
-                out.write(chunk)
-                hasher.update(chunk)
-                fetched += len(chunk)
-                if progress_cb is not None and progress_cb(fetched, total) is False:
-                    raise KeyboardInterrupt("update download cancelled")
+        hasher = _stream_asset_download(
+            asset, partial, opener, timeout, progress_cb
+        )
     except KeyboardInterrupt:
-        try:
-            partial.unlink()
-        except OSError:
-            pass
+        _unlink_quiet(partial)
         raise
     got = hasher.hexdigest()
     if expected and got != expected:
-        try:
-            partial.unlink()
-        except OSError:
-            pass
+        _unlink_quiet(partial)
         raise ValueError(
             f"Update asset failed SHA-256 verification "
             f"(expected {expected}, got {got})."
@@ -343,7 +377,9 @@ del "%~f0"
 """
 
 
-def build_windows_swap_bat(script_path: Path, new_exe: Path, current_exe: Path) -> Path:
+def build_windows_swap_bat(
+    script_path: Path, _new_exe: Path, _current_exe: Path
+) -> Path:
     """Write the swap script and return its path. Pure I/O; used by
     tests that assert the bat content without spawning a process.
     """

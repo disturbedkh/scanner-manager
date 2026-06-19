@@ -100,6 +100,29 @@ def list_input_devices() -> List[AudioDeviceInfo]:
     return out
 
 
+def _audio_frame_from_block(
+    indata,
+    np,
+    sample_rate: int,
+    channels: int,
+) -> AudioFrame:
+    try:
+        arr = indata.astype(np.float32, copy=False)
+        rms = float(np.sqrt(np.mean(arr * arr))) if arr.size else 0.0
+        peak = float(np.max(np.abs(arr))) if arr.size else 0.0
+    except Exception:
+        arr = indata
+        rms = 0.0
+        peak = 0.0
+    return AudioFrame(
+        pcm=arr,
+        sample_rate=sample_rate,
+        channels=channels,
+        rms=rms,
+        peak=peak,
+    )
+
+
 class AudioCapture:
     """Background sounddevice input stream.
 
@@ -148,19 +171,8 @@ class AudioCapture:
         def _on_block(indata, frames, time_info, status):  # noqa: ARG001
             if status:
                 logger.debug("Audio stream status: %s", status)
-            try:
-                arr = indata.astype(np.float32, copy=False)
-                rms = float(np.sqrt(np.mean(arr * arr))) if arr.size else 0.0
-                peak = float(np.max(np.abs(arr))) if arr.size else 0.0
-            except Exception:
-                rms = 0.0
-                peak = 0.0
-            frame = AudioFrame(
-                pcm=arr,
-                sample_rate=self._sample_rate,
-                channels=self._channels,
-                rms=rms,
-                peak=peak,
+            frame = _audio_frame_from_block(
+                indata, np, self._sample_rate, self._channels
             )
             cb = self._callback
             if cb is not None:

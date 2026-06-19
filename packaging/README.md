@@ -12,7 +12,16 @@ from the **Qt default** entry (`gui/app.py`).
 
 ## Build locally
 
-From the repo root (matches CI/release install path):
+Preferred (orchestrator — matches CI tag builds):
+
+```powershell
+pip install -r requirements.lock
+pip install -e . --no-deps
+python scripts/build_release.py --type Development
+python scripts/build_release.py --type Release --smoke
+```
+
+Manual PyInstaller (same output paths):
 
 ```powershell
 python -m pip install -e ".[full,dev]"
@@ -39,9 +48,9 @@ writes to repo-root `dist/` — that is separate from PyInstaller output.
 
 ## CI / release
 
-**Primary:** GitLab CI (`.gitlab-ci.yml`) runs lint + test on every push
-and builds all three platform artifacts on `v*` tags (`release:windows`,
-`release:macos`, `release:linux`) under `build/<OS>/Release/`.
+**Primary:** GitLab CI (`.gitlab-ci.yml`) — lint, tiered tests, coverage gate,
+optional self-hosted SonarQube, then on `v*` tags: build → `--smoke` verify →
+GitLab Release publish. See `Metacache/Dev/BUILD_SYSTEM.md`.
 
 **Deprecated mirror:** `.github/workflows/release.yml` is manual
 (`workflow_dispatch`) only — use it to publish public GitHub Release

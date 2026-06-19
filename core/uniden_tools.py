@@ -214,6 +214,26 @@ def _cached_installer_path(tool_id: str, filename: str, cache_dir: Path) -> Path
     return cache_dir / tool_id / filename
 
 
+def _installer_descriptor_from_entry(
+    tool_id: str, entry: Dict[str, Any], download_url: str, target: Path
+) -> Dict[str, Any]:
+    return {
+        "tool_id": tool_id,
+        "display_name": entry.get("display_name") or tool_id,
+        "version": entry.get("version") or "",
+        "download_url": download_url,
+        "sha256": (entry.get("sha256") or "").strip().lower(),
+        "size_bytes": int(entry.get("size_bytes") or 0),
+        "archive_type": entry.get("archive_type") or "zip",
+        "installer_relpath_in_archive": entry.get(
+            "installer_relpath_in_archive"
+        )
+        or "",
+        "vendor_page": entry.get("vendor_page") or "",
+        "target_path": str(target),
+    }
+
+
 def resolve_installer(
     tool_id: str,
     *,
@@ -247,21 +267,9 @@ def resolve_installer(
     if cached.is_file() and verify_installer(cached, expected_sha256):
         return InstallerResolution(tool_id=tool_id, cached_path=str(cached))
 
-    descriptor = {
-        "tool_id": tool_id,
-        "display_name": entry.get("display_name") or tool_id,
-        "version": entry.get("version") or "",
-        "download_url": download_url,
-        "sha256": expected_sha256,
-        "size_bytes": int(entry.get("size_bytes") or 0),
-        "archive_type": entry.get("archive_type") or "zip",
-        "installer_relpath_in_archive": entry.get(
-            "installer_relpath_in_archive"
-        )
-        or "",
-        "vendor_page": entry.get("vendor_page") or "",
-        "target_path": str(cached),
-    }
+    descriptor = _installer_descriptor_from_entry(
+        tool_id, entry, download_url, cached
+    )
     return InstallerResolution(tool_id=tool_id, descriptor=descriptor)
 
 
@@ -440,6 +448,20 @@ def _bundled_installer(
 # Public API
 # ---------------------------------------------------------------------------
 
+def _resolve_tool_exe_path(
+    tool_id: str,
+    spec: Dict[str, Any],
+    overrides: Dict[str, str],
+) -> Optional[str]:
+    override = (overrides.get(tool_id) or "").strip()
+    if override and os.path.isfile(override):
+        return override
+    for candidate in _candidate_exe_paths(spec["relpath"]):
+        if os.path.isfile(candidate):
+            return candidate
+    return None
+
+
 def detect_installed_tools(
     *,
     repo_root: Optional[Path] = None,
@@ -461,15 +483,7 @@ def detect_installed_tools(
     overrides = dict(overrides or {})
     tools: List[UnidenTool] = []
     for tool_id, spec in _TOOL_CANDIDATES.items():
-        exe_path: Optional[str] = None
-        override = (overrides.get(tool_id) or "").strip()
-        if override and os.path.isfile(override):
-            exe_path = override
-        else:
-            for candidate in _candidate_exe_paths(spec["relpath"]):
-                if os.path.isfile(candidate):
-                    exe_path = candidate
-                    break
+        exe_path = _resolve_tool_exe_path(tool_id, spec, overrides)
         version = _read_exe_version(exe_path) if exe_path else ""
         tools.append(
             UnidenTool(
@@ -591,6 +605,57 @@ def install_tool(tool: UnidenTool, *, wait: bool = True) -> int:
     return proc.wait()
 
 
+def _stream_installer_download(
+    descriptor: Dict[str, Any],
+    partial: Path,
+    chunk_size: int,
+    progress_cb: Optional[Any],
+) -> None:
+    from urllib.request import Request, urlopen
+
+    req = Request(
+        descriptor["download_url"],
+        headers={"User-Agent": "scanner-manager installer downloader"},
+    )
+    total = int(descriptor.get("size_bytes") or 0)
+    fetched = 0
+    with urlopen(req, timeout=30) as resp, partial.open("wb") as out:
+        header_total = resp.headers.get("Content-Length")
+        if header_total and header_total.isdigit():
+            total = max(total, int(header_total))
+        while True:
+            chunk = resp.read(chunk_size)
+            if not chunk:
+                break
+            out.write(chunk)
+            fetched += len(chunk)
+            if progress_cb is not None and progress_cb(fetched, total) is False:
+                raise KeyboardInterrupt("download cancelled")
+
+
+def _verify_downloaded_installer(
+    partial: Path, descriptor: Dict[str, Any]
+) -> None:
+    expected = (descriptor.get("sha256") or "").strip().lower()
+    if verify_installer(partial, expected):
+        return
+    got_hash = ""
+    try:
+        got_hash = sha256_of_file(partial)
+    except Exception:
+        got_hash = ""
+    try:
+        partial.unlink()
+    except OSError:
+        pass
+    raise InstallerHashMismatch(
+        tool_id=str(descriptor.get("tool_id") or ""),
+        url=str(descriptor.get("download_url") or ""),
+        expected=expected,
+        got=got_hash,
+    )
+
+
 def download_installer(
     descriptor: Dict[str, Any],
     *,
@@ -606,33 +671,12 @@ def download_installer(
 
     Networking uses stdlib ``urllib`` - no third-party dep.
     """
-    from urllib.request import Request, urlopen
-
     target = Path(descriptor["target_path"])
     target.parent.mkdir(parents=True, exist_ok=True)
     partial = target.with_suffix(target.suffix + ".part")
 
-    req = Request(
-        descriptor["download_url"],
-        headers={"User-Agent": "scanner-manager installer downloader"},
-    )
-    total = int(descriptor.get("size_bytes") or 0)
-    fetched = 0
     try:
-        with urlopen(req, timeout=30) as resp, partial.open("wb") as out:
-            header_total = resp.headers.get("Content-Length")
-            if header_total and header_total.isdigit():
-                total = max(total, int(header_total))
-            while True:
-                chunk = resp.read(chunk_size)
-                if not chunk:
-                    break
-                out.write(chunk)
-                fetched += len(chunk)
-                if progress_cb is not None:
-                    keep_going = progress_cb(fetched, total)
-                    if keep_going is False:
-                        raise KeyboardInterrupt("download cancelled")
+        _stream_installer_download(descriptor, partial, chunk_size, progress_cb)
     except KeyboardInterrupt:
         try:
             partial.unlink()
@@ -640,23 +684,7 @@ def download_installer(
             pass
         raise
 
-    expected = (descriptor.get("sha256") or "").strip().lower()
-    if not verify_installer(partial, expected):
-        got_hash = ""
-        try:
-            got_hash = sha256_of_file(partial)
-        except Exception:
-            got_hash = ""
-        try:
-            partial.unlink()
-        except OSError:
-            pass
-        raise InstallerHashMismatch(
-            tool_id=str(descriptor.get("tool_id") or ""),
-            url=str(descriptor.get("download_url") or ""),
-            expected=expected,
-            got=got_hash,
-        )
+    _verify_downloaded_installer(partial, descriptor)
     partial.replace(target)
     return target
 
@@ -678,6 +706,32 @@ class ZipListEntry:
 _ZIPLIST_CACHE: Dict[str, List[ZipListEntry]] = {}
 
 
+def _ziplist_row_from_parts(parts: List[str]) -> Optional[ZipListEntry]:
+    if len(parts) < 2:
+        return None
+    zip_code = parts[0]
+    if not re.fullmatch(r"\d{3,5}", zip_code or ""):
+        return None
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    state_abbrev = ""
+    if len(parts) >= 4:
+        lat = _maybe_float(parts[1])
+        lon = _maybe_float(parts[2])
+        state_abbrev = (parts[3] or "").upper()[:2]
+    else:
+        tail = parts[-1] or ""
+        if re.fullmatch(r"[A-Za-z]{2}", tail):
+            state_abbrev = tail.upper()
+    return ZipListEntry(
+        zip_code=zip_code.zfill(5),
+        state_abbrev=state_abbrev,
+        city="",
+        lat=lat,
+        lon=lon,
+    )
+
+
 def _parse_ziplist(path: Path) -> List[ZipListEntry]:
     """Parse Sentinel's ZIP list file.
 
@@ -697,32 +751,9 @@ def _parse_ziplist(path: Path) -> List[ZipListEntry]:
                 parts = [p.strip() for p in stripped.split("\t")]
                 if len(parts) < 2:
                     parts = [p.strip() for p in stripped.split(",")]
-                if len(parts) < 2:
-                    continue
-                zip_code = parts[0]
-                if not re.fullmatch(r"\d{3,5}", zip_code or ""):
-                    continue
-                lat: Optional[float] = None
-                lon: Optional[float] = None
-                state_abbrev = ""
-                if len(parts) >= 4:
-                    lat = _maybe_float(parts[1])
-                    lon = _maybe_float(parts[2])
-                    state_abbrev = (parts[3] or "").upper()[:2]
-                else:
-                    # Fallback heuristic: last non-numeric token is the state.
-                    tail = parts[-1] or ""
-                    if re.fullmatch(r"[A-Za-z]{2}", tail):
-                        state_abbrev = tail.upper()
-                out.append(
-                    ZipListEntry(
-                        zip_code=zip_code.zfill(5),
-                        state_abbrev=state_abbrev,
-                        city="",
-                        lat=lat,
-                        lon=lon,
-                    )
-                )
+                row = _ziplist_row_from_parts(parts)
+                if row is not None:
+                    out.append(row)
     except OSError:
         return []
     return out

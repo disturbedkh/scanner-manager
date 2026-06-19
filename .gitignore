@@ -36,3 +36,9 @@ Metacache/Dev/RE/tools/automation/.ghidra_env.ps1
 app_settings.json
 scanner_manager.meta.json
 zip_county_map.json
+
+# SonarQube / coverage artifacts (generated locally).
+coverage.xml
+.coverage
+htmlcov/
+.scannerwork/

@@ -244,3 +244,93 @@ def test_manifest_round_trips_across_instances(
     rows = card2.list_pending()
     assert len(rows) == 1
     assert rows[0].relative_path == "BCDx36HP/firmware/x.bin"
+
+
+def test_virtual_card_open_at_and_bad_manifest_rows(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "workspace" / "device-abc"
+    root.mkdir(parents=True)
+    (root / ".staged.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "device_id": "device-abc",
+                "staged": [{"relative_path": "x.bin", "kind": "other", "bad_field": 1}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    card = VirtualCard.open_at(root, "device-abc")
+    assert card.device_id == "device-abc"
+    assert card.list_pending() == []
+
+
+def test_stage_validates_source_and_relative_path(
+    tmp_path: Path, tmp_card_root: Path,
+) -> None:
+    device = Device(id="d13", label="t", scanner_profile_id="uniden_sds100")
+    card = VirtualCard.from_device(device, root_dir=tmp_card_root)
+
+    with pytest.raises(VirtualCardError, match="does not exist"):
+        card.stage(tmp_path / "missing.bin", "x.bin")
+
+    card_dir = tmp_path / "dir"
+    card_dir.mkdir()
+    with pytest.raises(VirtualCardError, match="Only individual files"):
+        card.stage(card_dir, "x.bin")
+
+    blob = tmp_path / "payload.bin"
+    blob.write_bytes(b"x")
+    with pytest.raises(VirtualCardError, match="forward slashes"):
+        card.stage(blob, r"bad\path.bin")
+
+    with pytest.raises(VirtualCardError, match="may not be empty"):
+        card.stage(blob, "")
+
+
+def test_get_unknown_and_discard_noop(tmp_card_root: Path) -> None:
+    device = Device(id="d14", label="t", scanner_profile_id="uniden_sds100")
+    card = VirtualCard.from_device(device, root_dir=tmp_card_root)
+    assert card.get("missing-id") is None
+    assert card.discard("missing-id") is False
+
+
+def test_apply_rejects_non_directory_target(
+    tmp_path: Path, tmp_card_root: Path,
+) -> None:
+    device = Device(id="d15", label="t", scanner_profile_id="uniden_sds100")
+    card = VirtualCard.from_device(device, root_dir=tmp_card_root)
+    not_dir = tmp_path / "file-not-dir"
+    not_dir.write_text("x", encoding="utf-8")
+    with pytest.raises(VirtualCardError, match="not a directory"):
+        card.apply_to_physical(not_dir)
+
+
+def test_discard_swallows_unlink_errors(
+    tmp_path: Path, tmp_card_root: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    device = Device(id="d16", label="t", scanner_profile_id="uniden_sds100")
+    card = VirtualCard.from_device(device, root_dir=tmp_card_root)
+    blob = _make_payload(tmp_path / "x.bin", b"x")
+    row = card.stage(blob, "BCDx36HP/firmware/x.bin", StageKind.MAIN_FIRMWARE)
+
+    def _boom(self) -> None:
+        raise OSError("unlink failed")
+
+    monkeypatch.setattr(Path, "unlink", _boom, raising=False)
+    assert card.discard(row.id) is True
+    assert card.list_pending() == []
+
+
+def test_apply_reports_missing_staged_file(
+    tmp_path: Path, tmp_card_root: Path, physical_card: Path,
+) -> None:
+    device = Device(id="d17", label="t", scanner_profile_id="uniden_sds100")
+    card = VirtualCard.from_device(device, root_dir=tmp_card_root)
+    blob = _make_payload(tmp_path / "x.bin", b"x")
+    row = card.stage(blob, "BCDx36HP/firmware/x.bin", StageKind.MAIN_FIRMWARE)
+    (card.pending_dir / row.relative_path).unlink()
+    report = card.apply_to_physical(physical_card)
+    assert report.failed
+    assert card.list_pending()

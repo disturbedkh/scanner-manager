@@ -36,6 +36,8 @@ from core.device_manager import Device, DeviceManager
 
 logger = logging.getLogger(__name__)
 
+_FW_PLACEHOLDER = "FW: —"
+
 
 class StatusLight(QWidget):
     """Three-state coloured dot used for the connection LED.
@@ -258,7 +260,7 @@ class HeaderBar(QWidget):
 
         layout.addStretch(1)
 
-        self._fw_label = QLabel("FW: —")
+        self._fw_label = QLabel(_FW_PLACEHOLDER)
         self._fw_label.setStyleSheet("color: #333;")
         layout.addWidget(self._fw_label)
 
@@ -302,7 +304,7 @@ class HeaderBar(QWidget):
                 self._combo.setEnabled(False)
                 self._update_btn.setEnabled(False)
                 self._set_status("unknown", "No device configured")
-                self._fw_label.setText("FW: —")
+                self._fw_label.setText(_FW_PLACEHOLDER)
                 return
             self._combo.setEnabled(True)
             self._update_btn.setEnabled(True)
@@ -360,7 +362,7 @@ class HeaderBar(QWidget):
         self, main_version: Optional[str] = None, sub_version: Optional[str] = None
     ) -> None:
         if not main_version and not sub_version:
-            self._fw_label.setText("FW: —")
+            self._fw_label.setText(_FW_PLACEHOLDER)
         elif sub_version and main_version:
             self._fw_label.setText(f"FW: Main {main_version} / Sub {sub_version}")
         elif main_version:

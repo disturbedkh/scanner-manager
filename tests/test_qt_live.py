@@ -12,10 +12,14 @@ from unittest.mock import patch
 
 import pytest
 
+pytestmark = pytest.mark.qt
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 PySide6 = pytest.importorskip("PySide6")  # noqa: N816
 pytest.importorskip("pytestqt")
+
+from PySide6.QtCore import Qt  # noqa: E402
 
 from scanner_drivers.serial_main import GlgEvent, GsiSnapshot  # noqa: E402
 from scanner_drivers.serial_sub import WaterfallFrame  # noqa: E402
@@ -26,6 +30,16 @@ from scanner_drivers.usb_detect import (  # noqa: E402
     DetectedPort,
 )
 from scanner_profiles import get_profile  # noqa: E402
+
+
+@pytest.fixture
+def auto_msgbox(monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
+    monkeypatch.setattr(QMessageBox, "critical", lambda *a, **k: None)
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
 
 
 def _fake_port(device, vid, pid, sn="ABC") -> DetectedPort:
@@ -134,6 +148,38 @@ def test_gsi_mirror_widget_renders_snapshot(qtbot) -> None:
     assert widget._tg.text() == "FD East"
     assert "MHz" in widget._freq.text()
     assert widget._rx.text() == "YES"
+
+
+def test_gsi_mirror_widget_empty_frequency_and_not_receiving(qtbot) -> None:
+    from gui.live.widgets import GsiMirrorWidget
+
+    widget = GsiMirrorWidget()
+    qtbot.addWidget(widget)
+    snap = GsiSnapshot(
+        mode="Scan",
+        site_name="Simulcast",
+        is_receiving=False,
+        frequency_hz=0,
+    )
+    widget.update_snapshot(snap)
+    assert widget._site.text() == "Simulcast"
+    assert widget._freq.text() == "—"
+    assert widget._rx.text() == "no"
+
+
+def test_glg_feed_keeps_non_numeric_frq_and_skips_idle(qtbot) -> None:
+    from gui.live.widgets import GlgFeedWidget
+
+    feed = GlgFeedWidget()
+    qtbot.addWidget(feed)
+    feed.append_event(
+        GlgEvent(frq="not-a-number", mod="FM", name3="Test", is_receiving=True)
+    )
+    assert "not-a-number" in feed._list.item(0).text()
+    feed.append_event(
+        GlgEvent(frq="154445000", mod="FM", name3="Idle", is_receiving=False)
+    )
+    assert feed._list.count() == 1
 
 
 def test_glg_feed_renders_tgid_when_value_is_below_rf_floor(qtbot) -> None:
@@ -389,3 +435,369 @@ def test_iq_waterfall_widget_handles_missing_center_frequency(qtbot) -> None:
                              source="d"))
     # Should not raise; image has been drawn at least once.
     assert widget._image_item is not None
+
+
+# ------------------------------------------------------------------
+# gui/live/controllers.py
+# ------------------------------------------------------------------
+
+
+def test_main_poller_controller_emits_gsi_and_glg(qtbot) -> None:
+    from PySide6.QtWidgets import QWidget
+
+    from gui.live.controllers import MainPollerController
+    from scanner_drivers.serial_main import GlgEvent, GsiSnapshot, SerialMainDriver
+
+    class _FakePort:
+        def write(self, _data: bytes) -> int:
+            return 0
+
+        def flush(self) -> None:
+            pass
+
+        def reset_input_buffer(self) -> None:
+            pass
+
+        def read(self, _n: int) -> bytes:
+            return b""
+
+        def close(self) -> None:
+            pass
+
+        in_waiting = 0
+
+    driver = SerialMainDriver(_FakePort())
+    snap = GsiSnapshot(mode="Scan", system_name="Test")
+    evt = GlgEvent(frq="154445000", is_receiving=True)
+    driver.poll_gsi = lambda: snap  # type: ignore[method-assign]
+    driver.poll_glg = lambda: evt  # type: ignore[method-assign]
+
+    host = QWidget()
+    qtbot.addWidget(host)
+    ctrl = MainPollerController(driver, gsi_interval_ms=10, glg_interval_ms=10, parent=host)
+    gsi_seen = []
+    glg_seen = []
+    ctrl.gsiUpdated.connect(gsi_seen.append)
+    ctrl.glgUpdated.connect(glg_seen.append)
+    ctrl.start()
+    qtbot.waitUntil(lambda: bool(gsi_seen and glg_seen), timeout=2000)
+    ctrl.close()
+    assert gsi_seen[0].system_name == "Test"
+    assert glg_seen[0].frq == "154445000"
+
+
+def test_main_poller_controller_failed_on_gsi_error(qtbot) -> None:
+    from PySide6.QtWidgets import QWidget
+
+    from gui.live.controllers import MainPollerController
+    from scanner_drivers.serial_main import GlgEvent, SerialMainDriver
+
+    class _FakePort:
+        def write(self, _data: bytes) -> int:
+            return 0
+
+        def flush(self) -> None:
+            pass
+
+        def reset_input_buffer(self) -> None:
+            pass
+
+        def read(self, _n: int) -> bytes:
+            return b""
+
+        def close(self) -> None:
+            pass
+
+        in_waiting = 0
+
+    driver = SerialMainDriver(_FakePort())
+    driver.poll_gsi = lambda: (_ for _ in ()).throw(RuntimeError("gsi boom"))  # type: ignore[method-assign]
+    driver.poll_glg = lambda: GlgEvent()  # type: ignore[method-assign]
+
+    host = QWidget()
+    qtbot.addWidget(host)
+    ctrl = MainPollerController(driver, gsi_interval_ms=10, glg_interval_ms=1000, parent=host)
+    failures = []
+    ctrl.failed.connect(failures.append)
+    ctrl.start()
+    qtbot.waitUntil(lambda: bool(failures), timeout=2000)
+    ctrl.close()
+    assert "GSI" in failures[0]
+
+
+def test_sub_poller_controller_modes(qtbot) -> None:
+    from PySide6.QtWidgets import QWidget
+
+    from gui.live.controllers import SubPollerController
+    from scanner_drivers.serial_sub import IqFrame, SerialSubDriver, WaterfallFrame
+
+    class _FakePort:
+        def write(self, _data: bytes) -> int:
+            return 0
+
+        def flush(self) -> None:
+            pass
+
+        def read(self, _n: int) -> bytes:
+            return b""
+
+        def close(self) -> None:
+            pass
+
+        in_waiting = 0
+
+    driver = SerialSubDriver(_FakePort())
+    wf = WaterfallFrame(samples=[1, 2, 3])
+    iq = IqFrame(i_samples=[1], q_samples=[2], source="d")
+    driver.fetch_waterfall_frame = lambda: wf  # type: ignore[method-assign]
+    driver.fetch_iq_pairs = lambda: iq  # type: ignore[method-assign]
+    driver.fetch_wide_iq = lambda: iq  # type: ignore[method-assign]
+
+    host = QWidget()
+    qtbot.addWidget(host)
+    wf_ctrl = SubPollerController(driver, interval_ms=10, mode="m", parent=host)
+    wf_seen = []
+    wf_ctrl.waterfallUpdated.connect(wf_seen.append)
+    wf_ctrl.start()
+    qtbot.waitUntil(lambda: bool(wf_seen), timeout=2000)
+    wf_ctrl.close()
+
+    iq_ctrl = SubPollerController(driver, interval_ms=10, mode="d", parent=host)
+    iq_seen = []
+    iq_ctrl.iqUpdated.connect(iq_seen.append)
+    iq_ctrl.start()
+    qtbot.waitUntil(lambda: bool(iq_seen), timeout=2000)
+    iq_ctrl.set_mode("v")
+    assert iq_ctrl.mode == "v"
+    iq_ctrl.close()
+
+
+def test_sub_poller_controller_failed_on_poll_error(qtbot) -> None:
+    from PySide6.QtWidgets import QWidget
+
+    from gui.live.controllers import SubPollerController
+    from scanner_drivers.serial_sub import SerialSubDriver
+
+    class _FakePort:
+        def write(self, _data: bytes) -> int:
+            return 0
+
+        def flush(self) -> None:
+            pass
+
+        def read(self, _n: int) -> bytes:
+            return b""
+
+        def close(self) -> None:
+            pass
+
+        in_waiting = 0
+
+    driver = SerialSubDriver(_FakePort())
+    driver.fetch_iq_pairs = lambda: (_ for _ in ()).throw(RuntimeError("iq fail"))  # type: ignore[method-assign]
+
+    host = QWidget()
+    qtbot.addWidget(host)
+    ctrl = SubPollerController(driver, interval_ms=10, mode="d", parent=host)
+    failures = []
+    ctrl.failed.connect(failures.append)
+    ctrl.start()
+    qtbot.waitUntil(lambda: bool(failures), timeout=2000)
+    ctrl.close()
+    assert "FFT" in failures[0]
+
+
+# ------------------------------------------------------------------
+# gui/live/live_dock.py connect + handlers
+# ------------------------------------------------------------------
+
+
+def test_live_dock_connect_and_disconnect_with_mocks(qtbot, monkeypatch) -> None:
+    from gui.live.live_dock import LiveDock
+    from scanner_drivers.serial_main import GlgEvent, GsiSnapshot, SerialMainDriver
+    from scanner_drivers.serial_sub import IqFrame, SerialSubDriver, WaterfallFrame
+    from scanner_drivers.usb_detect import SDS_PID_MAIN, SDS_PID_SUB, UNIDEN_VID
+
+    fake_ports = [
+        _fake_port("COM4", UNIDEN_VID, SDS_PID_MAIN),
+        _fake_port("COM3", UNIDEN_VID, SDS_PID_SUB),
+    ]
+
+    class _FakePort:
+        def write(self, _data: bytes) -> int:
+            return 0
+
+        def flush(self) -> None:
+            pass
+
+        def reset_input_buffer(self) -> None:
+            pass
+
+        def read(self, _n: int) -> bytes:
+            return b""
+
+        def close(self) -> None:
+            pass
+
+        in_waiting = 0
+
+    def _open_main(device):
+        d = SerialMainDriver(_FakePort())
+        d.query_model = lambda: "SDS100"  # type: ignore[method-assign]
+        d.query_firmware = lambda: {"version": "1.25.99"}  # type: ignore[method-assign]
+        d.poll_gsi = lambda: GsiSnapshot(mode="Scan", system_name="Sys", frequency_hz=154_445_000)  # type: ignore[method-assign]
+        d.poll_glg = lambda: GlgEvent(is_receiving=True, frq="154445000", name3="FD")  # type: ignore[method-assign]
+        return d
+
+    def _open_sub(device):
+        d = SerialSubDriver(_FakePort())
+        d.fetch_iq_pairs = lambda: IqFrame(i_samples=[1, 2], q_samples=[3, 4], source="d")  # type: ignore[method-assign]
+        d.fetch_waterfall_frame = lambda: WaterfallFrame(samples=[1, 2, 3])  # type: ignore[method-assign]
+        return d
+
+    monkeypatch.setattr("gui.live.live_dock.SerialMainDriver.open", _open_main)
+    monkeypatch.setattr("gui.live.live_dock.SerialSubDriver.open", _open_sub)
+
+    dock = LiveDock()
+    qtbot.addWidget(dock)
+    with patch("gui.live.live_dock.enumerate_ports", return_value=fake_ports), patch(
+        "gui.live.live_dock.find_ports_for_profile",
+        return_value=__import__(
+            "scanner_drivers.usb_detect", fromlist=["ScannerPorts"]
+        ).ScannerPorts(main=fake_ports[0], sub=fake_ports[1]),
+    ):
+        dock.set_active_profile(get_profile("uniden_sds100"))
+
+    qtbot.mouseClick(dock._connect_btn, Qt.MouseButton.LeftButton)
+    assert not dock._connect_btn.isEnabled()
+    assert dock._disconnect_btn.isEnabled()
+    assert dock._diag_btn.isEnabled()
+
+    gsi = []
+    dock.gsiUpdated.connect(gsi.append)
+    qtbot.waitUntil(lambda: dock._mirror._system.text() != "—", timeout=3000)
+
+    dock._wf_mode_combo.setCurrentIndex(2)
+    dock._on_wf_mode_changed(2)
+    dock._on_reset_peak_hold()
+
+    dock.disconnect()
+    assert dock._connect_btn.isEnabled()
+    assert not dock._disconnect_btn.isEnabled()
+
+
+def test_live_dock_connect_without_main_port_shows_warning(qtbot, monkeypatch) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    from gui.live.live_dock import LiveDock
+
+    dock = LiveDock()
+    qtbot.addWidget(dock)
+    dock.set_active_profile(get_profile("uniden_sds100"))
+    dock._main_combo.clear()
+    warned = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: warned.append(a))
+    qtbot.mouseClick(dock._connect_btn, Qt.MouseButton.LeftButton)
+    assert warned
+
+
+def test_live_dock_refresh_ports_partial_match(qtbot, monkeypatch) -> None:
+    from gui.live.live_dock import LiveDock
+    from scanner_drivers.usb_detect import SDS_PID_MAIN, UNIDEN_VID
+
+    fake_ports = [_fake_port("COM9", UNIDEN_VID, SDS_PID_MAIN)]
+    matched = __import__(
+        "scanner_drivers.usb_detect", fromlist=["ScannerPorts"]
+    ).ScannerPorts(main=fake_ports[0])
+
+    dock = LiveDock()
+    qtbot.addWidget(dock)
+    with patch("gui.live.live_dock.enumerate_ports", return_value=fake_ports), patch(
+        "gui.live.live_dock.find_ports_for_profile", return_value=matched
+    ):
+        dock.set_active_profile(get_profile("uniden_sds100"))
+    assert "matching pair" in dock._status_label.text().lower()
+
+
+def test_live_dock_main_and_sub_failure_handlers(qtbot) -> None:
+    from gui.live.live_dock import LiveDock
+
+    dock = LiveDock()
+    qtbot.addWidget(dock)
+    states = []
+    dock.connectionStateChanged.connect(states.append)
+    dock._on_main_failed("GSI: timeout")
+    assert "MAIN poller stopped" in dock._status_label.text()
+    dock._on_sub_failed("FFT: timeout")
+    assert "SUB poller stopped" in dock._status_label.text()
+
+
+def test_live_dock_request_close_disconnects(qtbot) -> None:
+    from gui.live.live_dock import LiveDock
+
+    dock = LiveDock()
+    qtbot.addWidget(dock)
+    dock.set_active_profile(get_profile("uniden_sds100"))
+    assert dock.request_close() is True
+
+
+def test_live_dock_diagnostic_capture_writes_json(
+    qtbot, monkeypatch, tmp_path: Path, auto_msgbox
+) -> None:
+    from PySide6.QtWidgets import QFileDialog
+
+    from gui.live.controllers import MainPollerController, SubPollerController
+    from gui.live.live_dock import LiveDock
+    from scanner_drivers.serial_main import GlgEvent, GsiSnapshot, SerialMainDriver
+    from scanner_drivers.serial_sub import SerialSubDriver
+
+    class _FakePort:
+        def write(self, _data: bytes) -> int:
+            return 0
+
+        def flush(self) -> None:
+            pass
+
+        def reset_input_buffer(self) -> None:
+            pass
+
+        def read(self, _n: int) -> bytes:
+            return b""
+
+        def close(self) -> None:
+            pass
+
+        in_waiting = 0
+
+    main_driver = SerialMainDriver(_FakePort())
+    payload = b"<ScannerInfo Mode=\"Scan\"/>"
+    main_driver.send_query = lambda cmd: payload  # type: ignore[method-assign]
+    main_driver.poll_gsi = lambda: GsiSnapshot(mode="Scan", system_name="Cap")  # type: ignore[method-assign]
+    main_driver.poll_glg = lambda: GlgEvent(is_receiving=True, frq="154445000")  # type: ignore[method-assign]
+
+    sub_driver = SerialSubDriver(_FakePort())
+    sub_driver.send_command = lambda cmd: b"12345"  # type: ignore[method-assign]
+
+    out = tmp_path / "capture.json"
+    monkeypatch.setattr(
+        QFileDialog, "getSaveFileName", lambda *a, **k: (str(out), "")
+    )
+
+    dock = LiveDock()
+    qtbot.addWidget(dock)
+    dock.set_active_profile(get_profile("uniden_sds100"))
+    dock._main_controller = MainPollerController(main_driver, parent=dock)
+    dock._sub_controller = SubPollerController(sub_driver, parent=dock)
+    dock._connect_btn.setEnabled(False)
+    dock._disconnect_btn.setEnabled(True)
+    dock._diag_btn.setEnabled(True)
+
+    with patch("gui.live.live_dock.time.sleep", lambda _s: None):
+        dock._on_diagnostic_capture()
+
+    assert out.exists()
+    data = __import__("json").loads(out.read_text(encoding="utf-8"))
+    assert data["gsi_samples"]
+    assert data["glg_samples"]
+    assert data["fft_samples"]
+

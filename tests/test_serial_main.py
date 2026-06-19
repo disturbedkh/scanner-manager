@@ -399,3 +399,130 @@ def test_control_methods_do_not_route_through_send_query():
     fake = FakeSerial(responses=[b"KEY,OK\r"])
     driver = SerialMainDriver(fake)
     assert driver.send_key("H") is True
+
+
+def test_open_raises_when_pyserial_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    import builtins
+
+    real_import = builtins.__import__
+
+    def _fake_import(name, *args, **kwargs):
+        if name == "serial":
+            raise ImportError("no pyserial")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _fake_import)
+    with pytest.raises(MainDriverError, match="pyserial not installed"):
+        SerialMainDriver.open("COM3")
+
+
+def test_open_drains_pending_bytes_and_handles_read_errors(monkeypatch) -> None:
+    class _Port(FakeSerial):
+        def __init__(self) -> None:
+            super().__init__()
+            self._pending = b"boot noise"
+
+        @property
+        def in_waiting(self) -> int:
+            return len(self._pending)
+
+        def read(self, n: int = 1) -> bytes:
+            if self._pending:
+                out = self._pending[:n]
+                self._pending = self._pending[n:]
+                return out
+            return super().read(n)
+
+    class _SerialModule:
+        EIGHTBITS = 8
+        PARITY_NONE = "N"
+        STOPBITS_ONE = 1
+
+        class Serial:
+            def __init__(self, **kwargs) -> None:
+                self._inner = _Port()
+
+            def reset_input_buffer(self) -> None:
+                self._inner.reset_input_buffer()
+
+            def write(self, data: bytes) -> int:
+                return self._inner.write(data)
+
+            def flush(self) -> None:
+                return None
+
+            @property
+            def in_waiting(self) -> int:
+                return self._inner.in_waiting
+
+            def read(self, n: int = 1) -> bytes:
+                if n == 999:
+                    raise OSError("read failed")
+                return self._inner.read(n)
+
+            def close(self) -> None:
+                self._inner.close()
+
+    import builtins
+
+    real_import = builtins.__import__
+
+    def _fake_import(name, *args, **kwargs):
+        if name == "serial":
+            return _SerialModule()
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _fake_import)
+    driver = SerialMainDriver.open("COM9")
+    assert isinstance(driver, SerialMainDriver)
+    driver.close()
+
+
+def test_close_swallows_port_errors() -> None:
+    class _BrokenPort(FakeSerial):
+        def close(self) -> None:
+            raise OSError("close failed")
+
+    driver = SerialMainDriver(_BrokenPort())
+    driver.close()
+
+
+def test_send_unlocked_tolerates_buffer_and_flush_errors() -> None:
+    class _FlakyPort(FakeSerial):
+        def reset_input_buffer(self) -> None:
+            raise OSError("reset failed")
+
+        def flush(self) -> None:
+            raise OSError("flush failed")
+
+    fake = _FlakyPort(responses=[b"MDL,SDS100\r"])
+    driver = SerialMainDriver(fake)
+    assert driver.send_query("MDL") == b"MDL,SDS100\r"
+
+
+def test_poll_gsi_legacy_prefix_and_invalid_xml() -> None:
+    driver = SerialMainDriver(FakeSerial(responses=[b"GSI,not xml at all\r"]))
+    snap = driver.poll_gsi()
+    assert snap.system_name == ""
+
+    driver = SerialMainDriver(
+        FakeSerial(responses=[b"GSI,<XML>,\r<ScannerInfo Mode=\"Scan\"><broken\r"])
+    )
+    snap = driver.poll_gsi()
+    assert isinstance(snap, GsiSnapshot)
+
+
+def test_poll_gsi_uses_view_description_when_mode_empty() -> None:
+    payload = (
+        b"<?xml version=\"1.0\"?>\r"
+        b"<ScannerInfo>\r"
+        b"  <Site Name=\"Simulcast\"/>\r"
+        b"  <ViewDescription><OverWrite Text=\"ID Scanning...\"/></ViewDescription>\r"
+        b"  <Property Rssi=\"-80\" Sig=\"4\"/>\r"
+        b"</ScannerInfo>\r"
+    )
+    driver = SerialMainDriver(FakeSerial(responses=[payload]))
+    snap = driver.poll_gsi()
+    assert snap.mode == "ID Scanning..."
+    assert snap.site_name == "Simulcast"
+    assert snap.rssi_dbm == -80

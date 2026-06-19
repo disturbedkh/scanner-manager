@@ -33,6 +33,8 @@ from scanner_profiles import ScannerProfile
 
 logger = logging.getLogger(__name__)
 
+_PROFILE_CFG = "profile.cfg"
+
 
 class ButtonFilterPanel(QWidget):
     """BT885 scanner-button preview row."""
@@ -136,11 +138,11 @@ class ProfileCfgPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        layout.addWidget(QLabel("<b>profile.cfg</b>  (read-only — write support in Phase 6)"))
+        layout.addWidget(QLabel(f"<b>{_PROFILE_CFG}</b>  (read-only — write support in Phase 6)"))
 
         self._view = QPlainTextEdit()
         self._view.setReadOnly(True)
-        self._view.setPlaceholderText("No profile.cfg on this card")
+        self._view.setPlaceholderText(f"No {_PROFILE_CFG} on this card")
         layout.addWidget(self._view)
 
     def set_card_path(self, sd_path: str) -> None:
@@ -149,8 +151,8 @@ class ProfileCfgPanel(QWidget):
             return
         root = Path(sd_path)
         candidates = (
-            root / "BCDx36HP" / "profile.cfg",
-            root / "profile.cfg",
+            root / "BCDx36HP" / _PROFILE_CFG,
+            root / _PROFILE_CFG,
         )
         cfg_path = next((c for c in candidates if c.exists()), None)
         if cfg_path is None:

@@ -376,9 +376,9 @@ def to_hpd_import(
     return out
 
 
-def _map_trs(response: Dict[str, Any], *, source_id: str) -> HpdImport:
-    sys_name = response.get("sName") or response.get("name") or ""
-    descr = response.get("sDescription") or response.get("description") or ""
+def _trs_talkgroup_entries(
+    response: Dict[str, Any],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     entries: List[Dict[str, Any]] = []
     groups: List[Dict[str, Any]] = []
     for cat in _flatten(response.get("categories")):
@@ -396,6 +396,11 @@ def _map_trs(response: Dict[str, Any], *, source_id: str) -> HpdImport:
                 "priority": bool(tg.get("priority") or tg.get("tgPriority")),
                 "encrypted": bool(tg.get("enc") or tg.get("encrypted")),
             })
+    return entries, groups
+
+
+def _trs_control_entries(response: Dict[str, Any]) -> List[Dict[str, Any]]:
+    entries: List[Dict[str, Any]] = []
     for site in _flatten(response.get("sites")):
         for freq in _flatten(site.get("frequencies") or site.get("freqs")):
             entries.append({
@@ -404,6 +409,14 @@ def _map_trs(response: Dict[str, Any], *, source_id: str) -> HpdImport:
                 "freq": _norm_freq(freq.get("freq") or freq.get("frequency")),
                 "logical": freq.get("lcn") or freq.get("logical") or "",
             })
+    return entries
+
+
+def _map_trs(response: Dict[str, Any], *, source_id: str) -> HpdImport:
+    sys_name = response.get("sName") or response.get("name") or ""
+    descr = response.get("sDescription") or response.get("description") or ""
+    tg_entries, groups = _trs_talkgroup_entries(response)
+    entries = tg_entries + _trs_control_entries(response)
     return HpdImport(
         source="trs", source_id=str(source_id),
         title=sys_name, description=descr,

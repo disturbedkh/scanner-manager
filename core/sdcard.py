@@ -41,6 +41,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+_HPDB_CFG = "hpdb.cfg"
+_CARD_ROOT = "<card>"
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 # ---------------------------------------------------------------------------
 # Card identity
 # ---------------------------------------------------------------------------
@@ -115,7 +123,7 @@ def _read_target_model(root: Path) -> str:
     Uniden HPDs have a ``TargetModel\\t<name>`` header line. We scan any
     s_*.hpd in the root as well as hpdb.cfg in HPDB/.
     """
-    for candidate in list(root.glob("s_*.hpd")) + [root / "HPDB" / "hpdb.cfg"]:
+    for candidate in list(root.glob("s_*.hpd")) + [root / "HPDB" / _HPDB_CFG]:
         if not candidate.exists():
             continue
         try:
@@ -242,8 +250,8 @@ def _should_hash(relpath: str) -> bool:
     p = relpath.lower().replace("\\", "/")
     return (
         p.endswith(".hpd")
-        or p.endswith("/hpdb.cfg")
-        or p == "hpdb.cfg"
+        or p.endswith(f"/{_HPDB_CFG}")
+        or p == _HPDB_CFG
     )
 
 
@@ -428,16 +436,12 @@ def clone_card_to_workspace(
     False, any pre-existing files are left in place and a conflict marker
     is returned for each. Intended for first-time profile creation.
     """
-    from datetime import datetime, timezone
-
     report = SyncReport(direction="clone")
-    report.started_at = datetime.now(timezone.utc).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
+    report.started_at = _utc_now_iso()
     src = Path(card_root)
     dst = Path(workspace_root)
     if not src.exists():
-        report.errors.append(("<card>", "Card root does not exist."))
+        report.errors.append((_CARD_ROOT, "Card root does not exist."))
         return report
     dst.mkdir(parents=True, exist_ok=True)
     for fpath in _walk_files(src):
@@ -456,9 +460,7 @@ def clone_card_to_workspace(
             report.copied.append(rel_str)
         except Exception as exc:
             report.errors.append((rel_str, str(exc)))
-    report.ended_at = datetime.now(timezone.utc).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
+    report.ended_at = _utc_now_iso()
     return report
 
 
@@ -471,7 +473,7 @@ _ANCILLARY_PREFIXES = (
 
 def _is_ancillary(relpath: str) -> bool:
     rel_norm = relpath.replace("\\", "/")
-    if rel_norm.lower() == "hpdb.cfg":
+    if rel_norm.lower() == _HPDB_CFG:
         return True
     return any(rel_norm.startswith(prefix) for prefix in _ANCILLARY_PREFIXES)
 
@@ -481,12 +483,49 @@ def _is_hpd_editable(relpath: str) -> bool:
     return rel_norm.lower().endswith(".hpd")
 
 
+def _copy_pull_file(
+    report: SyncReport, rel: str, src: Path, dst: Path
+) -> None:
+    try:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+        report.copied.append(rel)
+    except Exception as exc:
+        report.errors.append((rel, str(exc)))
+
+
+def _handle_pull_diff(
+    diff: FileDiff,
+    report: SyncReport,
+    src: Path,
+    dst: Path,
+) -> None:
+    rel = diff.relpath
+    if diff.status == "unchanged":
+        report.skipped_same.append(rel)
+    elif diff.status == "changed_workspace":
+        report.skipped_newer.append(rel)
+    elif diff.status == "only_card":
+        _copy_pull_file(report, rel, src, dst)
+    elif diff.status == "changed_card":
+        _copy_pull_file(report, rel, src, dst)
+        if _is_hpd_editable(rel):
+            report.external_changes.append(rel)
+    elif diff.status == "changed_both":
+        if _is_ancillary(rel):
+            _copy_pull_file(report, rel, src, dst)
+        else:
+            report.conflicts.append(rel)
+    elif diff.status == "removed":
+        report.removed.append(rel)
+
+
 def sync_pull(
     *,
     card_root: str,
     workspace_root: str,
     baseline: Dict[str, FileState],
-    conflict_policy: str = "prompt",
+    _conflict_policy: str = "prompt",
 ) -> Tuple[SyncReport, List[FileDiff]]:
     """Pull changes from the card into the workspace.
 
@@ -505,15 +544,11 @@ def sync_pull(
     Returns (report, diffs). ``diffs`` is the full diff list so callers
     can render status/conflict dialogs.
     """
-    from datetime import datetime, timezone
-
     report = SyncReport(direction="pull")
-    report.started_at = datetime.now(timezone.utc).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
+    report.started_at = _utc_now_iso()
     card_path = Path(card_root)
     if not card_path.exists():
-        report.errors.append(("<card>", "Card not connected."))
+        report.errors.append((_CARD_ROOT, "Card not connected."))
         return report, []
     ws_path = Path(workspace_root)
     ws_path.mkdir(parents=True, exist_ok=True)
@@ -524,55 +559,47 @@ def sync_pull(
         baseline=baseline,
     )
     for diff in diffs:
-        rel = diff.relpath
-        src = card_path / rel
-        dst = ws_path / rel
-        if diff.status == "unchanged":
-            report.skipped_same.append(rel)
-            continue
-        if diff.status == "changed_workspace":
-            report.skipped_newer.append(rel)
-            continue
         if diff.status == "only_workspace":
-            continue  # push territory, not pull
-        if diff.status == "only_card":
-            try:
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, dst)
-                report.copied.append(rel)
-            except Exception as exc:
-                report.errors.append((rel, str(exc)))
             continue
-        if diff.status == "changed_card":
-            try:
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, dst)
-                report.copied.append(rel)
-                if _is_hpd_editable(rel):
-                    report.external_changes.append(rel)
-            except Exception as exc:
-                report.errors.append((rel, str(exc)))
-            continue
-        if diff.status == "changed_both":
-            if _is_ancillary(rel):
-                # Ancillary files: card wins (firmware is authoritative).
-                try:
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(src, dst)
-                    report.copied.append(rel)
-                except Exception as exc:
-                    report.errors.append((rel, str(exc)))
-            else:
-                report.conflicts.append(rel)
-            continue
-        if diff.status == "removed":
-            # Both sides removed it; nothing to do.
-            report.removed.append(rel)
-            continue
-    report.ended_at = datetime.now(timezone.utc).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
+        src = card_path / diff.relpath
+        dst = ws_path / diff.relpath
+        _handle_pull_diff(diff, report, src, dst)
+    report.ended_at = _utc_now_iso()
     return report, diffs
+
+
+def _should_skip_push_diff(diff: FileDiff, only_hpd: bool) -> bool:
+    if only_hpd and not _is_hpd_editable(diff.relpath):
+        return True
+    return diff.status == "only_card"
+
+
+def _handle_push_diff(
+    diff: FileDiff,
+    report: SyncReport,
+    src: Path,
+    dst: Path,
+    overwrite_changed_card: bool,
+) -> None:
+    rel = diff.relpath
+    if diff.status == "unchanged":
+        report.skipped_same.append(rel)
+        return
+    if diff.status in ("changed_card", "changed_both") and not overwrite_changed_card:
+        report.conflicts.append(rel)
+        return
+    if diff.status in (
+        "only_workspace",
+        "changed_workspace",
+        "changed_card",
+        "changed_both",
+    ):
+        try:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+            report.copied.append(rel)
+        except Exception as exc:
+            report.errors.append((rel, str(exc)))
 
 
 def sync_push(
@@ -590,15 +617,11 @@ def sync_push(
     ``overwrite_changed_card`` is False, files that changed on the card
     side since last sync are flagged as conflicts instead of overwritten.
     """
-    from datetime import datetime, timezone
-
     report = SyncReport(direction="push")
-    report.started_at = datetime.now(timezone.utc).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
+    report.started_at = _utc_now_iso()
     card_path = Path(card_root)
     if not card_path.exists():
-        report.errors.append(("<card>", "Card not connected."))
+        report.errors.append((_CARD_ROOT, "Card not connected."))
         return report, []
     ws_path = Path(workspace_root)
     if not ws_path.exists():
@@ -611,33 +634,12 @@ def sync_push(
         baseline=baseline,
     )
     for diff in diffs:
-        rel = diff.relpath
-        if only_hpd and not _is_hpd_editable(rel):
+        if _should_skip_push_diff(diff, only_hpd):
             continue
-        src = ws_path / rel
-        dst = card_path / rel
-        if diff.status == "unchanged":
-            report.skipped_same.append(rel)
-            continue
-        if diff.status == "only_card":
-            continue  # nothing in workspace to push
-        if diff.status == "changed_card" and not overwrite_changed_card:
-            report.conflicts.append(rel)
-            continue
-        if diff.status == "changed_both" and not overwrite_changed_card:
-            report.conflicts.append(rel)
-            continue
-        if diff.status in ("only_workspace", "changed_workspace", "changed_card", "changed_both"):
-            try:
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, dst)
-                report.copied.append(rel)
-            except Exception as exc:
-                report.errors.append((rel, str(exc)))
-            continue
-    report.ended_at = datetime.now(timezone.utc).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
+        src = ws_path / diff.relpath
+        dst = card_path / diff.relpath
+        _handle_push_diff(diff, report, src, dst, overwrite_changed_card)
+    report.ended_at = _utc_now_iso()
     return report, diffs
 
 
@@ -660,10 +662,6 @@ SNAP_REASON_PRE_RESTORE = "pre-restore"
 SNAP_REASON_AUTO = "auto"
 
 DEFAULT_MAX_SNAPSHOTS = 10
-
-
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 @dataclass
@@ -864,7 +862,7 @@ def restore_snapshot(
             note=f"Before restoring {snap_id}",
         )
 
-    for abs_src, _rel in list(_iter_snapshottable(root)):
+    for abs_src, _rel in _iter_snapshottable(root):
         try:
             abs_src.unlink()
         except OSError:
@@ -953,10 +951,10 @@ def prune_snapshots(
     if len(prunable_sorted) > allowance:
         overflow = len(prunable_sorted) - allowance
         removed = prunable_sorted[:overflow]
-        keeps = set(id(s) for s in prunable_sorted[overflow:])
+        keeps = {id(s) for s in prunable_sorted[overflow:]}
     else:
         removed = []
-        keeps = set(id(s) for s in prunable_sorted)
+        keeps = {id(s) for s in prunable_sorted}
     kept: List[Snapshot] = []
     for s in snapshots:
         if _is_pinned(s) or id(s) in keeps:

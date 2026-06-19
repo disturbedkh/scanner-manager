@@ -143,7 +143,8 @@ class IcecastPusher:
         )
         try:
             if self.use_tls:
-                ctx = ssl.create_default_context()
+                ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+                ctx.minimum_version = ssl.TLSVersion.TLSv1_2
                 sock = ctx.wrap_socket(sock, server_hostname=self.host)
 
             auth = base64.b64encode(
@@ -180,7 +181,7 @@ class IcecastPusher:
                     break
                 try:
                     sock.sendall(chunk)
-                except (BrokenPipeError, ConnectionResetError, OSError) as exc:
+                except OSError as exc:
                     raise RuntimeError(f"socket lost: {exc}") from exc
         finally:
             try:

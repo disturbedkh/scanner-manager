@@ -25,6 +25,8 @@ import time
 from dataclasses import dataclass, field
 from typing import List
 
+from scanner_drivers.serial_io import read_quiet_serial_response
+
 logger = logging.getLogger(__name__)
 
 
@@ -112,6 +114,55 @@ def is_sub_command_allowed(cmd: str) -> bool:
     return cmd not in SUB_FORBIDDEN
 
 
+def _parse_iq_comma_lines(text: str) -> tuple[List[int], List[int]]:
+    i_vals: List[int] = []
+    q_vals: List[int] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or "," not in line:
+            continue
+        i_str, _, q_str = line.partition(",")
+        try:
+            i_int = int(i_str.strip())
+            q_int = int(q_str.strip())
+        except ValueError:
+            continue
+        i_vals.append(i_int)
+        q_vals.append(q_int)
+    return i_vals, q_vals
+
+
+def _parse_wide_iq_from_text(text: str) -> tuple[List[int], List[int]]:
+    comma_lines = [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip() and "," in line
+    ]
+    if comma_lines:
+        i_vals: List[int] = []
+        q_vals: List[int] = []
+        for line in comma_lines:
+            a, _, b = line.partition(",")
+            try:
+                i_vals.append(int(a.strip()))
+                q_vals.append(int(b.strip()))
+            except ValueError:
+                continue
+        return i_vals, q_vals
+    flat: List[int] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            flat.append(int(line))
+        except ValueError:
+            continue
+    i_vals = [flat[idx] for idx in range(0, len(flat) - 1, 2)]
+    q_vals = [flat[idx + 1] for idx in range(0, len(flat) - 1, 2)]
+    return i_vals, q_vals
+
+
 class SerialSubDriver:
     """Synchronous, thread-safe wrapper around the SUB serial port."""
 
@@ -191,28 +242,9 @@ class SerialSubDriver:
             self._port.flush()
         except Exception:
             pass
-        deadline = time.perf_counter() + self._deadline_s
-        response = bytearray()
-        saw_terminator = False
-        while time.perf_counter() < deadline:
-            n = self._port.in_waiting
-            if n:
-                chunk = self._port.read(n)
-                response.extend(chunk)
-                saw_terminator = saw_terminator or response.endswith(b"\r") or response.endswith(b"\n")
-                if saw_terminator:
-                    quiet_until = time.perf_counter() + self._quiet_after_cr_s
-                    while time.perf_counter() < quiet_until and time.perf_counter() < deadline:
-                        n2 = self._port.in_waiting
-                        if n2:
-                            response.extend(self._port.read(n2))
-                            quiet_until = time.perf_counter() + self._quiet_after_cr_s
-                        else:
-                            time.sleep(0.005)
-                    break
-            else:
-                time.sleep(0.005)
-        return bytes(response)
+        return read_quiet_serial_response(
+            self._port, self._deadline_s, self._quiet_after_cr_s
+        )
 
     # ------------------------------------------------------------------
     # Typed queries
@@ -272,25 +304,7 @@ class SerialSubDriver:
         """
         raw = self.send_command("d")
         text = raw.decode("ascii", errors="replace")
-        i_vals: List[int] = []
-        q_vals: List[int] = []
-        for line in text.splitlines():
-            line = line.strip()
-            if not line or "," not in line:
-                continue
-            i_str, _, q_str = line.partition(",")
-            # Parse BOTH halves before appending so a malformed q
-            # doesn't leave i_vals out of sync with q_vals (which
-            # would later corrupt every downstream FFT).
-            try:
-                i_int = int(i_str.strip())
-                q_int = int(q_str.strip())
-            except ValueError:
-                continue
-            i_vals.append(i_int)
-            q_vals.append(q_int)
-        # First-frame instrumentation - mirrors the m / o probes so
-        # operators (and the dev-MCP bridge) can see in-band stats.
+        i_vals, q_vals = _parse_iq_comma_lines(text)
         if not getattr(self, "_logged_first_iq_frame", False):
             self._logged_first_iq_frame = True
             n = min(len(i_vals), len(q_vals))
@@ -324,39 +338,7 @@ class SerialSubDriver:
         """
         raw = self.send_command("v")
         text = raw.decode("ascii", errors="replace")
-        i_vals: List[int] = []
-        q_vals: List[int] = []
-
-        # Try comma-separated first; fall back to a flat numeric stream
-        # paired up two-at-a-time.
-        comma_lines = [
-            l.strip() for l in text.splitlines()
-            if l.strip() and "," in l
-        ]
-        if comma_lines:
-            for line in comma_lines:
-                a, _, b = line.partition(",")
-                try:
-                    i_int = int(a.strip())
-                    q_int = int(b.strip())
-                except ValueError:
-                    continue
-                i_vals.append(i_int)
-                q_vals.append(q_int)
-        else:
-            flat: List[int] = []
-            for line in text.splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    flat.append(int(line))
-                except ValueError:
-                    continue
-            for idx in range(0, len(flat) - 1, 2):
-                i_vals.append(flat[idx])
-                q_vals.append(flat[idx + 1])
-
+        i_vals, q_vals = _parse_wide_iq_from_text(text)
         return IqFrame(
             i_samples=i_vals,
             q_samples=q_vals,

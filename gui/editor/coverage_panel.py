@@ -240,6 +240,101 @@ class CoverageMapView(QWidget):
         self._view.setHtml(html)
 
 
+def _rectangle_items_for_group(group) -> List[dict]:
+    items: List[dict] = []
+    for rect in group.rectangles:
+        if len(rect) < 4:
+            continue
+        items.append({
+            "kind": "rectangle",
+            "lat1": float(rect[0]),
+            "lon1": float(rect[1]),
+            "lat2": float(rect[2]),
+            "lon2": float(rect[3]),
+            "label": group.name or "",
+        })
+    return items
+
+
+def _group_coverage_from_group(
+    group,
+) -> Tuple[Optional[Tuple[float, float, float]], List[dict]]:
+    if group.lat is None or group.lon is None:
+        return None, []
+    weight = max(1.0, float(len(group.entries)))
+    radius_miles = float(group.range_miles) if group.range_miles else 5.0
+    circle = {
+        "kind": "circle",
+        "lat": float(group.lat),
+        "lon": float(group.lon),
+        "radius_m": radius_miles * 1609.344,
+        "label": group.name or "",
+        "color": "#4dabf7" if weight > 1 else "#999",
+    }
+    return (
+        (float(group.lat), float(group.lon), weight),
+        [circle, *_rectangle_items_for_group(group)],
+    )
+
+
+def _site_marker_item(site) -> Optional[dict]:
+    if site.lat is None or site.lon is None:
+        return None
+    return {
+        "kind": "marker",
+        "lat": float(site.lat),
+        "lon": float(site.lon),
+        "label": f"Site: {site.name}",
+    }
+
+
+def _coverage_items_from_system(
+    system,
+) -> Tuple[List[Tuple[float, float, float]], List[dict]]:
+    groups: List[Tuple[float, float, float]] = []
+    items: List[dict] = []
+    for group in system.groups:
+        group_pt, group_items = _group_coverage_from_group(group)
+        if group_pt is not None:
+            groups.append(group_pt)
+            items.extend(group_items)
+    for site in system.sites:
+        marker = _site_marker_item(site)
+        if marker is not None:
+            items.append(marker)
+    return groups, items
+
+
+def _coverage_items_from_hpd_files(
+    files,
+) -> Tuple[List[Tuple[float, float, float]], List[dict]]:
+    groups: List[Tuple[float, float, float]] = []
+    items: List[dict] = []
+    for hpd in files:
+        for system in hpd.systems:
+            sys_groups, sys_items = _coverage_items_from_system(system)
+            groups.extend(sys_groups)
+            items.extend(sys_items)
+    return groups, items
+
+
+def _map_center_from_items(items: List[dict]) -> Optional[Tuple[float, float]]:
+    lat_sum = sum(
+        item.get("lat", item.get("lat1", 0.0))
+        for item in items
+        if item.get("kind") != "rectangle"
+    )
+    lon_sum = sum(
+        item.get("lon", item.get("lon1", 0.0))
+        for item in items
+        if item.get("kind") != "rectangle"
+    )
+    n = sum(1 for item in items if item.get("kind") != "rectangle")
+    if n <= 0:
+        return None
+    return lat_sum / n, lon_sum / n
+
+
 class CoveragePanel(QWidget):
     """ZIP / GPS sim toolbar + heatmap tab + map tab."""
 
@@ -302,65 +397,12 @@ class CoveragePanel(QWidget):
             files = self._tree_provider() or []
         except Exception:
             files = []
-        groups: List[Tuple[float, float, float]] = []
-        items: List[dict] = []
-        for hpd in files:
-            for system in hpd.systems:
-                for group in system.groups:
-                    if group.lat is None or group.lon is None:
-                        continue
-                    weight = max(1.0, float(len(group.entries)))
-                    groups.append((float(group.lat), float(group.lon), weight))
-                    radius_miles = (
-                        float(group.range_miles) if group.range_miles else 5.0
-                    )
-                    items.append(
-                        {
-                            "kind": "circle",
-                            "lat": float(group.lat),
-                            "lon": float(group.lon),
-                            "radius_m": radius_miles * 1609.344,
-                            "label": group.name or "",
-                            "color": "#4dabf7" if weight > 1 else "#999",
-                        }
-                    )
-                    for rect in group.rectangles:
-                        if len(rect) >= 4:
-                            items.append(
-                                {
-                                    "kind": "rectangle",
-                                    "lat1": float(rect[0]),
-                                    "lon1": float(rect[1]),
-                                    "lat2": float(rect[2]),
-                                    "lon2": float(rect[3]),
-                                    "label": group.name or "",
-                                }
-                            )
-                for site in system.sites:
-                    if site.lat is None or site.lon is None:
-                        continue
-                    items.append(
-                        {
-                            "kind": "marker",
-                            "lat": float(site.lat),
-                            "lon": float(site.lon),
-                            "label": f"Site: {site.name}",
-                        }
-                    )
+        groups, items = _coverage_items_from_hpd_files(files)
         self._heatmap.set_groups(groups)
-        # Center map near the data centroid if possible, else on the
-        # user's lat/lon spinner
-        if items:
-            lat_sum = sum(
-                i.get("lat", i.get("lat1", 0.0)) for i in items if i.get("kind") != "rectangle"
-            )
-            lon_sum = sum(
-                i.get("lon", i.get("lon1", 0.0)) for i in items if i.get("kind") != "rectangle"
-            )
-            n = sum(1 for i in items if i.get("kind") != "rectangle")
-            if n > 0:
-                self._map.set_view(lat_sum / n, lon_sum / n, zoom=7, items=items)
-                return
+        center = _map_center_from_items(items)
+        if center is not None:
+            self._map.set_view(center[0], center[1], zoom=7, items=items)
+            return
         self._map.set_view(self._lat_spin.value(), self._lon_spin.value(), zoom=4, items=items)
 
     def _center_map(self) -> None:

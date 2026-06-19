@@ -73,3 +73,66 @@ def test_is_editable_config_file_recognizes_hpd() -> None:
     assert profile.is_editable_config_file("hpdb.cfg")
     assert not profile.is_editable_config_file("firmware/ZipTable10.dat")
     assert not profile.is_editable_config_file("")
+
+
+def test_bt885_capability_flags_and_aliases() -> None:
+    profile = get_profile("uniden_bt885")
+    assert profile.id == "uniden_bt885"
+    assert profile.family == "uniden_beartracker"
+    assert profile.supports_hpd is True
+    assert profile.supports_tgid is True
+    assert ".hpd" in profile.supported_file_extensions
+    assert ".cfg" in profile.supported_file_extensions
+    assert profile.target_model_aliases
+    assert profile.supports_serial_mode is False
+    assert profile.supports_waterfall is False
+    assert profile.supports_favorites_lists is False
+    assert profile.supports_profile_cfg is False
+    assert "BCDx36HP/HPDB/hpdb.cfg" in profile.card_identity_files()
+
+
+def test_bt885_guess_service_type_keyword_match() -> None:
+    profile = get_profile("uniden_bt885")
+    assert profile.guess_service_type_from_tag("County Sheriff Dispatch") == 2
+
+
+def test_bt885_read_zip_and_city_tables(monkeypatch: pytest.MonkeyPatch) -> None:
+    import core.sdcard as sdcard_mod
+
+    profile = get_profile("uniden_bt885")
+    monkeypatch.setattr(
+        sdcard_mod, "read_zip_table", lambda _root: [{"zip": "32601"}], raising=False
+    )
+    monkeypatch.setattr(
+        sdcard_mod, "read_city_table", lambda _root: [{"city": "Gainesville"}], raising=False
+    )
+    assert profile.read_zip_table("/card") == [{"zip": "32601"}]
+    assert profile.read_city_table("/card") == [{"city": "Gainesville"}]
+
+
+def test_bt885_read_tables_return_none_when_reader_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import core.sdcard as sdcard_mod
+
+    profile = get_profile("uniden_bt885")
+    monkeypatch.delattr(sdcard_mod, "read_zip_table", raising=False)
+    monkeypatch.delattr(sdcard_mod, "read_city_table", raising=False)
+    assert profile.read_zip_table("/card") is None
+    assert profile.read_city_table("/card") is None
+
+
+def test_bt885_read_tables_swallow_reader_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import core.sdcard as sdcard_mod
+
+    profile = get_profile("uniden_bt885")
+
+    def _boom(_root: str):
+        raise OSError("boom")
+
+    monkeypatch.setattr(sdcard_mod, "read_zip_table", _boom, raising=False)
+    monkeypatch.setattr(sdcard_mod, "read_city_table", _boom, raising=False)
+    assert profile.read_zip_table("/card") is None
+    assert profile.read_city_table("/card") is None

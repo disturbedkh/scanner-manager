@@ -246,12 +246,12 @@ class ScannerProfile(ABC):
         """
         return self.supports_serial_mode
 
-    def supported_connection_modes(self) -> tuple:
+    def supported_connection_modes(self) -> Tuple[str, str]:
         """Return the connection modes this scanner exposes to the user.
 
         The radio is mutually exclusive between Serial Mode and Mass
         Storage at the hardware level, so the GUI gates entire dock
-        groups by the operator's choice. Defaults to ``("storage",)``;
+        groups by the operator's choice. Defaults to ``("storage", "")``;
         SDS100/200 (which exposes USB CDC) overrides to add ``"live"``.
 
         Order matters - the first entry is the preferred default for
@@ -259,7 +259,7 @@ class ScannerProfile(ABC):
         """
         if self.supports_serial_mode:
             return ("live", "storage")
-        return ("storage",)
+        return ("storage", "")
 
     @property
     def usb_vid_pid_main(self) -> Optional[Tuple[int, int]]:

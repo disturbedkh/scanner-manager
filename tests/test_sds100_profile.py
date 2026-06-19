@@ -158,3 +158,35 @@ def test_service_label_lookup() -> None:
     assert PROFILE.service_label(15) == "Federal"
     assert PROFILE.service_label(999) == ""
     assert PROFILE.service_label(None) == ""
+
+
+def test_supported_file_extensions_include_inf() -> None:
+    assert ".inf" in PROFILE.supported_file_extensions
+
+
+def test_guess_service_type_keyword_match() -> None:
+    assert PROFILE.guess_service_type_from_tag("County Sheriff Dispatch") == 2
+
+
+def test_read_zip_and_city_tables(monkeypatch: pytest.MonkeyPatch) -> None:
+    import core.sdcard as sdcard_mod
+
+    monkeypatch.setattr(
+        sdcard_mod, "read_zip_table", lambda _root: [{"zip": "32601"}], raising=False
+    )
+    monkeypatch.setattr(
+        sdcard_mod, "read_city_table", lambda _root: [{"city": "Gainesville"}], raising=False
+    )
+    assert PROFILE.read_zip_table("/card") == [{"zip": "32601"}]
+    assert PROFILE.read_city_table("/card") == [{"city": "Gainesville"}]
+
+
+def test_read_tables_return_none_when_reader_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import core.sdcard as sdcard_mod
+
+    monkeypatch.delattr(sdcard_mod, "read_zip_table", raising=False)
+    monkeypatch.delattr(sdcard_mod, "read_city_table", raising=False)
+    assert PROFILE.read_zip_table("/card") is None
+    assert PROFILE.read_city_table("/card") is None

@@ -50,12 +50,17 @@ from streaming.server import StreamingServer
 
 logger = logging.getLogger(__name__)
 
+# Well-known DNS used only to pick a routable local IP (UDP connect trick).
+_CONNECTIVITY_PROBE_HOST = "one.one.one.one"
+_FORM_STATUS_LABEL = "Status:"
+_IDLE_STATUS = "Idle."
+
 
 def _local_ip() -> str:
     """Best-effort: pick a routable local IP for the listener URL."""
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
+        s.connect((_CONNECTIVITY_PROBE_HOST, 80))
         ip = s.getsockname()[0]
         s.close()
         return ip
@@ -181,7 +186,7 @@ class StreamingDock(QWidget):
         form.addRow("Port:", self._port_spin)
 
         self._listener_status = QLabel("Not running.")
-        form.addRow("Status:", self._listener_status)
+        form.addRow(_FORM_STATUS_LABEL, self._listener_status)
 
         self._listener_url = QLineEdit("")
         self._listener_url.setReadOnly(True)
@@ -216,9 +221,9 @@ class StreamingDock(QWidget):
         self._bf_btn = QPushButton("Start Broadcastify push")
         self._bf_btn.clicked.connect(self._on_toggle_broadcastify)
         bform.addRow(self._bf_btn)
-        self._bf_status = QLabel("Idle.")
+        self._bf_status = QLabel(_IDLE_STATUS)
         self._bf_status.setWordWrap(True)
-        bform.addRow("Status:", self._bf_status)
+        bform.addRow(_FORM_STATUS_LABEL, self._bf_status)
         layout.addWidget(bf_box)
 
         ic_box = QGroupBox("Generic Icecast push")
@@ -237,9 +242,9 @@ class StreamingDock(QWidget):
         self._ic_btn = QPushButton("Start Icecast push")
         self._ic_btn.clicked.connect(self._on_toggle_icecast)
         iform.addRow(self._ic_btn)
-        self._ic_status = QLabel("Idle.")
+        self._ic_status = QLabel(_IDLE_STATUS)
         self._ic_status.setWordWrap(True)
-        iform.addRow("Status:", self._ic_status)
+        iform.addRow(_FORM_STATUS_LABEL, self._ic_status)
         layout.addWidget(ic_box)
 
         creds_note = QLabel(
@@ -372,8 +377,25 @@ class StreamingDock(QWidget):
         self._capture_btn.setText("Start capture")
         self._capture_status.setText("Capture stopped.")
 
+    def _distribute_audio_chunk(self, chunk: bytes) -> None:
+        if self._server is not None:
+            self._server.push_audio_chunk(chunk)
+        if self._broadcastify is not None:
+            self._broadcastify.feed(chunk)
+        if self._icecast is not None:
+            self._icecast.feed(chunk)
+
+    def _update_level_bar(self, frame: AudioFrame) -> None:
+        try:
+            level = int(min(100, frame.peak * 100))
+        except Exception:
+            level = 0
+        try:
+            self._level_bar.setValue(level)
+        except Exception:
+            pass
+
     def _on_audio_frame(self, frame: AudioFrame) -> None:
-        # Encode + level meter
         if self._encoder is not None:
             try:
                 self._encoder.feed(frame)
@@ -382,23 +404,8 @@ class StreamingDock(QWidget):
                 logger.exception("Encoder failed")
                 chunk = b""
             if chunk:
-                if self._server is not None:
-                    self._server.push_audio_chunk(chunk)
-                if self._broadcastify is not None:
-                    self._broadcastify.feed(chunk)
-                if self._icecast is not None:
-                    self._icecast.feed(chunk)
-        # Level bar (peak %)
-        try:
-            level = int(min(100, frame.peak * 100))
-        except Exception:
-            level = 0
-        # Update from audio thread - QProgressBar.setValue is thread-safe-ish
-        # in PySide6 (it queues a paint event); skip if widget gone.
-        try:
-            self._level_bar.setValue(level)
-        except Exception:
-            pass
+                self._distribute_audio_chunk(chunk)
+        self._update_level_bar(frame)
 
     # ------------------------------------------------------------------
     # LAN listener
@@ -475,7 +482,7 @@ class StreamingDock(QWidget):
         finally:
             self._broadcastify = None
         self._bf_btn.setText("Start Broadcastify push")
-        self._bf_status.setText("Idle.")
+        self._bf_status.setText(_IDLE_STATUS)
 
     def _on_toggle_icecast(self) -> None:
         if self._icecast is not None:
@@ -509,7 +516,7 @@ class StreamingDock(QWidget):
         finally:
             self._icecast = None
         self._ic_btn.setText("Start Icecast push")
-        self._ic_status.setText("Idle.")
+        self._ic_status.setText(_IDLE_STATUS)
 
 
 def _wrap_layout(layout):
