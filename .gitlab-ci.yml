@@ -14,12 +14,16 @@ variables:
     - python -m pip install -U pip
     - python -m pip install -e ".[full,dev]"
 
+.release_vars:
+  variables:
+    SCANNER_MANAGER_BUILD_TYPE: Release
+
 lint:
   stage: lint
   image: python:3.12
   extends: .default_before
   script:
-    - ruff check core/ gui/ legacy_tk/ scanner_profiles/ scanner_drivers/ firmware/ streaming/ audio/ virtual_sd/ tests/ scripts/ AI/Dev/RE/tools/
+    - ruff check core/ gui/ legacy_tk/ scanner_profiles/ scanner_drivers/ firmware/ streaming/ audio/ virtual_sd/ tests/ scripts/ Metacache/Dev/RE/tools/
 
 .test_linux:
   stage: test
@@ -71,16 +75,18 @@ release:windows:
     - saas-windows-medium-amd64
   rules:
     - if: $CI_COMMIT_TAG =~ /^v/
-  extends: .default_before
+  extends:
+    - .default_before
+    - .release_vars
   script:
     - pyinstaller packaging/scanner-manager.spec --noconfirm
-    - powershell -Command "$hash = (Get-FileHash -Algorithm SHA256 dist/ScannerManager.exe).Hash.ToLower(); $hash | Out-File -Encoding ascii dist/ScannerManager.exe.sha256; Compress-Archive -Path dist/ScannerManager.exe -DestinationPath dist/ScannerManager-windows-x64.zip -Force; (Get-FileHash -Algorithm SHA256 dist/ScannerManager-windows-x64.zip).Hash.ToLower() | Out-File -Encoding ascii dist/ScannerManager-windows-x64.zip.sha256"
+    - powershell -Command "$root='build/Windows/Release'; $hash = (Get-FileHash -Algorithm SHA256 \"$root/ScannerManager.exe\").Hash.ToLower(); $hash | Out-File -Encoding ascii \"$root/ScannerManager.exe.sha256\"; Compress-Archive -Path \"$root/ScannerManager.exe\" -DestinationPath \"$root/ScannerManager-windows-x64.zip\" -Force; (Get-FileHash -Algorithm SHA256 \"$root/ScannerManager-windows-x64.zip\").Hash.ToLower() | Out-File -Encoding ascii \"$root/ScannerManager-windows-x64.zip.sha256\""
   artifacts:
     paths:
-      - dist/ScannerManager.exe
-      - dist/ScannerManager.exe.sha256
-      - dist/ScannerManager-windows-x64.zip
-      - dist/ScannerManager-windows-x64.zip.sha256
+      - build/Windows/Release/ScannerManager.exe
+      - build/Windows/Release/ScannerManager.exe.sha256
+      - build/Windows/Release/ScannerManager-windows-x64.zip
+      - build/Windows/Release/ScannerManager-windows-x64.zip.sha256
     expire_in: 30 days
 
 release:macos:
@@ -89,17 +95,19 @@ release:macos:
     - saas-macos-medium-m1
   rules:
     - if: $CI_COMMIT_TAG =~ /^v/
-  extends: .default_before
+  extends:
+    - .default_before
+    - .release_vars
   script:
     - export SCANNER_MANAGER_VERSION="${CI_COMMIT_TAG#v}"
     - pyinstaller packaging/scanner-manager.spec --noconfirm
-    - cd dist && tar -czf ScannerManager-macos.tar.gz ScannerManager.app
-    - cd dist && shasum -a 256 ScannerManager-macos.tar.gz > ScannerManager-macos.tar.gz.sha256
+    - cd build/macOS/Release && tar -czf ScannerManager-macos.tar.gz ScannerManager.app
+    - cd build/macOS/Release && shasum -a 256 ScannerManager-macos.tar.gz > ScannerManager-macos.tar.gz.sha256
   artifacts:
     paths:
-      - dist/ScannerManager.app
-      - dist/ScannerManager-macos.tar.gz
-      - dist/ScannerManager-macos.tar.gz.sha256
+      - build/macOS/Release/ScannerManager.app
+      - build/macOS/Release/ScannerManager-macos.tar.gz
+      - build/macOS/Release/ScannerManager-macos.tar.gz.sha256
     expire_in: 30 days
 
 release:linux:
@@ -107,6 +115,7 @@ release:linux:
   image: python:3.12
   rules:
     - if: $CI_COMMIT_TAG =~ /^v/
+  extends: .release_vars
   before_script:
     - apt-get update -qq
     - apt-get install -y -qq tk
@@ -114,12 +123,12 @@ release:linux:
     - python -m pip install -e ".[full,dev]"
   script:
     - pyinstaller packaging/scanner-manager.spec --noconfirm
-    - cd dist && chmod +x ScannerManager
-    - cd dist && tar -czf ScannerManager-linux-x64.tar.gz ScannerManager
-    - cd dist && sha256sum ScannerManager-linux-x64.tar.gz > ScannerManager-linux-x64.tar.gz.sha256
+    - cd build/Linux/Release && chmod +x ScannerManager
+    - cd build/Linux/Release && tar -czf ScannerManager-linux-x64.tar.gz ScannerManager
+    - cd build/Linux/Release && sha256sum ScannerManager-linux-x64.tar.gz > ScannerManager-linux-x64.tar.gz.sha256
   artifacts:
     paths:
-      - dist/ScannerManager
-      - dist/ScannerManager-linux-x64.tar.gz
-      - dist/ScannerManager-linux-x64.tar.gz.sha256
+      - build/Linux/Release/ScannerManager
+      - build/Linux/Release/ScannerManager-linux-x64.tar.gz
+      - build/Linux/Release/ScannerManager-linux-x64.tar.gz.sha256
     expire_in: 30 days

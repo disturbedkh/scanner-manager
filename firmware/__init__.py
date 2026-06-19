@@ -11,7 +11,7 @@ Modules:
   verify.
 
 Endpoint inventory + update-check algorithm are documented in
-``AI/Dev/RE/docs/uniden_update_endpoints.md``. We never modify
+``Metacache/Dev/RE/docs/uniden_update_endpoints.md``. We never modify
 firmware blobs; the bytes are dropped on the SD card byte-for-byte
 the same way Sentinel and BT885 Update Manager do.
 """

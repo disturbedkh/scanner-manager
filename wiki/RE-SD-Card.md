@@ -22,7 +22,7 @@ The volume's **content fingerprint is not a model differentiator**
 in our app's `sdcard.py:_content_fingerprint` because BT885 and
 SDS100 ship bit-identical `CityTable*.dat` and `ZipTable*.dat`
 files (same SHA-256). Use volume serial + `scanner.inf` for
-identity instead. See `AI/Dev/RE/docs/SD_CARD_COMPARISON.md`.
+identity instead. See `Metacache/Dev/RE/docs/SD_CARD_COMPARISON.md`.
 
 ## Folder skeleton
 
@@ -292,7 +292,7 @@ RadioReference import - all features Sentinel doesn't have.
 
 ## Lab data
 
-- `AI/Dev/RE/docs/SD_CARD_COMPARISON.md` - exhaustive BT885 vs SDS100 diff with raw bytes.
-- `AI/Dev/RE/docs/BT885.md` - per-scanner SD-card RE notes.
-- `AI/Dev/RE/docs/SDS100.md` - same for SDS100.
-- `AI/Dev/RE/tools/sentinel/compare_cards.py` - read-only side-by-side script.
+- `Metacache/Dev/RE/docs/SD_CARD_COMPARISON.md` - exhaustive BT885 vs SDS100 diff with raw bytes.
+- `Metacache/Dev/RE/docs/BT885.md` - per-scanner SD-card RE notes.
+- `Metacache/Dev/RE/docs/SDS100.md` - same for SDS100.
+- `Metacache/Dev/RE/tools/sentinel/compare_cards.py` - read-only side-by-side script.

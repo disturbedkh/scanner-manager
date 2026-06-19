@@ -40,7 +40,7 @@ def test_live_mode_flags() -> None:
 
 def test_usb_vid_pid_uses_uniden_assignments() -> None:
     """VID 0x1965 (Uniden) + PID 0x001A MAIN / 0x0019 SUB - verified
-    against real SDS100 hardware in AI/Dev/RE/docs/SDS100.md."""
+    against real SDS100 hardware in Metacache/Dev/RE/docs/SDS100.md."""
     assert PROFILE.usb_vid_pid_main == (0x1965, 0x001A)
     assert PROFILE.usb_vid_pid_sub == (0x1965, 0x0019)
 

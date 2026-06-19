@@ -19,7 +19,7 @@ Design contract:
 
 Everything below is implemented strictly against RadioReference's
 publicly documented v3.x SOAP WSDL. No code is copied from Uniden's
-decompiled SOAP proxies — see ``docs/rr-api-notes.md``.
+decompiled SOAP proxies — see ``Metacache/docs/rr-api-notes.md``.
 """
 
 from __future__ import annotations

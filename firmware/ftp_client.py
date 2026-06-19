@@ -2,7 +2,7 @@
 
 Reverse-engineered endpoints; credentials and paths verified by
 static extraction from the publicly-shipped Sentinel + BT885 Update
-Manager installers (see ``AI/Dev/RE/docs/uniden_update_endpoints.md``).
+Manager installers (see ``Metacache/Dev/RE/docs/uniden_update_endpoints.md``).
 
 We only ever LIST + RETR. We do not write back to either server.
 """

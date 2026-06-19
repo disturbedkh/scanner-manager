@@ -1,6 +1,6 @@
 """Top-of-window device-selector header.
 
-Sketched in ``AI/Dev/MULTI_DEVICE_GUI.md``::
+Sketched in ``Metacache/Dev/MULTI_DEVICE_GUI.md``::
 
     +------------------------------------------------------------------+
     | [Uniden SDS100 - Home] [v]   FW: Main 1.26.01 / Sub 1.03.15  [?] |

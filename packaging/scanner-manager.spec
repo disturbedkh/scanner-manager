@@ -5,15 +5,12 @@
 # Build with (from repo root):
 #   pyinstaller packaging/scanner-manager.spec --noconfirm
 #
-# Produces:
-#   Windows : dist/ScannerManager.exe          (one-file, windowed)
-#   macOS   : dist/ScannerManager.app          (.app bundle)
-#             + dist/ScannerManager             (matching unix binary)
-#   Linux   : dist/ScannerManager              (one-file, windowed)
+# Produces under build/<OS>/<Release|Development>/ (default Development):
+#   Windows : ScannerManager.exe
+#   macOS   : ScannerManager.app (+ matching unix binary)
+#   Linux   : ScannerManager
 #
-# A release workflow (.github/workflows/release.yml) runs this spec on
-# windows-latest, macos-latest, and ubuntu-latest and attaches each
-# platform's artifact to the GitHub Release.
+# CI tag builds set SCANNER_MANAGER_BUILD_TYPE=Release.
 """PyInstaller spec for the Scanner Manager one-file build."""
 from __future__ import annotations
 
@@ -25,6 +22,13 @@ from pathlib import Path
 # inside the spec body. Anchor paths to the current working directory
 # instead (the build command is always run from the repo root).
 REPO_ROOT = Path(os.getcwd()).resolve()
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+from build_paths import dist_dir, work_dir  # noqa: E402
+
+DISTPATH = str(dist_dir(REPO_ROOT))
+WORKPATH = str(work_dir(REPO_ROOT))
+Path(DISTPATH).mkdir(parents=True, exist_ok=True)
+Path(WORKPATH).mkdir(parents=True, exist_ok=True)
 # Phase 6 cutover: the Qt shell (gui/app.py) is now the default
 # packaged entry. The legacy Tk app at scanner_manager.py is still
 # importable as the `scanner-manager-tk` console script for users
@@ -168,6 +172,7 @@ a = Analysis(
     win_private_assemblies=False,
     cipher=block_cipher,
     noarchive=False,
+    workpath=WORKPATH,
 )
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
@@ -196,6 +201,7 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=ICON,
+    distpath=DISTPATH,
 )
 
 # macOS-specific .app bundle. On Windows / Linux the EXE above is the
@@ -224,4 +230,5 @@ if IS_MACOS:
                 "files on your scanner's SD card."
             ),
         },
+        distpath=DISTPATH,
     )

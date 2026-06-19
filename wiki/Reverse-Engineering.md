@@ -113,7 +113,7 @@ just aliases for Read/Write; some Sentinel builds don't even
 expose them as buttons). Every op reduces to standard FAT32 file
 operations on the SD card we already understand. Captured pcaps
 live under
-`AI/Dev/RE/sentinel_pcaps`.
+`Metacache/Dev/RE/sentinel_pcaps`.
 
 | Sentinel op | What it actually does | We replicate via |
 |---|---|---|
@@ -125,7 +125,7 @@ live under
 | Restore (alias) | Same as Write to Scanner | Workspace push |
 
 The SCSI/UMS/FAT32 decoder
-(`AI/Dev/RE/tools/sentinel/decode_sentinel_pcap.py`)
+(`Metacache/Dev/RE/tools/sentinel/decode_sentinel_pcap.py`)
 turns each pcap into a per-op `summary.md` + `disk.bin` + `files.md`
 so the "what does Sentinel do for op N" question answers itself.
 
@@ -236,12 +236,12 @@ already exceed Sentinel structurally.
 ## Lab notebook
 
 The wiki is the consolidated narrative. The lab notebook is
-`AI/Dev/RE/` in the repo - raw probe captures, Ghidra projects,
+`Metacache/Dev/RE/` in the repo - raw probe captures, Ghidra projects,
 decompiles, pcaps, sessions logs, and the scripts that produced
 all of the above. The wiki cross-references files in there as
 "raw data" links; never duplicates content.
 
-> If a wiki claim disagrees with a file in `AI/Dev/RE/`, the file
+> If a wiki claim disagrees with a file in `Metacache/Dev/RE/`, the file
 > wins by default - it has the timestamp and the bytes. Fix the
 > wiki to match, or update both with a session note explaining
 > the change.

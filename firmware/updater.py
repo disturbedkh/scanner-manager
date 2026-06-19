@@ -16,7 +16,7 @@ external Uniden code involved):
    - SDS100/200 Sub:   ``BCDx36HP/firmware/sub/<filename>``
    - HPDB snapshot:    ``BCDx36HP/HPDB/<filename>``
 
-   Layout taken from ``AI/Dev/RE/docs/SDS100.md``.
+   Layout taken from ``Metacache/Dev/RE/docs/SDS100.md``.
 4. ``postflash_verify()`` - re-read ``scanner.inf`` after the user
    ejects and reboots. The scanner rewrites field 4 (firmware version)
    on first boot, so we use that to confirm the new version stuck.

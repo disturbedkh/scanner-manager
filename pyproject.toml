@@ -135,7 +135,7 @@ packages = [
 
 [tool.pytest.ini_options]
 # Limit test discovery to the canonical tests/ tree so RE lab scripts
-# (AI/Dev/RE/tools/...) that happen to start with `test_` aren't
+# (Metacache/Dev/RE/tools/...) that happen to start with `test_` aren't
 # scooped up. Those scripts live or die on a real serial port.
 testpaths = ["tests"]
 

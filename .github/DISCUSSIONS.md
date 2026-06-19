@@ -54,7 +54,7 @@ When in doubt:
   [Quickstart](../../wiki/Quickstart),
   [Troubleshooting](../../wiki/Troubleshooting).
 - RE plans: [virtual scanner roadmap](../../wiki/Virtual-Scanner-Roadmap).
-- Tool reference: [`AI/Dev/RE/tools/README.md`](../AI/Dev/RE/tools/README.md).
+- Tool reference: [`Metacache/Dev/RE/tools/README.md`](../Metacache/Dev/RE/tools/README.md).
 - Issue templates: [`.github/ISSUE_TEMPLATE/`](./ISSUE_TEMPLATE/).
 
 ## Posting hygiene (please skim)

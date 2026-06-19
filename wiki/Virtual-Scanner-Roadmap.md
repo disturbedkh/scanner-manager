@@ -7,7 +7,7 @@
 >
 > **Status: exploratory.** This is a "what would it take to..."
 > sketch, not a tracked workstream. Source plan:
-> [`AI/Dev/RE/plans/virtual_scanner.md`](https://github.com/your-org/your-repo/blob/main/AI/Dev/RE/plans/virtual_scanner.md)
+> [`Metacache/Dev/RE/plans/virtual_scanner.md`](https://github.com/your-org/your-repo/blob/main/Metacache/Dev/RE/plans/virtual_scanner.md)
 > (replace with the canonical repo path once forked).
 
 ## TL;DR
@@ -43,7 +43,7 @@ laptop they're on.
 
 Full reasoning - layer-by-layer breakdown, decoder choice, GLG
 mapping, license risk, packaging risk - lives in
-`AI/Dev/RE/plans/virtual_scanner.md`. This page is the wiki-facing
+`Metacache/Dev/RE/plans/virtual_scanner.md`. This page is the wiki-facing
 TL;DR; the plan file is the authoritative spec.
 
 ## What from existing RE work feeds straight in

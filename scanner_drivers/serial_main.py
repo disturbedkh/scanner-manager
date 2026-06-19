@@ -1,6 +1,6 @@
 """SDS100/200 MAIN port driver - URCP commands (GSI / GLG / STS / ...).
 
-This is the production sister to ``AI/Dev/RE/tools/probes/serial_probe.py``.
+This is the production sister to ``Metacache/Dev/RE/tools/probes/serial_probe.py``.
 Same safety constraints (read-only whitelist + forbidden head list)
 ported from that probe; the live-mode dock and the streaming server
 both consume this driver.

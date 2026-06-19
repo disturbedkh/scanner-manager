@@ -1,22 +1,22 @@
 # Agent instructions
 
-Short router for Cursor agents. **Full notebook:** [`AI/Dev/README.md`](AI/Dev/README.md).
+Short router for Cursor agents. **Full notebook:** [`Metacache/Dev/README.md`](Metacache/Dev/README.md).
 
 ## Session start (read in order)
 
-1. [`AI/Dev/PROJECT_STATE.md`](AI/Dev/PROJECT_STATE.md)
-2. [`AI/Dev/WORKSTREAMS.md`](AI/Dev/WORKSTREAMS.md)
+1. [`Metacache/Dev/PROJECT_STATE.md`](Metacache/Dev/PROJECT_STATE.md)
+2. [`Metacache/Dev/WORKSTREAMS.md`](Metacache/Dev/WORKSTREAMS.md)
 3. Topic docs for your task (see table below)
-4. [`AI/Dev/WORKER_LOG.md`](AI/Dev/WORKER_LOG.md) — last few entries
-5. [`AI/Dev/CONVENTIONS.md`](AI/Dev/CONVENTIONS.md)
+4. [`Metacache/Dev/WORKER_LOG.md`](Metacache/Dev/WORKER_LOG.md) — last few entries
+5. [`Metacache/Dev/CONVENTIONS.md`](Metacache/Dev/CONVENTIONS.md)
 
 ## Task → where to look
 
 | Task | Docs / rules | Skill |
 | --- | --- | --- |
-| New machine / venv | `AI/Dev/CURSOR.md`, `PROJECT_STATE.md` | `bootstrap-dev-env` |
+| New machine / venv | `Metacache/Dev/CURSOR.md`, `PROJECT_STATE.md` | `bootstrap-dev-env` |
 | `scanner_profiles/` work | `MULTI_SCANNER_BACKEND.md`, RE docs | `add-scanner-profile` |
-| Live serial RE | `AI/Dev/RE/README.md` | `serial-re-probe` |
+| Live serial RE | `Metacache/Dev/RE/README.md` | `serial-re-probe` |
 | Qt GUI / drivers | `gui/`, `scanner_drivers/` | — |
 | End of session | `WORKER_LOG.md` format | `session-handoff` |
 
@@ -38,4 +38,4 @@ Use built-in Task subagents with prompts from [`.cursor/agents/`](.cursor/agents
 
 ## Active workstreams (headline)
 
-See [`AI/Dev/WORKSTREAMS.md`](AI/Dev/WORKSTREAMS.md). Current focus areas: multi-scanner backend, SDS100 profile, firmware updater design, multi-device GUI planning.
+See [`Metacache/Dev/WORKSTREAMS.md`](Metacache/Dev/WORKSTREAMS.md). Current focus areas: multi-scanner backend, SDS100 profile, firmware updater design, multi-device GUI planning.

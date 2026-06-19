@@ -44,7 +44,7 @@ Encryption was already in place on the very first BCDx36HP firmware
 (BCD536HP V1.02.03 from 2014-01-18). There is no "earlier-era
 plaintext" loophole; Uniden's MAIN-side opacity has been continuous
 across the entire product line. Full inventory and per-pair diffs in
-`AI/Dev/RE/docs/uniden_firmware_inventory.md`.
+`Metacache/Dev/RE/docs/uniden_firmware_inventory.md`.
 
 ### Conclusion
 
@@ -261,7 +261,7 @@ prompts for reboot. Nothing magic.
 
 This unblocks an in-app firmware updater in our app - we already
 own the SD card path; copying a file is trivial. See
-`AI/Dev/FIRMWARE_UPDATER.md`
+`Metacache/Dev/FIRMWARE_UPDATER.md`
 for the implementation plan.
 
 ### Side effects observed across firmware update
@@ -281,9 +281,9 @@ setting will need re-entering after a MAIN firmware update.
 
 ## Lab data
 
-- `AI/Dev/RE/firmware` - all firmware images, extracted SUB payload, decompiles, Ghidra dump.
-- `AI/Dev/RE/docs/SDS100_firmware.md` - the original raw write-up that this page consolidates.
-- `AI/Dev/RE/tools/firmware/inflate_sub.py` - SUB container parser/extractor.
-- `AI/Dev/RE/tools/firmware/firmware_strings.py` - per-image ASCII run extractor + version-diff.
-- `AI/Dev/RE/tools/firmware/firmware_structure.py` - entropy profile + magic-byte signature scan + byte-level diff.
-- `AI/Dev/RE/automation` - Ghidra bootstrap, headless analysis, and Java pre/post scripts.
+- `Metacache/Dev/RE/firmware` - all firmware images, extracted SUB payload, decompiles, Ghidra dump.
+- `Metacache/Dev/RE/docs/SDS100_firmware.md` - the original raw write-up that this page consolidates.
+- `Metacache/Dev/RE/tools/firmware/inflate_sub.py` - SUB container parser/extractor.
+- `Metacache/Dev/RE/tools/firmware/firmware_strings.py` - per-image ASCII run extractor + version-diff.
+- `Metacache/Dev/RE/tools/firmware/firmware_structure.py` - entropy profile + magic-byte signature scan + byte-level diff.
+- `Metacache/Dev/RE/automation` - Ghidra bootstrap, headless analysis, and Java pre/post scripts.

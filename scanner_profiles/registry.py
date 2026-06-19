@@ -186,8 +186,8 @@ def _profile_for_product_name(name: str) -> Optional[ScannerProfile]:
 def detect_from_card(card_root) -> Optional[ScannerProfile]:
     """Resolve a ``ScannerProfile`` from a mounted SD card root.
 
-    Resolution order, per ``AI/Dev/RE/docs/SDS100.md`` and
-    ``AI/Dev/RE/docs/BT885.md`` (real-card verified):
+    Resolution order, per ``Metacache/Dev/RE/docs/SDS100.md`` and
+    ``Metacache/Dev/RE/docs/BT885.md`` (real-card verified):
 
     1. ``BCDx36HP/scanner.inf`` ``Scanner`` field 1 - canonical
        model fingerprint (``SDS100``, ``SDS200``, ``BT885-SCN``).

@@ -4,7 +4,7 @@ The detector must distinguish BT885 from SDS100/SDS200 on a mounted
 SD card root, since both write `TargetModel\\tBCDx36HP` and only
 `scanner.inf` Scanner field 1 (and as a fallback, profile.cfg's
 ProductName row) carries the actual model. Verified against real
-hardware in AI/Dev/RE/docs/{BT885,SDS100}.md.
+hardware in Metacache/Dev/RE/docs/{BT885,SDS100}.md.
 """
 
 from __future__ import annotations

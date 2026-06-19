@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Removed root import shims.** All product code imports canonical
   `core.*` and `legacy_tk.scanner_manager`; root `metastore.py`,
   `scanner_manager.py`, etc. deleted.
-- **Full-repo ruff scope.** `AI/Dev/RE/tools/` lint cleanup; CI lints
+- **Full-repo ruff scope.** `Metacache/Dev/RE/tools/` lint cleanup; CI lints
   the entire repo including RE lab scripts.
 - **GitLab release parity.** Tag push builds Windows EXE + zip, macOS
   tar.gz, and Linux tar.gz with SHA-256 sidecars.
@@ -141,7 +141,7 @@ today.
 - **Sidecars** get a new nullable `scanner_profile_id` field.
 - **`data/scanner_profiles.json`** ships the manifest of known
   profiles.
-- **`docs/adding-a-scanner.md`** walks through adding a new profile.
+- **`Metacache/docs/adding-a-scanner.md`** walks through adding a new profile.
 
 ### Changed - Language
 
@@ -168,7 +168,7 @@ today.
   denylist of developer-jargon strings forbidden in user-facing copy.
   Developer-by-design pages (`Architecture.md`) are exempt; per-page
   `## Internals` sections are exempt too.
-- **`docs/style-guide.md`** codifies the three rules that govern
+- **`Metacache/docs/style-guide.md`** codifies the three rules that govern
   user-facing text: lead with outcome, park internals under
   **Internals** heading, no scaffolding phrases.
 - **`tests/test_coverage_maps.py`**, **`tests/test_profiles_and_snapshots.py`**,

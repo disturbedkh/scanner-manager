@@ -29,10 +29,10 @@ logs/
 crash-*.log
 
 # Per-machine Ghidra path shim (regenerate locally if needed).
-AI/Dev/RE/automation/.ghidra_env.ps1
-AI/Dev/RE/tools/automation/.ghidra_env.ps1
+Metacache/Dev/RE/automation/.ghidra_env.ps1
+Metacache/Dev/RE/tools/automation/.ghidra_env.ps1
 
-# User/runtime state (not shipped; see AI/Dev/PROJECT_STATE.md).
+# User/runtime state (not shipped; see Metacache/Dev/PROJECT_STATE.md).
 app_settings.json
 scanner_manager.meta.json
 zip_county_map.json

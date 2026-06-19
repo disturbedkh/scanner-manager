@@ -9,7 +9,7 @@ self-contained Python (or PowerShell for Windows-specific bits)
 and is checked into the repo for reproducibility.
 
 The full source-of-truth for tool inventory + per-tool docstrings is
-[`AI/Dev/RE/tools/README.md`](../../tree/main/AI/Dev/RE/tools).
+[`Metacache/Dev/RE/tools/README.md`](../../tree/main/Metacache/Dev/RE/tools).
 Below is the audience-friendly summary; if it disagrees with the
 folder README, the folder README wins.
 
@@ -20,26 +20,26 @@ folder README, the folder README wins.
 | **Python 3.10+** | Probe scripts, decoders, analyzers | `winget install Python.Python.3.13` (or any 3.10+) |
 | **pyserial** | USB CDC access for probes | `py -m pip install --user pyserial` |
 | **Java 21 JDK** | Required by Ghidra | `winget install --id EclipseAdoptium.Temurin.21.JDK -e --source winget` |
-| **Ghidra** | Static analysis of SUB firmware | `powershell -ExecutionPolicy Bypass -File AI\Dev\RE\tools\automation\bootstrap_ghidra.ps1` (auto-installs latest to `<GHIDRA_INSTALL>\`) |
-| **LPC43xx SVD** | Peripheral overlay for Ghidra | `powershell -ExecutionPolicy Bypass -File AI\Dev\RE\tools\automation\fetch_lpc43xx_svd.ps1` |
+| **Ghidra** | Static analysis of SUB firmware | `powershell -ExecutionPolicy Bypass -File Metacache\Dev\RE\tools\automation\bootstrap_ghidra.ps1` (auto-installs latest to `<GHIDRA_INSTALL>\`) |
+| **LPC43xx SVD** | Peripheral overlay for Ghidra | `powershell -ExecutionPolicy Bypass -File Metacache\Dev\RE\tools\automation\fetch_lpc43xx_svd.ps1` |
 | **Wireshark** | tshark for pcap decoding | `winget install --id WiresharkFoundation.Wireshark -e --source winget` |
 | **USBPcap** | USB packet capture (Sentinel sessions) | `winget install --id desowin.USBPcap -e --source winget` (reboot after) |
 
 Verify everything with:
 
 ```pwsh
-powershell -ExecutionPolicy Bypass -File AI\Dev\RE\tools\automation\check_prereqs.ps1
+powershell -ExecutionPolicy Bypass -File Metacache\Dev\RE\tools\automation\check_prereqs.ps1
 ```
 
 ## Live serial probes (require scanner in Serial mode)
 
 | Script | What it does | Safety |
 |---|---|---|
-| `AI/Dev/RE/tools/probes/list_ports.py` | Maps Uniden VID-1965 USB CDC PIDs to COM ports | read-only |
-| `AI/Dev/RE/tools/probes/serial_probe.py` | MAIN-port (PID 0x001A) command sweep with whitelist + forbidden list | **safe by construction** - hard-coded refusal of mutating commands |
-| `AI/Dev/RE/tools/probes/sub_probe.py` | SUB-port (PID 0x0019) alphabet attack with anchor-and-compare buffer-leak detection | safe |
-| `AI/Dev/RE/tools/probes/probe_batch.py` | Batch probe driver, full multi-line response capture, role-based port resolution | safe (operator-defined batch list) |
-| `AI/Dev/RE/tools/probes/verify_dispatch.py` | Live-falsifies Ghidra-predicted SUB commands; classifies HIT / ERR / IDENTITY / TIMEOUT | safe |
+| `Metacache/Dev/RE/tools/probes/list_ports.py` | Maps Uniden VID-1965 USB CDC PIDs to COM ports | read-only |
+| `Metacache/Dev/RE/tools/probes/serial_probe.py` | MAIN-port (PID 0x001A) command sweep with whitelist + forbidden list | **safe by construction** - hard-coded refusal of mutating commands |
+| `Metacache/Dev/RE/tools/probes/sub_probe.py` | SUB-port (PID 0x0019) alphabet attack with anchor-and-compare buffer-leak detection | safe |
+| `Metacache/Dev/RE/tools/probes/probe_batch.py` | Batch probe driver, full multi-line response capture, role-based port resolution | safe (operator-defined batch list) |
+| `Metacache/Dev/RE/tools/probes/verify_dispatch.py` | Live-falsifies Ghidra-predicted SUB commands; classifies HIT / ERR / IDENTITY / TIMEOUT | safe |
 
 All probes auto-detect the right Uniden CDC port via VID/PID. Pass
 `--port COM5` (or `/dev/ttyACM0`, etc.) to override.
@@ -63,51 +63,51 @@ Probe-safety rules baked into the scripts:
 
 | Script | What it does |
 |---|---|
-| `AI/Dev/RE/tools/sentinel/sentinel_session.py` | Guided pcap capture: auto-detects USBPcap interface, prompts user through 6 Sentinel ops, optionally invokes the decoder. Default `--rotate-output` mitigates USBPcap's "invalid write handle" bug on repeat runs. |
-| `AI/Dev/RE/tools/automation/find_sds100_hub.ps1` | Maps SDS100 (VID 1965) to its USBPcap interface deterministically via Windows PnP API |
-| `AI/Dev/RE/tools/sentinel/decode_sentinel_pcap.py` | SCSI/UMS/FAT32 decoder: produces `.scsi.jsonl` + `.disk.bin` + `.files.md` + `.summary.md` per pcap |
-| `AI/Dev/RE/tools/sentinel/show_scsi.py` | Pretty-printer for `.scsi.jsonl` output (LBA + blocks + sha) |
-| `AI/Dev/RE/tools/sentinel/dump_sd_inventory.ps1` | Walks SDS100 SD card when mounted, produces inventory MD + TSV |
-| `AI/Dev/RE/tools/sentinel/decode_pcap.py` | Older CDC decoder (pre-Phase-0b finding); **superseded** by `decode_sentinel_pcap.py` for Sentinel pcaps. Retained for hypothetical future captures of CDC-mode protocols. |
-| `AI/Dev/RE/tools/sentinel/compare_cards.py` | Read-only side-by-side of BT885 vs SDS100 SD cards. |
+| `Metacache/Dev/RE/tools/sentinel/sentinel_session.py` | Guided pcap capture: auto-detects USBPcap interface, prompts user through 6 Sentinel ops, optionally invokes the decoder. Default `--rotate-output` mitigates USBPcap's "invalid write handle" bug on repeat runs. |
+| `Metacache/Dev/RE/tools/automation/find_sds100_hub.ps1` | Maps SDS100 (VID 1965) to its USBPcap interface deterministically via Windows PnP API |
+| `Metacache/Dev/RE/tools/sentinel/decode_sentinel_pcap.py` | SCSI/UMS/FAT32 decoder: produces `.scsi.jsonl` + `.disk.bin` + `.files.md` + `.summary.md` per pcap |
+| `Metacache/Dev/RE/tools/sentinel/show_scsi.py` | Pretty-printer for `.scsi.jsonl` output (LBA + blocks + sha) |
+| `Metacache/Dev/RE/tools/sentinel/dump_sd_inventory.ps1` | Walks SDS100 SD card when mounted, produces inventory MD + TSV |
+| `Metacache/Dev/RE/tools/sentinel/decode_pcap.py` | Older CDC decoder (pre-Phase-0b finding); **superseded** by `decode_sentinel_pcap.py` for Sentinel pcaps. Retained for hypothetical future captures of CDC-mode protocols. |
+| `Metacache/Dev/RE/tools/sentinel/compare_cards.py` | Read-only side-by-side of BT885 vs SDS100 SD cards. |
 
 ## Firmware extraction + analysis
 
 All firmware tools accept `--firmware <path>`; the default is the
-most recent `*_inflated.bin` in `AI/Dev/RE/firmware/`, so the same
+most recent `*_inflated.bin` in `Metacache/Dev/RE/firmware/`, so the same
 scripts work for any future SUB firmware version.
 
 | Script | What it does |
 |---|---|
-| `AI/Dev/RE/tools/firmware/inflate_sub.py` | Parses SUB `.firm` container header, extracts plaintext ARM payload. Auto-discovers the most recent `*.firm` in `firmware/`. |
-| `AI/Dev/RE/tools/firmware/firmware_strings.py` | ASCII run extractor, version-diff between firmware images, command-mnemonic candidate scan. Auto-discovers all MAIN/SUB blobs. |
-| `AI/Dev/RE/tools/firmware/firmware_structure.py` | Per-image entropy profile, head/tail hex, magic-byte signature scan, byte-level diff between consecutive versions. |
-| `AI/Dev/RE/tools/firmware/check_sub_strings.py` | Confirms presence of identity / version strings in SUB firmware |
-| `AI/Dev/RE/tools/firmware/sub_static_analysis.py` | LPC43xx peripheral constant scan, mnemonic candidate clustering (best-effort without Ghidra) |
-| `AI/Dev/RE/tools/firmware/correlate_responses.py` | Joins SUB-probe hits against firmware string table by regex-converting printf format strings |
-| `AI/Dev/RE/tools/firmware/find_parser.py` | Locates command parser in `analysis_dump.json` and raw firmware |
-| `AI/Dev/RE/tools/firmware/find_mdl_handler.py` | Traces literal-pool refs to `MDL`/`VER` response strings |
-| `AI/Dev/RE/tools/firmware/extract_dispatch.py` | Extracts (byte, fn-ptr) dispatch table candidates with SRAM<->flash address remapping. Configurable `--table-ptr`. |
-| `AI/Dev/RE/tools/firmware/inspect_func.py` | Inspects a single decompiled function for parser-like patterns |
+| `Metacache/Dev/RE/tools/firmware/inflate_sub.py` | Parses SUB `.firm` container header, extracts plaintext ARM payload. Auto-discovers the most recent `*.firm` in `firmware/`. |
+| `Metacache/Dev/RE/tools/firmware/firmware_strings.py` | ASCII run extractor, version-diff between firmware images, command-mnemonic candidate scan. Auto-discovers all MAIN/SUB blobs. |
+| `Metacache/Dev/RE/tools/firmware/firmware_structure.py` | Per-image entropy profile, head/tail hex, magic-byte signature scan, byte-level diff between consecutive versions. |
+| `Metacache/Dev/RE/tools/firmware/check_sub_strings.py` | Confirms presence of identity / version strings in SUB firmware |
+| `Metacache/Dev/RE/tools/firmware/sub_static_analysis.py` | LPC43xx peripheral constant scan, mnemonic candidate clustering (best-effort without Ghidra) |
+| `Metacache/Dev/RE/tools/firmware/correlate_responses.py` | Joins SUB-probe hits against firmware string table by regex-converting printf format strings |
+| `Metacache/Dev/RE/tools/firmware/find_parser.py` | Locates command parser in `analysis_dump.json` and raw firmware |
+| `Metacache/Dev/RE/tools/firmware/find_mdl_handler.py` | Traces literal-pool refs to `MDL`/`VER` response strings |
+| `Metacache/Dev/RE/tools/firmware/extract_dispatch.py` | Extracts (byte, fn-ptr) dispatch table candidates with SRAM<->flash address remapping. Configurable `--table-ptr`. |
+| `Metacache/Dev/RE/tools/firmware/inspect_func.py` | Inspects a single decompiled function for parser-like patterns |
 
 ## Ghidra automation
 
 | File | What it does |
 |---|---|
-| `AI/Dev/RE/tools/automation/check_prereqs.ps1` | Read-only audit of all prereqs |
-| `AI/Dev/RE/tools/automation/bootstrap_ghidra.ps1` | Idempotent install of Ghidra to `<GHIDRA_INSTALL>` |
-| `AI/Dev/RE/tools/automation/fetch_lpc43xx_svd.ps1` | Downloads LPC43xx SVD (peripheral overlay) |
-| `AI/Dev/RE/tools/automation/run_ghidra_setup.ps1` | Drives `analyzeHeadless.bat` for the SUB firmware: import + setup + auto-analyze + JSON dump |
-| `AI/Dev/RE/tools/automation/run_ghidra_decompile.ps1` | Targeted decompile of specific functions (env-var driven) |
-| `AI/Dev/RE/tools/automation/ghidra_scripts/SetupSubProject.java` | Pre-script: memory map (flash @0x14000000, SRAM @0x10000000), SVD load, Thumb mode default, ASCII strings min length 3 |
-| `AI/Dev/RE/tools/automation/ghidra_scripts/DumpAnalysis.java` | Post-script: emits `analysis_dump.json` with metadata, strings, functions, peripheral users, dispatch candidates |
-| `AI/Dev/RE/tools/automation/ghidra_scripts/DecompileFunctions.java` | Post-script: full C decompile + callers + callees + peripheral access + string xrefs of selected functions |
-| `AI/Dev/RE/tools/firmware/analyze_ghidra_dump.py` | Consumes `analysis_dump.json`, generates the markdown reports |
-| `AI/Dev/RE/tools/firmware/decompile_pull.py` | Front-end to `run_ghidra_decompile.ps1` (specify targets, list existing, show one) |
+| `Metacache/Dev/RE/tools/automation/check_prereqs.ps1` | Read-only audit of all prereqs |
+| `Metacache/Dev/RE/tools/automation/bootstrap_ghidra.ps1` | Idempotent install of Ghidra to `<GHIDRA_INSTALL>` |
+| `Metacache/Dev/RE/tools/automation/fetch_lpc43xx_svd.ps1` | Downloads LPC43xx SVD (peripheral overlay) |
+| `Metacache/Dev/RE/tools/automation/run_ghidra_setup.ps1` | Drives `analyzeHeadless.bat` for the SUB firmware: import + setup + auto-analyze + JSON dump |
+| `Metacache/Dev/RE/tools/automation/run_ghidra_decompile.ps1` | Targeted decompile of specific functions (env-var driven) |
+| `Metacache/Dev/RE/tools/automation/ghidra_scripts/SetupSubProject.java` | Pre-script: memory map (flash @0x14000000, SRAM @0x10000000), SVD load, Thumb mode default, ASCII strings min length 3 |
+| `Metacache/Dev/RE/tools/automation/ghidra_scripts/DumpAnalysis.java` | Post-script: emits `analysis_dump.json` with metadata, strings, functions, peripheral users, dispatch candidates |
+| `Metacache/Dev/RE/tools/automation/ghidra_scripts/DecompileFunctions.java` | Post-script: full C decompile + callers + callees + peripheral access + string xrefs of selected functions |
+| `Metacache/Dev/RE/tools/firmware/analyze_ghidra_dump.py` | Consumes `analysis_dump.json`, generates the markdown reports |
+| `Metacache/Dev/RE/tools/firmware/decompile_pull.py` | Front-end to `run_ghidra_decompile.ps1` (specify targets, list existing, show one) |
 
 ## Archived / historical
 
-Lives under `AI/Dev/RE/tools/legacy/` (see its `README.md`). Kept for
+Lives under `Metacache/Dev/RE/tools/legacy/` (see its `README.md`). Kept for
 reproducibility of early findings; **do not build on these**:
 
 | Script | What it did | Canonical replacement |
@@ -170,4 +170,4 @@ flowchart LR
 ```
 
 The wiki pages are the **canonical** human-facing narrative; the
-lab notebook in `AI/Dev/RE/` is where reproducibility lives.
+lab notebook in `Metacache/Dev/RE/` is where reproducibility lives.
