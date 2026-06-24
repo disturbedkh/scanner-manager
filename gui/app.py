@@ -171,8 +171,16 @@ def main(argv: Optional[list] = None) -> int:
     _set_app_metadata()
     _apply_app_style(app)
 
+    from gui.main_window import LAYOUT_MODE, LAYOUT_MODE_LABEL
+
     window = MainWindow()
     _install_global_excepthook(window)
+    logger.info(
+        "Scanner Manager layout=%s (%s) frozen=%s",
+        LAYOUT_MODE_LABEL,
+        LAYOUT_MODE,
+        bool(getattr(sys, "frozen", False)),
+    )
     window.show()
 
     # Optional dev-only debug bridge. The dev_mcp/ tree is gitignored;

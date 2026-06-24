@@ -1,11 +1,10 @@
-"""Entry / group / system edit dialogs.
+"""Entry / group edit dialogs.
 
-Each dialog exposes the same fields the legacy Tk app's
-``EntryEditDialog`` / ``GroupEditDialog`` / ``SystemEditDialog`` did,
-but as PySide6 widgets. They write back through the existing
-``HpdFile.edit_entry`` / ``edit_group`` API so the persistence path
-is unchanged - both the new Qt app and the legacy Tk app produce
-identical files on disk.
+Profile-specific entry editors mirror the legacy Tk split:
+
+- BT885: name / freq / mode / tone only (service type changed inline
+  in :class:`Bt885DetailsPanel`).
+- SDS / general: same fields plus a service-type (category) combo.
 """
 
 from __future__ import annotations
@@ -29,67 +28,8 @@ from PySide6.QtWidgets import (
 from scanner_profiles import ScannerProfile
 
 
-class EntryEditDialog(QDialog):
-    """Edit a single C-Freq or TGID entry in place.
-
-    The dialog is built dynamically off the entry type so the
-    frequency-vs-TGID + tone field switch happens automatically.
-    """
-
-    def __init__(
-        self,
-        entry,
-        hpd_file,
-        profile: ScannerProfile,
-        parent: Optional[QWidget] = None,
-    ) -> None:
-        super().__init__(parent)
-        self._entry = entry
-        self._hpd_file = hpd_file
-        self._profile = profile
-
-        self.setWindowTitle(f"Edit entry — {entry.name or '(unnamed)'}")
-        self.setMinimumWidth(420)
-
-        layout = QVBoxLayout(self)
-
-        info = QLabel(
-            f"<b>System:</b> {entry.system_name}<br>"
-            f"<b>Group:</b> {entry.group_name}<br>"
-            f"<b>Type:</b> {entry.entry_type}"
-        )
-        info.setWordWrap(True)
-        layout.addWidget(info)
-
-        form = QFormLayout()
-
-        self._name_edit = QLineEdit(entry.name or "")
-        form.addRow("Name:", self._name_edit)
-
-        if entry.entry_type == "C-Freq":
-            self._build_cfreq_fields(form, entry)
-        else:
-            self._build_tgid_fields(form, entry)
-
-        # Service-type dropdown driven by the active profile
-        self._service_combo = QComboBox()
-        for sid, label in sorted(profile.service_types.items()):
-            self._service_combo.addItem(f"{sid} — {label}", userData=sid)
-        # Pick the current value
-        for i in range(self._service_combo.count()):
-            if self._service_combo.itemData(i) == entry.service_type:
-                self._service_combo.setCurrentIndex(i)
-                break
-        form.addRow("Service type:", self._service_combo)
-
-        layout.addLayout(form)
-
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.Save | QDialogButtonBox.Cancel
-        )
-        buttons.accepted.connect(self._on_save)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+class _EntryFieldsMixin:
+    """Shared C-Freq / TGID field builders."""
 
     def _build_cfreq_fields(self, form: QFormLayout, entry) -> None:
         self._freq_spin = QDoubleSpinBox()
@@ -133,6 +73,138 @@ class EntryEditDialog(QDialog):
         if idx >= 0:
             self._mode_combo.setCurrentIndex(idx)
         form.addRow("Mode:", self._mode_combo)
+
+
+class Bt885EntryEditDialog(QDialog, _EntryFieldsMixin):
+    """Edit a BT885 entry (no service-type field — use the details panel)."""
+
+    def __init__(
+        self,
+        entry,
+        hpd_file,
+        profile: ScannerProfile,
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+        self._entry = entry
+        self._hpd_file = hpd_file
+        self._profile = profile
+
+        self.setWindowTitle(f"Edit entry — {entry.name or '(unnamed)'}")
+        self.setMinimumWidth(420)
+
+        layout = QVBoxLayout(self)
+
+        info = QLabel(
+            f"<b>System:</b> {entry.system_name}<br>"
+            f"<b>Group:</b> {entry.group_name}<br>"
+            f"<b>Type:</b> {entry.entry_type}"
+        )
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        form = QFormLayout()
+
+        self._name_edit = QLineEdit(entry.name or "")
+        form.addRow("Name:", self._name_edit)
+
+        if entry.entry_type == "C-Freq":
+            self._build_cfreq_fields(form, entry)
+        else:
+            self._build_tgid_fields(form, entry)
+
+        layout.addLayout(form)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self._on_save)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _on_save(self) -> None:
+        try:
+            name = self._name_edit.text().strip()
+            if not name:
+                QMessageBox.warning(self, "Edit entry", "Name can't be blank.")
+                return
+
+            if self._entry.entry_type == "C-Freq":
+                freq_hz = int(round(self._freq_spin.value() * 1e6))
+                if freq_hz <= 0:
+                    QMessageBox.warning(self, "Edit entry", "Frequency must be > 0.")
+                    return
+                self._hpd_file.edit_entry(
+                    self._entry,
+                    name=name,
+                    identity_value=str(freq_hz),
+                    mode=self._mode_combo.currentText(),
+                    tone=self._tone_edit.text().strip(),
+                )
+            else:
+                self._hpd_file.edit_entry(
+                    self._entry,
+                    name=name,
+                    identity_value=str(self._tgid_spin.value()),
+                    mode=self._mode_combo.currentText(),
+                )
+
+            self.accept()
+        except Exception as exc:
+            QMessageBox.critical(self, "Edit entry failed", str(exc))
+
+
+class HpdbEntryEditDialog(QDialog, _EntryFieldsMixin):
+    """Edit an SDS / general HPDB entry including category (service type)."""
+
+    def __init__(
+        self,
+        entry,
+        hpd_file,
+        profile: ScannerProfile,
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+        self._entry = entry
+        self._hpd_file = hpd_file
+        self._profile = profile
+
+        self.setWindowTitle(f"Edit entry — {entry.name or '(unnamed)'}")
+        self.setMinimumWidth(420)
+
+        layout = QVBoxLayout(self)
+
+        info = QLabel(
+            f"<b>System:</b> {entry.system_name}<br>"
+            f"<b>Group:</b> {entry.group_name}<br>"
+            f"<b>Type:</b> {entry.entry_type}"
+        )
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        form = QFormLayout()
+
+        self._name_edit = QLineEdit(entry.name or "")
+        form.addRow("Name:", self._name_edit)
+
+        if entry.entry_type == "C-Freq":
+            self._build_cfreq_fields(form, entry)
+        else:
+            self._build_tgid_fields(form, entry)
+
+        self._service_combo = QComboBox()
+        for sid, label in sorted(profile.service_types.items()):
+            self._service_combo.addItem(f"{sid} — {label}", userData=sid)
+        for i in range(self._service_combo.count()):
+            if self._service_combo.itemData(i) == entry.service_type:
+                self._service_combo.setCurrentIndex(i)
+                break
+        form.addRow("Category:", self._service_combo)
+
+        layout.addLayout(form)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self._on_save)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
 
     def _on_save(self) -> None:
         try:
@@ -219,9 +291,7 @@ class GroupEditDialog(QDialog):
 
         layout.addLayout(form)
 
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.Save | QDialogButtonBox.Cancel
-        )
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self._on_save)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -240,35 +310,32 @@ class GroupEditDialog(QDialog):
             QMessageBox.critical(self, "Edit group failed", str(exc))
 
 
-class BulkServiceTypeDialog(QDialog):
-    """Apply a single service-type to every entry under a group / system.
-
-    Mirrors the right-click "Apply service type to all entries" context
-    menu in the legacy Tk app.
-    """
-
+class _BulkServiceDialogBase(QDialog):
     def __init__(
         self,
         target_label: str,
         profile: ScannerProfile,
+        *,
+        window_title: str,
+        intro: str,
+        field_label: str,
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
         self._profile = profile
-        self.setWindowTitle("Apply service type")
+        self.setWindowTitle(window_title)
         self.setMinimumWidth(320)
 
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(f"Apply service type to:\n{target_label}"))
+        layout.addWidget(QLabel(f"{intro}\n{target_label}"))
 
         self._service_combo = QComboBox()
         for sid, label in sorted(profile.service_types.items()):
             self._service_combo.addItem(f"{sid} — {label}", userData=sid)
+        layout.addWidget(QLabel(field_label))
         layout.addWidget(self._service_combo)
 
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.Apply | QDialogButtonBox.Cancel
-        )
+        buttons = QDialogButtonBox(QDialogButtonBox.Apply | QDialogButtonBox.Cancel)
         apply_btn = buttons.button(QDialogButtonBox.Apply)
         apply_btn.clicked.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -276,3 +343,46 @@ class BulkServiceTypeDialog(QDialog):
 
     def selected_service_type(self) -> Optional[int]:
         return self._service_combo.currentData()
+
+
+class Bt885BulkServiceTypeDialog(_BulkServiceDialogBase):
+    """Apply a BT885 service type to every entry under a group / system."""
+
+    def __init__(
+        self,
+        target_label: str,
+        profile: ScannerProfile,
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        super().__init__(
+            target_label,
+            profile,
+            window_title="Apply service type",
+            intro="Apply a service type (controls which scanner button plays these channels) to:",
+            field_label="Service type:",
+            parent=parent,
+        )
+
+
+class HpdbBulkCategoryDialog(_BulkServiceDialogBase):
+    """Apply an SDS category to every entry under a group / system."""
+
+    def __init__(
+        self,
+        target_label: str,
+        profile: ScannerProfile,
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        super().__init__(
+            target_label,
+            profile,
+            window_title="Set category",
+            intro="Set the category for:",
+            field_label="Category:",
+            parent=parent,
+        )
+
+
+# Backward-compatible aliases.
+EntryEditDialog = HpdbEntryEditDialog
+BulkServiceTypeDialog = Bt885BulkServiceTypeDialog

@@ -65,6 +65,20 @@ def test_hpdb_tree_loads_real_file(qtbot, card_root: Path) -> None:
     assert hpd.systems[0].name == "Miami-Dade"
     assert len(hpd.systems[0].groups) == 1
     assert len(hpd.systems[0].groups[0].entries) == 2
+    root_idx = tree._model.index(0, 0)
+    assert not tree._view.isExpanded(root_idx)
+
+
+def test_hpdb_tree_collapsed_on_load(qtbot, card_root: Path) -> None:
+    from gui.editor.hpdb_tree import HpdbTreeWidget
+
+    tree = HpdbTreeWidget()
+    qtbot.addWidget(tree)
+    tree.set_profile(get_profile("uniden_bt885"))
+    tree.try_load_from_card(str(card_root))
+    for row in range(tree._model.rowCount()):
+        idx = tree._model.index(row, 0)
+        assert not tree._view.isExpanded(idx)
 
 
 _TRUNK_HPD = (
@@ -319,11 +333,6 @@ def test_editor_dock_reload_audit_and_after_edit(
     dock._on_after_edit()
     assert "not saved" in dock._status_label.text().lower()
 
-    dock.set_mode_hint("Serial mode active")
-    assert dock._mode_hint.text() == "Serial mode active"
-    dock.set_mode_hint("")
-    assert dock._mode_hint.text() == ""
-
 
 def test_editor_dock_save_failure_and_no_sd_path(
     qtbot, card_root: Path, monkeypatch: pytest.MonkeyPatch
@@ -456,3 +465,43 @@ def test_profile_cfg_panel_loads_file(qtbot, tmp_path: Path) -> None:
     qtbot.addWidget(panel)
     panel.set_card_path(str(root))
     assert "ProfileName" in panel._view.toPlainText()
+
+
+def test_display_helpers_profile_wording() -> None:
+    from gui.editor.display_helpers import format_service_type_details
+
+    bt885 = get_profile("uniden_bt885")
+    sds = get_profile("uniden_sds100")
+    assert "plays on a scanner button" in format_service_type_details(bt885, 2)
+    assert "stored only" in format_service_type_details(bt885, 7)
+    assert "scannable" not in format_service_type_details(sds, 26).lower()
+    assert format_service_type_details(sds, 26) == "Schools"
+
+
+def test_details_panel_factory() -> None:
+    from gui.editor.details_panel import Bt885DetailsPanel, HpdbDetailsPanel, details_panel_for
+
+    assert isinstance(details_panel_for(get_profile("uniden_bt885")), Bt885DetailsPanel)
+    assert isinstance(details_panel_for(get_profile("uniden_sds100")), HpdbDetailsPanel)
+
+
+def test_editor_dock_profile_mismatch_banner(qtbot, tmp_path: Path) -> None:
+    from core.device_manager import Device
+    from gui.editor.editor_dock import EditorDock
+
+    root = tmp_path / "card"
+    hpdb = root / "BCDx36HP" / "HPDB"
+    hpdb.mkdir(parents=True)
+    (root / "BCDx36HP" / "scanner.inf").write_text(
+        "TargetModel\tBCDx36HP\nFormatVersion\t1.00\nScanner\tSDS100\t1\t1.00\t01\t\t1.00\t1.00\t0\n",
+        encoding="utf-8",
+    )
+    (hpdb / "hpdb.cfg").write_text(_BT885_CFG, encoding="utf-8")
+    (hpdb / "s_000012.hpd").write_text(_BT885_HPD, encoding="utf-8")
+
+    dock = EditorDock()
+    qtbot.addWidget(dock)
+    bt885 = get_profile("uniden_bt885")
+    device = Device.make("uniden_bt885", "Wrong profile", sd_card_path=str(root))
+    dock.set_active_device(device, bt885)
+    assert "SDS" in dock._mismatch_banner.text()

@@ -237,6 +237,15 @@ class ScannerProfile(ABC):
         return True
 
     @property
+    def uses_hardware_button_semantics(self) -> bool:
+        """True when service-type tagging controls BT885-style hardware buttons.
+
+        When False (SDS and future scanners), the GUI must not show
+        "scannable / not scannable" language or button-filter coloring.
+        """
+        return False
+
+    @property
     def supports_scanner_control(self) -> bool:
         """True if the live dock should expose a scanner-control panel
         (volume / squelch / hold / resume / avoid / next / prev).

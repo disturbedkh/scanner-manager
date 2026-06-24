@@ -41,6 +41,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QSplitter,
     QStackedWidget,
     QVBoxLayout,
@@ -142,35 +143,20 @@ class LiveDock(QWidget):
         layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(6)
 
-        controls = QWidget()
-        crow = QHBoxLayout(controls)
-        crow.setContentsMargins(0, 0, 0, 0)
-
-        crow.addWidget(QLabel("MAIN port:"))
         self._main_combo = QComboBox()
-        self._main_combo.setMinimumWidth(160)
-        crow.addWidget(self._main_combo)
-
-        crow.addWidget(QLabel("SUB port:"))
+        self._main_combo.setMinimumWidth(120)
+        self._main_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._sub_combo = QComboBox()
-        self._sub_combo.setMinimumWidth(160)
-        crow.addWidget(self._sub_combo)
+        self._sub_combo.setMinimumWidth(120)
+        self._sub_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         self._refresh_btn = QPushButton("Refresh")
         self._refresh_btn.clicked.connect(self.refresh_ports)
-        crow.addWidget(self._refresh_btn)
-
         self._connect_btn = QPushButton("Connect")
         self._connect_btn.clicked.connect(self._on_connect_clicked)
-        crow.addWidget(self._connect_btn)
-
         self._disconnect_btn = QPushButton("Disconnect")
         self._disconnect_btn.setEnabled(False)
         self._disconnect_btn.clicked.connect(self.disconnect)
-        crow.addWidget(self._disconnect_btn)
-
-        # Diagnostic capture - dumps raw GSI/GLG/FFT bytes to a file
-        # so we can debug field-level parsing against your firmware.
         self._diag_btn = QPushButton("Diagnostic capture…")
         self._diag_btn.setEnabled(False)
         self._diag_btn.setToolTip(
@@ -179,9 +165,29 @@ class LiveDock(QWidget):
             "contains receive-state data."
         )
         self._diag_btn.clicked.connect(self._on_diagnostic_capture)
-        crow.addWidget(self._diag_btn)
 
-        crow.addStretch(1)
+        controls = QWidget()
+        grid = QGridLayout(controls)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(6)
+        grid.setVerticalSpacing(4)
+        grid.addWidget(QLabel("MAIN port:"), 0, 0)
+        grid.addWidget(self._main_combo, 0, 1)
+        grid.addWidget(QLabel("SUB port:"), 0, 2)
+        grid.addWidget(self._sub_combo, 0, 3)
+        btn_row = QHBoxLayout()
+        btn_row.setContentsMargins(0, 0, 0, 0)
+        for btn in (
+            self._refresh_btn,
+            self._connect_btn,
+            self._disconnect_btn,
+            self._diag_btn,
+        ):
+            btn_row.addWidget(btn)
+        btn_row.addStretch(1)
+        grid.addLayout(btn_row, 1, 0, 1, 4)
+        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(3, 1)
         layout.addWidget(controls)
 
         self._status_label = QLabel("")
@@ -200,6 +206,7 @@ class LiveDock(QWidget):
         #   |  Waterfall (FFT)                              |
         #   +-----------------------------------------------+
         self._control = ScannerControlWidget()
+        self._control.setMaximumWidth(280)
         self._control.statusMessage.connect(self._status_label.setText)
 
         right_top = QWidget()
@@ -218,8 +225,8 @@ class LiveDock(QWidget):
         top_h_splitter = QSplitter(Qt.Horizontal)
         top_h_splitter.addWidget(self._control)
         top_h_splitter.addWidget(right_top)
-        top_h_splitter.setStretchFactor(0, 1)
-        top_h_splitter.setStretchFactor(1, 3)
+        top_h_splitter.setStretchFactor(0, 0)
+        top_h_splitter.setStretchFactor(1, 1)
         top_h_splitter.setHandleWidth(6)
 
         # Spectrum / waterfall stack: an SDR-style I/Q view (mirrors
