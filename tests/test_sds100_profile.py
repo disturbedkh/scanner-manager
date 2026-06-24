@@ -38,6 +38,10 @@ def test_live_mode_flags() -> None:
     assert PROFILE.supports_profile_cfg is True
 
 
+def test_uses_hardware_button_semantics_false() -> None:
+    assert PROFILE.uses_hardware_button_semantics is False
+
+
 def test_usb_vid_pid_uses_uniden_assignments() -> None:
     """VID 0x1965 (Uniden) + PID 0x001A MAIN / 0x0019 SUB - verified
     against real SDS100 hardware in Metacache/Dev/RE/docs/SDS100.md."""

@@ -26,7 +26,7 @@ pytest.importorskip("pytestqt")
 from PySide6.QtWidgets import QDockWidget  # noqa: E402
 
 from core.device_manager import Device, DeviceManager  # noqa: E402
-from gui.main_window import MainWindow  # noqa: E402
+from gui.main_window import MainWindow, _LIVE_PAGE, _STORAGE_PAGE  # noqa: E402
 
 
 @pytest.fixture
@@ -47,7 +47,9 @@ def test_main_window_boots_with_no_devices(qtbot, tmp_devices: Path) -> None:
     # The three persistent dock widgets exist (header excluded - it's a
     # fake dock; the log lives in a standalone window since v0.10.1).
     dock_names = {d.objectName() for d in window.findChildren(QDockWidget)}
-    assert {"live_dock", "streaming_dock", "firmware_dock"}.issubset(dock_names)
+    assert "firmware_dock" in dock_names
+    assert window._mode_stack is not None
+    assert window._live_host is not None
     # The log view persists as a child widget even when the standalone
     # window isn't open, so messages keep accumulating.
     assert window._log_view is not None
@@ -70,18 +72,13 @@ def test_main_window_swaps_active_profile_on_device_change(
     assert window._current_device is not None
     assert window._current_device.scanner_profile_id == "uniden_bt885"
 
-    # Live dock hides for BT885, streaming dock visible
-    assert not window._live_dock_container.isVisible()
+    # BT885 boots into Storage-only central page.
+    assert window._mode_stack.currentIndex() == _STORAGE_PAGE
 
-    # Switch to SDS100 - live dock should turn on
+    # Switch to SDS100 — Live page becomes central when mode is Live.
     window._header.select_device(sds.id)
     assert window._current_device.scanner_profile_id == "uniden_sds100"
-    # Force pending paint events so visibility flips through
-    qtbot.waitExposed(window) if False else None  # noop: window may be offscreen
-    # The live dock container *would* show under a real desktop; in
-    # offscreen mode we just check the visibility flag rather than
-    # the painted state.
-    assert window._live_dock_container.isVisibleTo(window) or True
+    assert window._mode_stack.currentIndex() == _LIVE_PAGE
 
 
 def test_header_no_device_disables_combo(qtbot, tmp_devices: Path) -> None:
@@ -113,10 +110,7 @@ def test_header_emits_signal_on_device_change(qtbot, tmp_devices: Path) -> None:
 def test_mode_switcher_gates_live_and_storage_docks(
     qtbot, tmp_devices: Path
 ) -> None:
-    """Verify the operator-facing rule: switching to Live shows the
-    live serial dock and disables the editor; switching to Storage
-    hides the live dock and re-enables the editor.
-    """
+    """Verify mode stack: Live shows full-width live surface; Storage shows editor."""
     mgr = DeviceManager(devices_path=tmp_devices)
     sds = Device.make("uniden_sds100", "SDS100 - Test")
     mgr.add_device(sds)
@@ -129,20 +123,21 @@ def test_mode_switcher_gates_live_and_storage_docks(
     # be Live (serial-capable scanners boot into the first supported
     # mode, which is "live").
     assert window._current_connection_mode == "live"
-    assert window._editor_dock.isEnabled() is False
-    assert window._live_dock_container.isVisibleTo(window) or True
-    # Firmware updater menu action is gated to Storage mode only.
+    assert window._mode_stack.currentIndex() == _LIVE_PAGE
+    assert window._mode_stack.currentWidget() is window._live_host
+    assert window._mode_stack.currentWidget() is not window._editor_dock
+    assert window._save_action.isEnabled() is False
     assert window._firmware_window_action.isEnabled() is False
+    _assert_no_right_side_live_docks(window)
 
-    # Flip to Storage from the header.
     window._on_connection_mode_changed("storage")
     assert window._current_connection_mode == "storage"
-    assert window._editor_dock.isEnabled() is True
-    # Live + streaming docks should be hidden in Storage mode.
-    assert window._live_dock_container.isVisible() is False
-    assert window._streaming_dock_container.isVisible() is False
-    # Firmware menu now usable.
+    assert window._mode_stack.currentIndex() == _STORAGE_PAGE
+    assert window._mode_stack.currentWidget() is window._editor_dock
+    assert window._mode_stack.currentWidget() is not window._live_host
+    assert window._save_action.isEnabled() is True
     assert window._firmware_window_action.isEnabled() is True
+    _assert_no_right_side_live_docks(window)
 
     # Persistence: the device's connection_mode field reflects the
     # change so the next launch boots into the same mode. Reload from
@@ -150,6 +145,13 @@ def test_mode_switcher_gates_live_and_storage_docks(
     fresh_mgr = DeviceManager(devices_path=tmp_devices)
     sds_after = fresh_mgr.get_device(sds.id)
     assert sds_after.connection_mode == "storage"
+
+
+def _assert_no_right_side_live_docks(window: MainWindow) -> None:
+    """Live/Streaming must be central tabs, not resurrected right docks."""
+    dock_names = {d.objectName() for d in window.findChildren(QDockWidget)}
+    assert "live_dock" not in dock_names
+    assert "streaming_dock" not in dock_names
 
 
 def test_bt885_clamped_to_storage_only(qtbot, tmp_devices: Path) -> None:
@@ -169,9 +171,7 @@ def test_bt885_clamped_to_storage_only(qtbot, tmp_devices: Path) -> None:
     # Live is not in supported_connection_modes() for BT885, so the
     # switcher falls back to the first supported mode = "storage".
     assert window._current_connection_mode == "storage"
-    # Live dock stays hidden.
-    assert window._live_dock_container.isVisible() is False
-    assert window._editor_dock.isEnabled() is True
+    assert window._mode_stack.currentIndex() == _STORAGE_PAGE
 
 
 def test_firmware_window_opens_and_returns_widget(

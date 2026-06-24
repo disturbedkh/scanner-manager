@@ -127,8 +127,21 @@ def main(argv: list[str] | None = None) -> int:
         else:
             _run([sys.executable, "-m", "pip", "install", "-e", ".[full,dev]"], cwd=root)
 
+    sys.path.insert(0, str(root / "scripts"))
+    from build_paths import dist_dir, work_dir  # noqa: E402
+
+    artifact_dir = dist_dir(root)
+    pyi_work = work_dir(root)
     _run(
-        [sys.executable, "-m", "PyInstaller", "packaging/scanner-manager.spec", "--noconfirm"],
+        [
+            sys.executable,
+            "-m",
+            "PyInstaller",
+            "packaging/scanner-manager.spec",
+            "--noconfirm",
+            f"--distpath={artifact_dir}",
+            f"--workpath={pyi_work}",
+        ],
         cwd=root,
         env=env,
     )

@@ -20,10 +20,11 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
+    QPushButton,
     QSplitter,
     QToolBar,
     QVBoxLayout,
@@ -31,10 +32,10 @@ from PySide6.QtWidgets import (
 )
 
 from core.device_manager import Device
-from scanner_profiles import ScannerProfile
+from scanner_profiles import ScannerProfile, detect_from_card, get_profile
 
 from .coverage_panel import CoveragePanel
-from .details_panel import DetailsPanel
+from .details_panel import BaseDetailsPanel, details_panel_for
 from .hpdb_tree import HpdbTreeWidget
 from .profile_panels import ProfileSidePanel
 
@@ -60,6 +61,8 @@ def _count_encrypted_entries(files) -> int:
 class EditorDock(QWidget):
     """Main editor surface for the active scanner."""
 
+    manageDevicesRequested = Signal()
+
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self._current_device: Optional[Device] = None
@@ -83,21 +86,45 @@ class EditorDock(QWidget):
         self._toolbar.addWidget(self._status_label)
         layout.addWidget(self._toolbar)
 
+        # Card vs device profile mismatch (hidden by default).
+        self._mismatch_banner = QLabel("")
+        self._mismatch_banner.setVisible(False)
+        self._mismatch_banner.setWordWrap(True)
+        self._mismatch_banner.setStyleSheet(
+            "background: #4a3728; color: #ffe8cc; padding: 8px; "
+            "border: 1px solid #a08060; border-radius: 4px;"
+        )
+        mismatch_row = QWidget()
+        mismatch_layout = QVBoxLayout(mismatch_row)
+        mismatch_layout.setContentsMargins(0, 0, 0, 0)
+        mismatch_layout.addWidget(self._mismatch_banner)
+        self._manage_devices_link = QPushButton("Manage devices…")
+        self._manage_devices_link.setFlat(True)
+        self._manage_devices_link.setStyleSheet(
+            "color: #ffe8cc; text-align: left; padding: 0 8px 8px 8px;"
+        )
+        self._manage_devices_link.clicked.connect(self.manageDevicesRequested.emit)
+        self._manage_devices_link.setVisible(False)
+        mismatch_layout.addWidget(self._manage_devices_link)
+        layout.addWidget(mismatch_row)
+
         # ---- Top splitter (tree | details | side panel) ----
-        top_splitter = QSplitter(Qt.Horizontal)
+        self._top_splitter = QSplitter(Qt.Horizontal)
 
         self._tree = HpdbTreeWidget()
-        top_splitter.addWidget(self._tree)
+        self._top_splitter.addWidget(self._tree)
 
-        self._details = DetailsPanel()
-        top_splitter.addWidget(self._details)
+        self._details: BaseDetailsPanel = details_panel_for(
+            get_profile("uniden_bt885")
+        )
+        self._top_splitter.addWidget(self._details)
 
         self._side_panel = ProfileSidePanel()
-        top_splitter.addWidget(self._side_panel)
+        self._top_splitter.addWidget(self._side_panel)
 
-        top_splitter.setStretchFactor(0, 4)
-        top_splitter.setStretchFactor(1, 3)
-        top_splitter.setStretchFactor(2, 3)
+        self._top_splitter.setStretchFactor(0, 4)
+        self._top_splitter.setStretchFactor(1, 3)
+        self._top_splitter.setStretchFactor(2, 3)
 
         # ---- Bottom: coverage panel (gated by profile) ----
         # The coverage panel is created up front so signals can wire
@@ -109,31 +136,57 @@ class EditorDock(QWidget):
         self._coverage.set_data_source(self._tree.loaded_files)
 
         self._main_splitter = QSplitter(Qt.Vertical)
-        self._main_splitter.addWidget(top_splitter)
+        self._main_splitter.addWidget(self._top_splitter)
         self._main_splitter.addWidget(self._coverage)
         self._main_splitter.setStretchFactor(0, 3)
         self._main_splitter.setStretchFactor(1, 2)
-        # All splitter handles get a visible grip so users see they're
-        # draggable.
         self._main_splitter.setHandleWidth(6)
-        top_splitter.setHandleWidth(6)
+        self._top_splitter.setHandleWidth(6)
 
         layout.addWidget(self._main_splitter, stretch=1)
 
-        # Mode-hint banner shown when MainWindow puts us into "disabled
-        # for Live mode" state. Hidden by default.
-        self._mode_hint = QLabel("")
-        self._mode_hint.setVisible(False)
-        self._mode_hint.setWordWrap(True)
-        self._mode_hint.setStyleSheet(
-            "background: #443; color: #ffd; padding: 8px; "
-            "border: 1px solid #886; border-radius: 4px;"
-        )
-        layout.addWidget(self._mode_hint)
-
         # ---- Wiring ----
-        self._tree.entrySelected.connect(self._details.show_entry)
-        self._details.entryEdited.connect(self._on_after_edit)
+        self._connect_details_panel(self._details)
+        self._side_panel.button_filter_panel().selectionChanged.connect(
+            self._on_button_filter_changed
+        )
+
+    def _connect_details_panel(self, panel: BaseDetailsPanel) -> None:
+        self._tree.entrySelected.connect(panel.show_entry)
+        panel.entryEdited.connect(self._on_after_edit)
+
+    def _swap_details_panel(
+        self, profile: ScannerProfile, prev_profile: Optional[ScannerProfile]
+    ) -> None:
+        need_swap = (
+            prev_profile is None
+            or profile.uses_hardware_button_semantics
+            != prev_profile.uses_hardware_button_semantics
+        )
+        if not need_swap:
+            self._details.set_profile(profile)
+            return
+
+        try:
+            self._tree.entrySelected.disconnect(self._details.show_entry)
+        except (RuntimeError, TypeError):
+            pass
+        try:
+            self._details.entryEdited.disconnect(self._on_after_edit)
+        except (RuntimeError, TypeError):
+            pass
+
+        old = self._details
+        self._details = details_panel_for(profile)
+        self._details.set_profile(profile)
+        idx = self._top_splitter.indexOf(old)
+        if idx >= 0:
+            self._top_splitter.replaceWidget(idx, self._details)
+        else:
+            self._top_splitter.addWidget(self._details)
+        old.setParent(None)
+        old.deleteLater()
+        self._connect_details_panel(self._details)
 
     # ------------------------------------------------------------------
     # Public API called by MainWindow
@@ -155,8 +208,10 @@ class EditorDock(QWidget):
                 pass
 
         self._current_device = device
+        prev_profile = self._current_profile
         self._current_profile = profile
 
+        self._swap_details_panel(profile, prev_profile)
         self._tree.set_profile(profile)
         self._side_panel.set_profile(profile)
 
@@ -176,13 +231,20 @@ class EditorDock(QWidget):
                 )
             else:
                 self._status_label.setText(f"No HPDB loaded from {sd_path}")
+            self._update_profile_mismatch_banner(sd_path, profile)
         else:
             self._tree.try_load_from_card("")
             self._status_label.setText(
                 f"{profile.display_name} - no SD card path set. Use 'Manage devices…'."
             )
+            self._clear_profile_mismatch_banner()
 
         self._side_panel.set_card_path(sd_path)
+        if profile.uses_hardware_button_semantics:
+            self._tree.set_button_filter(
+                self._side_panel.button_filter_panel().selected_buttons()
+            )
+        self._tree.reemit_current_selection()
         # Hide the embedded coverage panel for profiles that don't use
         # ZIP/GPS simulation (e.g. SDS100/200). The user can still
         # open it as a separate window via Tools > Coverage window.
@@ -194,6 +256,30 @@ class EditorDock(QWidget):
                 action.setVisible(profile.supports_coverage_simulation)
         if profile.supports_coverage_simulation:
             self._refresh_coverage()
+
+    def _on_button_filter_changed(self, selected: set) -> None:
+        if self._current_profile and self._current_profile.uses_hardware_button_semantics:
+            self._tree.set_button_filter(selected)
+
+    def _update_profile_mismatch_banner(
+        self, sd_path: str, configured: ScannerProfile
+    ) -> None:
+        detected = detect_from_card(sd_path)
+        if detected is None or detected.id == configured.id:
+            self._clear_profile_mismatch_banner()
+            return
+        self._mismatch_banner.setText(
+            f"This SD card looks like a {detected.display_name}, but this device "
+            f"is configured as {configured.display_name}. Service-type labels may "
+            "be wrong until you fix the device profile."
+        )
+        self._mismatch_banner.setVisible(True)
+        self._manage_devices_link.setVisible(True)
+
+    def _clear_profile_mismatch_banner(self) -> None:
+        self._mismatch_banner.clear()
+        self._mismatch_banner.setVisible(False)
+        self._manage_devices_link.setVisible(False)
 
     def save_current(self) -> None:
         """Save whichever HPD file is currently the focus.
@@ -226,21 +312,6 @@ class EditorDock(QWidget):
         used by the standalone Coverage window's Refresh button.
         """
         self._refresh_coverage()
-
-    def set_mode_hint(self, message: str) -> None:
-        """Show / hide a banner explaining why the editor is disabled.
-
-        MainWindow drives this when the operator is in Live (Serial)
-        mode - the SD card isn't accessible while the scanner is in
-        Serial Mode, so editing HPDB / firmware is impossible.
-        Empty string clears the banner.
-        """
-        if message:
-            self._mode_hint.setText(message)
-            self._mode_hint.setVisible(True)
-        else:
-            self._mode_hint.setVisible(False)
-            self._mode_hint.setText("")
 
     def save_all(self) -> None:
         files = [f for f in self._tree.loaded_files() if getattr(f, "has_changes", False)]
@@ -299,12 +370,9 @@ class EditorDock(QWidget):
         # Reload the tree from in-memory state so the new service
         # type / name / freq etc. show up.
         if self._current_device:
-            # Cheap rebuild: rebuild the model in place.
-            # The HpdFile instances are shared, so we just rebuild the
-            # tree's view - any calls to try_load_from_card with the
-            # same SD path are idempotent.
             sd_path = self._current_device.sd_card_path or ""
             self._tree.try_load_from_card(sd_path)
+            self._tree.reemit_current_selection()
         self._status_label.setText("Edit applied (not saved).")
         self._refresh_coverage()
 

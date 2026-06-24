@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QStandardItem, QStandardItemModel
@@ -37,14 +37,12 @@ from PySide6.QtWidgets import (
 
 from scanner_profiles import ScannerProfile
 
+from .display_helpers import entry_passes_button_filter, entry_row_color
+
 logger = logging.getLogger(__name__)
 
 
-# Color tokens shared with the legacy Tk app so users see the same
-# visual cues (scannable green, non-scannable orange, encrypted red).
-_COLOR_SCANNABLE = QColor("#196f3d")
-_COLOR_NONSCAN = QColor("#a04000")
-_COLOR_ENCRYPTED = QColor("#922b21")
+# Tree chrome colors (non-entry rows).
 _COLOR_GROUP = QColor("#1f3864")
 _COLOR_SYSTEM = QColor("#000000")
 _COLOR_FILE = QColor("#0b3866")
@@ -64,6 +62,8 @@ class HpdbTreeWidget(QWidget):
         self._hpd_config: Optional[Any] = None
         self._sd_root: Optional[Path] = None
         self._search_text: str = ""
+        self._active_buttons: Optional[Set[str]] = None
+        self._include_others: bool = True
 
         self._model = QStandardItemModel()
         self._model.setHorizontalHeaderLabels(list(self.COLUMNS))
@@ -98,6 +98,25 @@ class HpdbTreeWidget(QWidget):
 
     def set_profile(self, profile: ScannerProfile) -> None:
         self._profile = profile
+        if profile is None or not profile.uses_hardware_button_semantics:
+            self._active_buttons = None
+        self._apply_visibility_filters()
+
+    def set_button_filter(
+        self, selected_buttons: Set[str], *, include_others: bool = True
+    ) -> None:
+        """Hide entries that would not play with the given BT885 buttons."""
+        if self._profile is None or not self._profile.uses_hardware_button_semantics:
+            return
+        self._active_buttons = set(selected_buttons)
+        self._include_others = include_others
+        self._apply_visibility_filters()
+
+    def reemit_current_selection(self) -> None:
+        """Re-fire :attr:`entrySelected` for the current row (profile swap)."""
+        idx = self._view.currentIndex()
+        if idx.isValid():
+            self._on_current_changed(idx, None)
 
     def loaded_files(self) -> List[Any]:
         """Return every loaded HpdFile (caller iterates for save-all)."""
@@ -180,7 +199,8 @@ class HpdbTreeWidget(QWidget):
             self._show_message_row(f"No HPDs could be parsed under {hpdb_dir}")
             return False
 
-        self._view.expandToDepth(0)
+        self._view.collapseAll()
+        self._apply_visibility_filters()
         return True
 
     # ------------------------------------------------------------------
@@ -305,18 +325,7 @@ class HpdbTreeWidget(QWidget):
         if not service_label and entry.service_type is not None:
             service_label = str(entry.service_type)
 
-        scannable = (
-            self._profile is not None
-            and entry.service_type in self._profile.scannable_service_types()
-        )
-        encrypted_mode = (mode or "").upper() in {"DE", "TE", "AE"}
-
-        if encrypted_mode:
-            color = _COLOR_ENCRYPTED
-        elif scannable:
-            color = _COLOR_SCANNABLE
-        else:
-            color = _COLOR_NONSCAN
+        color = entry_row_color(self._profile, entry.service_type, mode)
 
         items = self._make_row(
             entry.name or "(unnamed entry)",
@@ -392,43 +401,73 @@ class HpdbTreeWidget(QWidget):
         self._refilter()
 
     def _refilter(self) -> None:
-        # We re-walk the QStandardItemModel and hide rows whose
-        # cumulative children don't contain the search text. This is
-        # bog-standard tree filtering.
-        if not self._search_text:
-            self._restore_all()
-            return
+        self._apply_visibility_filters()
+
+    def _apply_visibility_filters(self) -> None:
         for state_row in range(self._model.rowCount()):
             state_item = self._model.item(state_row)
-            self._filter_row(state_item)
+            if state_item is not None:
+                self._apply_visibility_row(state_item)
 
-    def _filter_row(self, item: QStandardItem) -> bool:
+    def _apply_visibility_row(self, item: QStandardItem) -> bool:
+        payload = item.data(Qt.UserRole)
+        if isinstance(payload, dict) and payload.get("kind") == "entry":
+            entry = payload["entry"]
+            mode = entry.record.get_field(6, "")
+            visible = self._entry_visible(entry, mode)
+            parent = item.parent() or self._model.invisibleRootItem()
+            self._view.setRowHidden(item.row(), parent.index(), not visible)
+            return visible
+
+        any_child_visible = False
+        for child_row in range(item.rowCount()):
+            child = item.child(child_row, 0)
+            if child is None:
+                continue
+            child_visible = self._apply_visibility_row(child)
+            self._view.setRowHidden(child_row, item.index(), not child_visible)
+            if child_visible:
+                any_child_visible = True
+
+        if not self._search_text:
+            return any_child_visible or not item.hasChildren()
+
         text = (item.text() or "").lower()
-        sibling_index = item.index()
-        # Pull the identity column too
-        ident_item = self._model.itemFromIndex(sibling_index.siblingAtColumn(1))
+        ident_item = self._model.itemFromIndex(item.index().siblingAtColumn(1))
         if ident_item is not None:
             text = text + " " + (ident_item.text() or "").lower()
-
-        any_child_matches = False
-        for child_row in range(item.rowCount()):
-            child = item.child(child_row, 0)
-            child_match = self._filter_row(child) if child else False
-            self._view.setRowHidden(child_row, item.index(), not child_match)
-            if child_match:
-                any_child_matches = True
-
         self_match = self._search_text in text
-        return self_match or any_child_matches
+        return self_match or any_child_visible
+
+    def _entry_visible(self, entry, mode: str) -> bool:
+        if self._search_text:
+            blob = " ".join(
+                [
+                    entry.name or "",
+                    entry.record.get_field(5, "") or "",
+                    mode or "",
+                    str(entry.service_type or ""),
+                ]
+            ).lower()
+            if self._search_text not in blob:
+                if self._profile is not None:
+                    label = self._profile.service_label(entry.service_type) or ""
+                    if self._search_text not in label.lower():
+                        return False
+                else:
+                    return False
+        if (
+            self._active_buttons is not None
+            and self._profile is not None
+            and self._profile.uses_hardware_button_semantics
+        ):
+            return entry_passes_button_filter(
+                entry.service_type,
+                self._active_buttons,
+                self._profile,
+                include_others=self._include_others,
+            )
+        return True
 
     def _restore_all(self) -> None:
-        for state_row in range(self._model.rowCount()):
-            state_item = self._model.item(state_row)
-            self._restore_subtree(state_item)
-
-    def _restore_subtree(self, item: QStandardItem) -> None:
-        for child_row in range(item.rowCount()):
-            self._view.setRowHidden(child_row, item.index(), False)
-            child = item.child(child_row, 0)
-            if child is not None:
-                self._restore_subtree(child)
+        self._apply_visibility_filters()

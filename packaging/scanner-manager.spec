@@ -29,12 +29,15 @@ DISTPATH = str(dist_dir(REPO_ROOT))
 WORKPATH = str(work_dir(REPO_ROOT))
 Path(DISTPATH).mkdir(parents=True, exist_ok=True)
 Path(WORKPATH).mkdir(parents=True, exist_ok=True)
-# Phase 6 cutover: the Qt shell (gui/app.py) is now the default
-# packaged entry. The legacy Tk app at scanner_manager.py is still
-# importable as the `scanner-manager-tk` console script for users
-# who explicitly opt into it, but we no longer ship the Tk shell as
-# the default frozen binary.
-ENTRY = str(REPO_ROOT / "gui" / "app.py")
+# PyInstaller reads these lowercase module-level names for output paths.
+distpath = DISTPATH
+workpath = WORKPATH
+# Phase 6 cutover: the Qt shell is the default packaged entry via
+# packaging/entry_qt.py (delegates to gui.app:main). Do not point
+# ENTRY at gui/app.py directly — PyInstaller runs that file as a
+# top-level script and relative imports fail. Legacy Tk remains on
+# the `scanner-manager-tk` console script only.
+ENTRY = str(REPO_ROOT / "packaging" / "entry_qt.py")
 
 IS_WINDOWS = sys.platform == "win32"
 IS_MACOS = sys.platform == "darwin"

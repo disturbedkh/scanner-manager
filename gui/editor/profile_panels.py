@@ -197,6 +197,9 @@ class ProfileSidePanel(QWidget):
 
         self._set_visibility_for_profile(None)
 
+    def button_filter_panel(self) -> ButtonFilterPanel:
+        return self._button_panel
+
     def set_profile(self, profile: ScannerProfile) -> None:
         self._profile = profile
         self._set_visibility_for_profile(profile)

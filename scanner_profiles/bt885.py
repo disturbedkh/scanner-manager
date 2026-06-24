@@ -280,6 +280,10 @@ class Bt885Profile(ScannerProfile):
     # ---- Live-mode capability flags (BT885 has no serial mode) ------
 
     @property
+    def uses_hardware_button_semantics(self) -> bool:
+        return True
+
+    @property
     def supports_serial_mode(self) -> bool:
         return False
 

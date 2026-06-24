@@ -3,9 +3,8 @@
 Phase 1 ships the structural shell:
 
 - Top header (device selector, connection LED, FW pill, Update button).
-- Empty central placeholder where the editor dock will land.
-- Right-side docks: Live mirror (SDS100/200), Streaming, Firmware.
-- Bottom dock: status / log.
+- Central mode stack: Storage (HPDB editor) vs Live (serial mirror + streaming tabs).
+- Bottom dock: firmware (hidden; opens as standalone window).
 - Menu bar: File, Devices, Tools, Help.
 
 Per-dock content arrives in later phases:
@@ -37,12 +36,12 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QDockWidget,
-    QLabel,
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
+    QStackedWidget,
     QStatusBar,
-    QVBoxLayout,
+    QTabWidget,
     QWidget,
 )
 
@@ -66,6 +65,13 @@ from .windows import CoverageWindow, FirmwareWindow, LogWindow
 
 logger = logging.getLogger(__name__)
 
+_STORAGE_PAGE = 0
+_LIVE_PAGE = 1
+
+# Bumped when the central layout contract changes (About + startup log).
+LAYOUT_MODE = "stacked-v2"
+LAYOUT_MODE_LABEL = "stacked central (v2)"
+
 
 class MainWindow(QMainWindow):
     """Multi-scanner manager main window."""
@@ -80,7 +86,6 @@ class MainWindow(QMainWindow):
         self._device_manager = DeviceManager()
         self._current_device: Optional[Device] = None
 
-        self._build_central()
         self._build_header()
         self._build_docks()
         self._build_menus()
@@ -94,27 +99,6 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     # Build
     # ------------------------------------------------------------------
-
-    def _build_central(self) -> None:
-        """Central widget = the editor dock host (Phase 2 fills it).
-
-        We use a QDockWidget pattern where the central widget shows
-        a friendly placeholder until Phase 2 swaps in the editor.
-        """
-        central = QWidget()
-        layout = QVBoxLayout(central)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        self._central_placeholder = QLabel(
-            "Select or add a scanner device to begin.\n\n"
-            "The editor (HPDB browser, RR import, coverage map) appears here\n"
-            "once a device is loaded."
-        )
-        self._central_placeholder.setAlignment(Qt.AlignCenter)
-        self._central_placeholder.setStyleSheet("color: #777; font-size: 13px;")
-        layout.addWidget(self._central_placeholder)
-
-        self.setCentralWidget(central)
 
     def _build_header(self) -> None:
         self._header = HeaderBar(self._device_manager, parent=self)
@@ -136,43 +120,33 @@ class MainWindow(QMainWindow):
         self._current_connection_mode = "storage"
 
     def _build_docks(self) -> None:
-        # Editor dock (Phase 2) - lives in the central area for now.
+        # Storage-mode editor (HPDB tree, coverage, profile side panels).
         self._editor_dock = EditorDock(parent=self)
-        self.setCentralWidget(self._editor_dock)
+        self._editor_dock.manageDevicesRequested.connect(self._on_manage_devices)
 
-        # Live mirror dock (Phase 3) - right side
+        # Live-mode surface: serial mirror + streaming tabs (full central width).
         self._live_dock = LiveDock(parent=self)
-        self._live_dock_container = self._wrap_in_dock(
-            "Live (Serial Mode)", "live_dock", self._live_dock
-        )
-        self.addDockWidget(Qt.RightDockWidgetArea, self._live_dock_container)
-        # Hook live-dock signals to the header LED + firmware pill
+        self._streaming_dock = StreamingDock(parent=self)
         self._live_dock.connectionStateChanged.connect(
             lambda state: self._header.set_connection_state(state)
         )
         self._live_dock.firmwareDetected.connect(
             lambda main_v, sub_v: self._header.set_firmware_version(main_v or None, sub_v or None)
         )
-
-        # Streaming dock listens to GSI/GLG/FFT so it can publish telemetry
-        # to its WebSocket viewer without needing its own driver layer.
-        # We wire these AFTER the streaming dock is created in _build_docks
-        # below; place the connection there.
-
-        # Streaming dock (Phase 4) - right side, tabbed under Live
-        self._streaming_dock = StreamingDock(parent=self)
-        self._streaming_dock_container = self._wrap_in_dock(
-            "Streaming", "streaming_dock", self._streaming_dock
-        )
-        self.addDockWidget(Qt.RightDockWidgetArea, self._streaming_dock_container)
-        self.tabifyDockWidget(self._live_dock_container, self._streaming_dock_container)
-        self._live_dock_container.raise_()
-
-        # Bridge live dock -> streaming dock so the WebSocket viewer
-        # gets a feed even when the live dock isn't visible.
         self._live_dock.gsiUpdated.connect(self._streaming_dock.push_gsi)
         self._live_dock.glgUpdated.connect(self._streaming_dock.push_glg)
         self._live_dock.waterfallUpdated.connect(self._streaming_dock.push_waterfall)
+
+        live_tabs = QTabWidget()
+        live_tabs.setDocumentMode(True)
+        live_tabs.addTab(self._live_dock, "Live (Serial Mode)")
+        live_tabs.addTab(self._streaming_dock, "Streaming")
+        self._live_host = live_tabs
+
+        self._mode_stack = QStackedWidget()
+        self._mode_stack.addWidget(self._editor_dock)
+        self._mode_stack.addWidget(self._live_host)
+        self.setCentralWidget(self._mode_stack)
 
         # Firmware dock (Phase 5) - bottom
         self._firmware_dock = FirmwareDock(parent=self)
@@ -208,10 +182,10 @@ class MainWindow(QMainWindow):
         menubar = self.menuBar()
 
         file_menu = menubar.addMenu("&File")
-        save_action = QAction("&Save", self)
-        save_action.setShortcut(QKeySequence.Save)
-        save_action.triggered.connect(lambda: self._editor_dock.save_current())
-        file_menu.addAction(save_action)
+        self._save_action = QAction("&Save", self)
+        self._save_action.setShortcut(QKeySequence.Save)
+        self._save_action.triggered.connect(lambda: self._editor_dock.save_current())
+        file_menu.addAction(self._save_action)
         file_menu.addSeparator()
         quit_action = QAction("&Quit", self)
         quit_action.setShortcut(QKeySequence.Quit)
@@ -227,15 +201,6 @@ class MainWindow(QMainWindow):
         devices_menu.addAction(manage_action)
 
         view_menu = menubar.addMenu("&View")
-        # Firmware no longer has a toggle here - it lives in the
-        # standalone window launched from Tools (gated by Storage mode).
-        for dock in (
-            self._live_dock_container,
-            self._streaming_dock_container,
-        ):
-            view_menu.addAction(dock.toggleViewAction())
-
-        view_menu.addSeparator()
         log_window_action = QAction("&Log window…", self)
         log_window_action.triggered.connect(self._on_show_log_window)
         view_menu.addAction(log_window_action)
@@ -359,47 +324,25 @@ class MainWindow(QMainWindow):
         self._apply_mode_visibility(device.resolve_profile(), mode)
 
     def _apply_mode_visibility(self, profile: ScannerProfile, mode: str) -> None:
-        """Show / hide docks based on the active mode AND profile flags.
+        """Swap the central mode stack between Storage and Live surfaces.
 
         Mutual exclusion rules (mirrors the radio's hardware constraint):
 
-        - **Live mode**: serial-mode docks visible (Live + Streaming).
-          Editor is greyed-out / hidden because the SD card is
-          inaccessible while the scanner is in Serial Mode.
-        - **Storage mode**: editor visible. Live + Streaming are hidden
-          (a hardware-mounted SD card means the serial CDC interface
-          is offline). Firmware updater is launchable from Tools.
+        - **Live mode**: full-width Live + Streaming tabs; HPDB editor hidden.
+        - **Storage mode**: full-width HPDB editor; Live surface hidden.
         """
-        in_live = (mode == "live")
-        in_storage = (mode == "storage")
+        in_storage = mode == "storage"
+        show_storage = in_storage or not profile.supports_serial_mode
 
-        # Live + Streaming visible only in Live mode AND only on profiles
-        # that actually expose serial.
-        self._live_dock_container.setVisible(in_live and profile.supports_serial_mode)
-        self._streaming_dock_container.setVisible(
-            in_live and profile.supports_audio_stream and profile.supports_serial_mode
+        self._mode_stack.setCurrentIndex(
+            _STORAGE_PAGE if show_storage else _LIVE_PAGE
         )
 
-        # Firmware bottom dock is now hidden by default; the firmware
-        # updater opens as a standalone window from Tools when in
-        # Storage mode. Keep the dock hidden in both cases so the
-        # window is the canonical surface.
+        # Firmware bottom dock stays hidden; updater opens from Tools.
         self._firmware_dock_container.setVisible(False)
 
-        # Editor (central widget) is hidden in Live mode by replacing
-        # its enabled state, not by setCentralWidget shuffling (which
-        # destroys our scroll position).
-        self._editor_dock.setEnabled(in_storage)
-        # Show a hint overlay when in Live mode.
-        if hasattr(self._editor_dock, "set_mode_hint"):
-            self._editor_dock.set_mode_hint(
-                "" if in_storage else
-                "Editor is disabled in Live (Serial) mode. "
-                "Switch the header to Storage mode and put the scanner "
-                "into Mass Storage to edit HPDB / firmware."
-            )
-
-        # Update Tools menu enablement.
+        if hasattr(self, "_save_action"):
+            self._save_action.setEnabled(show_storage)
         if hasattr(self, "_firmware_window_action"):
             self._firmware_window_action.setEnabled(in_storage)
 
@@ -506,7 +449,8 @@ class MainWindow(QMainWindow):
             "<h3>Scanner Manager (Qt rebuild)</h3>"
             "<p>Multi-scanner manager for Uniden SDS100/200 and BearTracker 885.</p>"
             "<p>Phased rebuild on top of the existing scanner_profiles "
-            "backend - see <code>Metacache/Dev/MULTI_DEVICE_GUI.md</code>.</p>",
+            "backend - see <code>Metacache/Dev/MULTI_DEVICE_GUI.md</code>.</p>"
+            f"<p><b>Layout:</b> {LAYOUT_MODE_LABEL} ({LAYOUT_MODE})</p>",
         )
 
     # ------------------------------------------------------------------

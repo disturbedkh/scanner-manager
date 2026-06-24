@@ -1,10 +1,11 @@
 # Packaging
 
 Everything needed to produce cross-platform Scanner Manager binaries
-from the **Qt default** entry (`gui/app.py`).
+from the **Qt default** entry (`packaging/entry_qt.py` → `gui.app:main`).
 
 ## Files
 
+- `entry_qt.py` - PyInstaller bootstrap; imports `gui.app.main` as a package.
 - `scanner-manager.spec` - PyInstaller spec. Bundles `data/*.json`, legal
   notices, and the full Qt + `core/` backend (including `virtual_sd`,
   firmware, streaming). Does **not** bundle `vendor/uniden_installers/`.
