@@ -32,6 +32,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from core.device_manager import _default_devices_path
+from gui.widgets.scaling_label import ScalingHelpLabel
+
 logger = logging.getLogger(__name__)
 
 
@@ -49,6 +52,33 @@ def _default_workspaces_path() -> Path:
     else:
         base = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
     return base / "scanner-manager" / "workspaces.json"
+
+
+def workspace_help_text(default_devices_path: Optional[Path] = None) -> str:
+    """User-facing explanation of workspaces and ``devices.json``."""
+    default_path = default_devices_path or _default_devices_path()
+    if sys.platform == "win32":
+        fallback = "%APPDATA%\\scanner-manager\\devices.json"
+    elif sys.platform == "darwin":
+        fallback = "~/Library/Application Support/scanner-manager/devices.json"
+    else:
+        fallback = "~/.config/scanner-manager/devices.json"
+
+    return (
+        "What is devices.json?\n"
+        "  The device manifest: your registered scanners (label, scanner "
+        "family, SD card path). The header dropdown reads from it.\n"
+        "\n"
+        "Where to find it:\n"
+        f"  Default path: {default_path}\n"
+        f"  Packaged fallback: {fallback}\n"
+        "  Edit the active list via Devices → Manage devices…\n"
+        "\n"
+        "What a workspace does:\n"
+        "  Saves a name → path to a devices.json so you can switch "
+        "between setups (e.g. Home vs Travel) without overwriting "
+        "your default file."
+    )
 
 
 @dataclass
@@ -101,6 +131,21 @@ def save_workspaces(workspaces: List[Workspace], path: Optional[Path] = None) ->
     os.replace(tmp, target)
 
 
+def format_workspace_list_text(ws: Workspace) -> str:
+    """Primary list line for a workspace row."""
+    text = ws.name
+    if ws.last_used:
+        text = f"{ws.name}  ·  last used {ws.last_used}"
+    return text
+
+
+def format_workspace_list_tooltip(ws: Workspace) -> str:
+    """Secondary detail shown as tooltip."""
+    if ws.devices_path:
+        return f"devices.json at {ws.devices_path}"
+    return "No devices.json path configured"
+
+
 # ----------------------------------------------------------------------
 # Dialog
 # ----------------------------------------------------------------------
@@ -110,11 +155,12 @@ class WorkspaceManagerDialog(QDialog):
     """Manage named workspaces (create / rename / delete / load)."""
 
     workspaceLoaded = Signal(Workspace)
+    defaultDeviceListRequested = Signal()
 
     def __init__(self, parent=None, path: Optional[Path] = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Workspaces")
-        self.resize(560, 420)
+        self.resize(640, 480)
         self._path = Path(path) if path else _default_workspaces_path()
         self._workspaces: List[Workspace] = load_workspaces(self._path)
         self._build_ui()
@@ -124,10 +170,9 @@ class WorkspaceManagerDialog(QDialog):
         layout = QVBoxLayout(self)
 
         layout.addWidget(QLabel("<b>Workspaces</b>"))
-        layout.addWidget(QLabel(
-            "A workspace bundles a devices.json + RR credentials so you "
-            "can switch between e.g. a 'Home' and 'Travel' setup."
-        ))
+        self._intro = ScalingHelpLabel(workspace_help_text())
+        self._intro.setStyleSheet("color: #444;")
+        layout.addWidget(self._intro)
 
         self._list = QListWidget()
         self._list.itemDoubleClicked.connect(self._on_load)
@@ -138,6 +183,13 @@ class WorkspaceManagerDialog(QDialog):
         new_btn.clicked.connect(self._on_new)
         button_row.addWidget(new_btn)
 
+        new_default_btn = QPushButton("New from default devices.json")
+        new_default_btn.setToolTip(
+            f"Create a workspace pointing at {_default_devices_path()}"
+        )
+        new_default_btn.clicked.connect(self._on_new_from_default)
+        button_row.addWidget(new_default_btn)
+
         rename_btn = QPushButton("Rename…")
         rename_btn.clicked.connect(self._on_rename)
         button_row.addWidget(rename_btn)
@@ -147,6 +199,13 @@ class WorkspaceManagerDialog(QDialog):
         button_row.addWidget(delete_btn)
 
         button_row.addStretch(1)
+
+        default_btn = QPushButton("Use default device list")
+        default_btn.setToolTip(
+            "Stop using a named workspace and reload the default devices.json"
+        )
+        default_btn.clicked.connect(self._on_use_default_device_list)
+        button_row.addWidget(default_btn)
 
         load_btn = QPushButton("Load")
         load_btn.clicked.connect(self._on_load)
@@ -162,10 +221,8 @@ class WorkspaceManagerDialog(QDialog):
     def _refresh_list(self) -> None:
         self._list.clear()
         for w in self._workspaces:
-            text = w.name
-            if w.last_used:
-                text = f"{w.name}  ·  last used {w.last_used}"
-            item = QListWidgetItem(text)
+            item = QListWidgetItem(format_workspace_list_text(w))
+            item.setToolTip(format_workspace_list_tooltip(w))
             item.setData(Qt.UserRole, w)
             self._list.addItem(item)
 
@@ -176,22 +233,41 @@ class WorkspaceManagerDialog(QDialog):
     def _persist(self) -> None:
         save_workspaces(self._workspaces, self._path)
 
-    def _on_new(self) -> None:
+    def _prompt_workspace_name(self) -> Optional[str]:
         name, ok = QInputDialog.getText(self, "New workspace", "Name:")
         if not ok or not name.strip():
-            return
-        path, _filter = QFileDialog.getOpenFileName(
-            self, "Select devices.json for this workspace",
-            "", "JSON (*.json);;All files (*.*)"
-        )
+            return None
+        return name.strip()
+
+    def _create_workspace(self, name: str, devices_path: str) -> None:
         ws = Workspace(
-            name=name.strip(),
-            devices_path=path,
+            name=name,
+            devices_path=devices_path,
             created=datetime.now().isoformat(timespec="seconds"),
         )
         self._workspaces.append(ws)
         self._persist()
         self._refresh_list()
+
+    def _on_new(self) -> None:
+        name = self._prompt_workspace_name()
+        if name is None:
+            return
+        path, _filter = QFileDialog.getOpenFileName(
+            self,
+            "Select devices.json for this workspace",
+            str(_default_devices_path().parent),
+            "JSON (*.json);;All files (*.*)",
+        )
+        if not path:
+            return
+        self._create_workspace(name, path)
+
+    def _on_new_from_default(self) -> None:
+        name = self._prompt_workspace_name()
+        if name is None:
+            return
+        self._create_workspace(name, str(_default_devices_path()))
 
     def _on_rename(self) -> None:
         ws = self._selected()
@@ -208,9 +284,11 @@ class WorkspaceManagerDialog(QDialog):
         if ws is None:
             return
         confirm = QMessageBox.question(
-            self, "Delete workspace",
+            self,
+            "Delete workspace",
             f"Delete workspace {ws.name!r}?",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
         )
         if confirm != QMessageBox.Yes:
             return
@@ -218,10 +296,28 @@ class WorkspaceManagerDialog(QDialog):
         self._persist()
         self._refresh_list()
 
+    def _on_use_default_device_list(self) -> None:
+        self.defaultDeviceListRequested.emit()
+        self.accept()
+
     def _on_load(self) -> None:
         ws = self._selected()
         if ws is None:
             QMessageBox.information(self, "Load", "Select a workspace first.")
+            return
+        if not ws.devices_path:
+            QMessageBox.warning(
+                self,
+                "Load",
+                "This workspace has no devices.json path configured.",
+            )
+            return
+        if not Path(ws.devices_path).exists():
+            QMessageBox.warning(
+                self,
+                "Load",
+                f"devices.json not found:\n{ws.devices_path}",
+            )
             return
         ws.last_used = datetime.now().isoformat(timespec="seconds")
         self._persist()

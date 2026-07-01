@@ -22,7 +22,7 @@ def os_folder() -> str:
     return "Linux"
 
 
-def build_type() -> str:
+def _env_build_type() -> str:
     """Release or Development (from SCANNER_MANAGER_BUILD_TYPE)."""
     raw = os.environ.get("SCANNER_MANAGER_BUILD_TYPE", "Development").strip()
     if raw not in _BUILD_TYPES:
@@ -30,12 +30,18 @@ def build_type() -> str:
     return raw
 
 
-def dist_dir(repo_root: Path | str) -> Path:
+def build_type() -> str:
+    """Release or Development (from SCANNER_MANAGER_BUILD_TYPE)."""
+    return _env_build_type()
+
+
+def dist_dir(repo_root: Path | str, *, build_type: str | None = None) -> Path:
     """Final PyInstaller artifacts: build/<OS>/<Type>/."""
     root = Path(repo_root).resolve()
-    return root / "build" / os_folder() / build_type()
+    bt = build_type if build_type is not None else _env_build_type()
+    return root / "build" / os_folder() / bt
 
 
-def work_dir(repo_root: Path | str) -> Path:
+def work_dir(repo_root: Path | str, *, build_type: str | None = None) -> Path:
     """PyInstaller intermediate files: build/<OS>/<Type>/.pyinstaller-work/."""
-    return dist_dir(repo_root) / ".pyinstaller-work"
+    return dist_dir(repo_root, build_type=build_type) / ".pyinstaller-work"

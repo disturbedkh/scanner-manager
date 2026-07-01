@@ -48,13 +48,24 @@ def _trim_iq_arrays(frame: IqFrame, n: int):
     return i, q
 
 
+# int16 full-scale magnitude. The SUB port returns signed 16-bit
+# samples, so a full-scale tone has amplitude 2**15.
+_INT16_FULL_SCALE = 32768.0
+
+
 def _log_spectrum_from_iq(i, q):
     i = i - float(i.mean())
     q = q - float(q.mean())
     complex_signal = i + 1j * q
-    windowed = complex_signal * np.hanning(complex_signal.size)
+    window = np.hanning(complex_signal.size)
+    windowed = complex_signal * window
     spectrum = np.fft.fftshift(np.fft.fft(windowed))
-    return 20.0 * np.log10(np.abs(spectrum) + 1e-3)
+    # Calibrate to dBFS: a full-scale complex tone through the same
+    # window produces |X| == full_scale * sum(window) at its bin, so
+    # dividing by that reference maps full scale to 0 dBFS and pushes
+    # the noise floor well negative (instead of the old ~+200 counts).
+    ref = _INT16_FULL_SCALE * float(window.sum()) + 1e-9
+    return 20.0 * np.log10(np.abs(spectrum) / ref + 1e-12)
 
 
 class GsiMirrorWidget(QGroupBox):
@@ -292,7 +303,11 @@ class WaterfallWidget(QGroupBox):
         raw = raw - float(raw.mean())
 
         # Real-input FFT: gives us len(raw)//2 + 1 magnitude bins.
-        spectrum = np.abs(np.fft.rfft(raw))
+        # Calibrate to dBFS: an rFFT of a full-scale real tone peaks at
+        # ~full_scale * N / 2, so divide by that reference up front. The
+        # rolling image then carries true dBFS magnitudes.
+        ref = _INT16_FULL_SCALE * (raw.size / 2.0) + 1e-9
+        spectrum = np.abs(np.fft.rfft(raw)) / ref
 
         # Lock the bin count to the first frame's spectrum width so the
         # rolling image stays rectangular.
@@ -307,7 +322,7 @@ class WaterfallWidget(QGroupBox):
         self._frames.append(spectrum)
 
         arr = np.asarray(self._frames, dtype=np.float32)
-        log_arr = 20.0 * np.log10(arr + 1.0)
+        log_arr = 20.0 * np.log10(arr + 1e-12)
 
         # Robust percentile clipping: low edge at p20 keeps the noise
         # floor near "blue", high edge at p99 lets transient bursts
@@ -328,6 +343,16 @@ class WaterfallWidget(QGroupBox):
             self._plot.setXRange(0, log_arr.shape[1], padding=0)
             self._plot.setYRange(0, self._history_rows, padding=0)
             self._range_set = True
+
+    def reset_history(self) -> None:
+        """Drop all accumulated rows and re-lock the bin count.
+
+        Call this when switching into this widget so a previous
+        session's frame width / range doesn't bleed into the new one.
+        """
+        self._frames.clear()
+        self._sample_count = None
+        self._range_set = False
 
 
 class IqWaterfallWidget(QGroupBox):
@@ -355,6 +380,8 @@ class IqWaterfallWidget(QGroupBox):
         self._center_hz: Optional[float] = None
         self._frames: Deque = collections.deque(maxlen=history_rows)
         self._peak_hold: Optional[Any] = None
+        self._peak_times: Optional[Any] = None
+        self._max_hold_secs: Optional[float] = None
         self._fft_size: Optional[int] = None
         self._range_set = False
 
@@ -362,6 +389,8 @@ class IqWaterfallWidget(QGroupBox):
             layout.addWidget(QLabel("Install pyqtgraph + numpy for the I/Q waterfall."))
             self._image_item = None
             self._spectrum_curve = None
+            self._marker_spectrum = None
+            self._marker_waterfall = None
             return
 
         # Top: instantaneous spectrum + peak hold (line plot)
@@ -372,6 +401,13 @@ class IqWaterfallWidget(QGroupBox):
         self._spectrum_plot.setMaximumHeight(160)
         self._spectrum_curve = self._spectrum_plot.plot(pen=pg.mkPen("#5cd6ff", width=1))
         self._peak_curve = self._spectrum_plot.plot(pen=pg.mkPen("#ffd34d", width=1, style=Qt.DashLine))
+        # Center-frequency Marker (mirrors the native green Marker that
+        # marks the tuned VC frequency). Hidden until a centre is known.
+        self._marker_spectrum = pg.InfiniteLine(
+            angle=90, movable=False, pen=pg.mkPen("#3ad53a", width=1)
+        )
+        self._marker_spectrum.setVisible(False)
+        self._spectrum_plot.addItem(self._marker_spectrum)
         layout.addWidget(self._spectrum_plot)
 
         # Bottom: rolling waterfall (image plot)
@@ -383,6 +419,11 @@ class IqWaterfallWidget(QGroupBox):
         self._plot.getPlotItem().getViewBox().setMouseEnabled(x=False, y=False)
         self._image_item = pg.ImageItem(axisOrder="row-major")
         self._plot.addItem(self._image_item)
+        self._marker_waterfall = pg.InfiniteLine(
+            angle=90, movable=False, pen=pg.mkPen("#3ad53a", width=1)
+        )
+        self._marker_waterfall.setVisible(False)
+        self._plot.addItem(self._marker_waterfall)
         self._colormap = _build_turbo_colormap()
         if self._colormap is not None:
             try:
@@ -402,10 +443,90 @@ class IqWaterfallWidget(QGroupBox):
             return
         self._center_hz = new_center
         self._range_set = False  # rebuild axis on next frame
+        self._update_marker()
 
     def set_sample_rate(self, hz: float) -> None:
+        """Switch the I/Q bandwidth hint (16 kHz narrow vs 960 kHz wide).
+
+        A sample-rate change means a different spectrum source / span,
+        so we drop all accumulated state - otherwise a stronger wide
+        session's peak-hold trace would 'stick' when returning to the
+        narrow source (the bins only ever rise under a running max).
+        """
         self._sample_rate = float(hz)
+        self.reset_history()
+
+    def set_max_hold_time(self, secs: Optional[float]) -> None:
+        """Set the peak-hold decay window (native 'Set Max Hold Time').
+
+        ``None`` (or a non-positive value) means Infinite hold, matching
+        the prior behaviour where peaks only ever rise.
+        """
+        self._max_hold_secs = float(secs) if secs and secs > 0 else None
+
+    def reset_history(self) -> None:
+        """Clear the rolling history, peak-hold, and locked bin count.
+
+        Used on a spectrum-source switch so stale frames / peaks from
+        the previous bandwidth don't bleed into the new view.
+        """
+        self._frames.clear()
+        self._peak_hold = None
+        self._peak_times = None
+        self._fft_size = None
         self._range_set = False
+
+    def _update_marker(self) -> None:
+        if self._image_item is None or self._marker_spectrum is None:
+            return
+        if self._center_hz is not None:
+            x = self._center_hz / 1e6
+            self._marker_spectrum.setPos(x)
+            self._marker_waterfall.setPos(x)
+            self._marker_spectrum.setVisible(True)
+            self._marker_waterfall.setVisible(True)
+        else:
+            self._marker_spectrum.setVisible(False)
+            self._marker_waterfall.setVisible(False)
+
+    def _update_peak_hold(self, log_spec) -> None:
+        """Update the peak-hold trace with optional max-hold-time decay.
+
+        Mirrors the native 'Set Max Hold Time' (3 s / 10 s / Infinite)
+        option: each bin remembers when its current peak was set, and
+        once that peak is older than ``_max_hold_secs`` it drops back to
+        the live value. With Infinite hold this is just a running max.
+        """
+        now = time.monotonic()
+        if (
+            self._peak_hold is None
+            or self._peak_times is None
+            or self._peak_hold.shape != log_spec.shape
+        ):
+            self._peak_hold = log_spec.copy()
+            self._peak_times = np.full(log_spec.shape, now, dtype=np.float64)
+            return
+        if self._max_hold_secs is not None:
+            stale = (now - self._peak_times) > self._max_hold_secs
+            self._peak_hold[stale] = log_spec[stale]
+            self._peak_times[stale] = now
+        rising = log_spec >= self._peak_hold
+        self._peak_hold[rising] = log_spec[rising]
+        self._peak_times[rising] = now
+
+    def _frequency_axis_mhz(self):
+        """Per-bin X-axis values in MHz, centred on the tuned VC freq
+        when known, else baseband (centred on 0)."""
+        if self._center_hz is not None:
+            half_bw = self._sample_rate / 2.0
+            return np.linspace(
+                (self._center_hz - half_bw) / 1e6,
+                (self._center_hz + half_bw) / 1e6,
+                self._fft_size,
+            )
+        half = self._fft_size // 2
+        xs = np.arange(-half, self._fft_size - half, dtype=np.float64)
+        return xs * (self._sample_rate / self._fft_size) / 1e6
 
     def add_frame(self, frame: IqFrame) -> None:
         if not HAS_PYQTGRAPH or self._image_item is None:
@@ -428,27 +549,10 @@ class IqWaterfallWidget(QGroupBox):
             log_spec = log_spec[: self._fft_size]
 
         self._frames.append(log_spec)
-
-        # Peak-hold trace (per-bin running max across history).
         history = np.asarray(self._frames, dtype=np.float32)
-        peak = history.max(axis=0)
-        if self._peak_hold is None or self._peak_hold.shape != peak.shape:
-            self._peak_hold = peak.copy()
-        else:
-            np.maximum(self._peak_hold, peak, out=self._peak_hold)
 
-        # Frequency axis values in MHz.
-        if self._center_hz is not None:
-            half_bw = self._sample_rate / 2.0
-            xs = np.linspace(
-                (self._center_hz - half_bw) / 1e6,
-                (self._center_hz + half_bw) / 1e6,
-                self._fft_size,
-            )
-        else:
-            half = self._fft_size // 2
-            xs = np.arange(-half, self._fft_size - half, dtype=np.float64)
-            xs = xs * (self._sample_rate / self._fft_size) / 1e6
+        self._update_peak_hold(log_spec)
+        xs = self._frequency_axis_mhz()
 
         # Update line plots.
         self._spectrum_curve.setData(xs, log_spec)
@@ -475,6 +579,8 @@ class IqWaterfallWidget(QGroupBox):
             self._plot.setYRange(0, self._history_rows, padding=0)
             self._spectrum_plot.setXRange(x0, x0 + width_mhz, padding=0)
             self._range_set = True
+            self._update_marker()
 
     def reset_peak_hold(self) -> None:
         self._peak_hold = None
+        self._peak_times = None

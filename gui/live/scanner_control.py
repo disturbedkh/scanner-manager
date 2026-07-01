@@ -1,19 +1,18 @@
-"""Scanner-control widget for the Live dock.
+"""Volume / Squelch control widget for the Live dock.
 
-Exposes user-initiated, validated control commands against a
+Exposes the two user-initiated, validated knob commands against a
 :class:`scanner_drivers.serial_main.SerialMainDriver`:
 
 - Volume slider (0-15)  -> ``VOL,n``
 - Squelch slider (0-15) -> ``SQL,n``
-- Hold / Resume button  -> ``KEY,H,P``
-- Avoid current button  -> ``KEY,.,P``
-- Previous / Next       -> ``KEY,< / >,P``
-- Replay                -> ``KEY,^,P``
 
-All sends happen on a short-lived QThread so the UI never blocks on
-serial I/O. The widget only allows what the driver's
-:data:`SAFE_KEY_NAMES` whitelist permits, so even if we add more
-buttons later the scanner-state mutation surface stays bounded.
+Navigation and every other front-panel button now live on the full
+:class:`gui.live.virtual_scanner.KeypadWidget`; this widget is just the
+two analog knobs that don't map cleanly onto momentary key presses.
+
+All sends happen on a short-lived QThread (:class:`_SerialCallWorker`)
+so the UI never blocks on serial I/O. The driver's internal lock makes
+this safe alongside the polling loop.
 """
 
 from __future__ import annotations
@@ -23,8 +22,6 @@ from typing import Optional
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
-    QFrame,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -36,7 +33,6 @@ from PySide6.QtWidgets import (
 )
 
 from scanner_drivers.serial_main import (
-    SAFE_CONTROL_KEYS,
     SQUELCH_RANGE,
     VOLUME_RANGE,
     SerialMainDriver,
@@ -70,7 +66,7 @@ class _SerialCallWorker(QThread):
 
 
 class ScannerControlWidget(QGroupBox):
-    """Volume / Squelch sliders + navigation buttons.
+    """Volume / Squelch sliders bound to a live MAIN driver.
 
     The widget is disabled until a driver is bound via
     :meth:`set_driver`. When the Live dock disconnects, call
@@ -80,7 +76,7 @@ class ScannerControlWidget(QGroupBox):
     statusMessage = Signal(str)
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
-        super().__init__("Scanner control", parent)
+        super().__init__("Volume / Squelch", parent)
         self._driver: Optional[SerialMainDriver] = None
         self._workers: list = []  # keep refs so QThreads aren't gc'd mid-run
         self._build_ui()
@@ -93,12 +89,7 @@ class ScannerControlWidget(QGroupBox):
     def set_driver(self, driver: Optional[SerialMainDriver]) -> None:
         self._driver = driver
         enabled = driver is not None
-        for w in (
-            self._vol_slider, self._sql_slider,
-            self._hold_btn, self._scan_btn, self._avoid_btn,
-            self._prev_btn, self._next_btn, self._replay_btn,
-            self._read_state_btn,
-        ):
+        for w in (self._vol_slider, self._sql_slider, self._read_state_btn):
             w.setEnabled(enabled)
         if enabled:
             self.read_current_state()
@@ -130,75 +121,13 @@ class ScannerControlWidget(QGroupBox):
         layout.setContentsMargins(8, 12, 8, 8)
         layout.setSpacing(8)
 
-        # ---- Volume slider row ----
-        vol_row = QHBoxLayout()
-        vol_label = QLabel("Volume")
-        vol_label.setMinimumWidth(60)
-        vol_row.addWidget(vol_label)
-        self._vol_slider = QSlider(Qt.Horizontal)
-        self._vol_slider.setRange(*VOLUME_RANGE)
-        self._vol_slider.setSingleStep(1)
-        self._vol_slider.setPageStep(1)
-        self._vol_slider.setTickPosition(QSlider.TicksBelow)
-        self._vol_slider.setTickInterval(1)
-        self._vol_slider.sliderReleased.connect(self._on_vol_committed)
-        vol_row.addWidget(self._vol_slider, 1)
-        self._vol_value = QLabel("--")
-        self._vol_value.setMinimumWidth(28)
-        self._vol_value.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        vol_row.addWidget(self._vol_value)
-        layout.addLayout(vol_row)
+        layout.addLayout(
+            self._build_slider_row("Volume", VOLUME_RANGE, "vol")
+        )
+        layout.addLayout(
+            self._build_slider_row("Squelch", SQUELCH_RANGE, "sql")
+        )
 
-        # ---- Squelch slider row ----
-        sql_row = QHBoxLayout()
-        sql_label = QLabel("Squelch")
-        sql_label.setMinimumWidth(60)
-        sql_row.addWidget(sql_label)
-        self._sql_slider = QSlider(Qt.Horizontal)
-        self._sql_slider.setRange(*SQUELCH_RANGE)
-        self._sql_slider.setSingleStep(1)
-        self._sql_slider.setPageStep(1)
-        self._sql_slider.setTickPosition(QSlider.TicksBelow)
-        self._sql_slider.setTickInterval(1)
-        self._sql_slider.sliderReleased.connect(self._on_sql_committed)
-        sql_row.addWidget(self._sql_slider, 1)
-        self._sql_value = QLabel("--")
-        self._sql_value.setMinimumWidth(28)
-        self._sql_value.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        sql_row.addWidget(self._sql_value)
-        layout.addLayout(sql_row)
-
-        # ---- Separator ----
-        sep = QFrame()
-        sep.setFrameShape(QFrame.HLine)
-        sep.setFrameShadow(QFrame.Sunken)
-        layout.addWidget(sep)
-
-        # ---- Navigation buttons grid ----
-        nav = QGridLayout()
-        nav.setSpacing(4)
-
-        # Map labels -> KEY codes via SAFE_CONTROL_KEYS so the
-        # whitelist is the single source of truth.
-        self._hold_btn = self._make_key_button("Hold / Resume")
-        self._scan_btn = self._make_key_button("Scan")
-        self._avoid_btn = self._make_key_button("Avoid")
-        self._prev_btn = self._make_key_button("Previous")
-        self._next_btn = self._make_key_button("Next")
-        self._replay_btn = self._make_key_button("Replay")
-
-        nav.addWidget(self._hold_btn, 0, 0)
-        nav.addWidget(self._scan_btn, 0, 1)
-        nav.addWidget(self._avoid_btn, 0, 2)
-        nav.addWidget(self._prev_btn, 1, 0)
-        nav.addWidget(self._next_btn, 1, 1)
-        nav.addWidget(self._replay_btn, 1, 2)
-
-        for col in range(3):
-            nav.setColumnStretch(col, 1)
-        layout.addLayout(nav)
-
-        # ---- Re-read button ----
         bottom_row = QHBoxLayout()
         bottom_row.addStretch(1)
         self._read_state_btn = QPushButton("Re-read VOL / SQL")
@@ -208,10 +137,34 @@ class ScannerControlWidget(QGroupBox):
 
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
 
-    def _make_key_button(self, label: str) -> QPushButton:
-        btn = QPushButton(label)
-        btn.clicked.connect(lambda _checked=False, lbl=label: self._on_key_clicked(lbl))
-        return btn
+    def _build_slider_row(self, label: str, value_range, prefix: str):
+        row = QHBoxLayout()
+        name = QLabel(label)
+        name.setMinimumWidth(60)
+        row.addWidget(name)
+
+        slider = QSlider(Qt.Horizontal)
+        slider.setRange(*value_range)
+        slider.setSingleStep(1)
+        slider.setPageStep(1)
+        slider.setTickPosition(QSlider.TicksBelow)
+        slider.setTickInterval(1)
+        row.addWidget(slider, 1)
+
+        value = QLabel("--")
+        value.setMinimumWidth(28)
+        value.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        row.addWidget(value)
+
+        if prefix == "vol":
+            self._vol_slider = slider
+            self._vol_value = value
+            slider.sliderReleased.connect(self._on_vol_committed)
+        else:
+            self._sql_slider = slider
+            self._sql_value = value
+            slider.sliderReleased.connect(self._on_sql_committed)
+        return row
 
     # ------------------------------------------------------------------
     # Slot handlers
@@ -241,21 +194,6 @@ class ScannerControlWidget(QGroupBox):
         self._track_worker(worker)
         worker.start()
 
-    def _on_key_clicked(self, label: str) -> None:
-        if self._driver is None:
-            return
-        try:
-            key, mode = SAFE_CONTROL_KEYS[label]
-        except KeyError:
-            self.statusMessage.emit(f"Unknown key {label!r}")
-            return
-        worker = _SerialCallWorker(self._driver.send_key, key, mode)
-        worker.finished_with_result.connect(
-            lambda result, err: self._on_set_done(f"KEY {label}", None, result, err)
-        )
-        self._track_worker(worker)
-        worker.start()
-
     def _on_set_done(self, op: str, value, result, err: str) -> None:
         if err:
             self.statusMessage.emit(f"{op} failed: {err}")
@@ -265,32 +203,25 @@ class ScannerControlWidget(QGroupBox):
             self.statusMessage.emit(f"{op} = {value}")
 
     def _on_volume_read(self, result, err: str) -> None:
-        if err or result is None:
-            self._vol_value.setText("?")
-            return
-        try:
-            level = int(result)
-        except (TypeError, ValueError):
-            return
-        # Block signals so setting the slider value doesn't fire
-        # sliderReleased -> set_volume round-trip.
-        self._vol_slider.blockSignals(True)
-        self._vol_slider.setValue(level)
-        self._vol_slider.blockSignals(False)
-        self._vol_value.setText(str(level))
+        self._apply_read(self._vol_slider, self._vol_value, result, err)
 
     def _on_squelch_read(self, result, err: str) -> None:
+        self._apply_read(self._sql_slider, self._sql_value, result, err)
+
+    def _apply_read(self, slider, value_label, result, err: str) -> None:
         if err or result is None:
-            self._sql_value.setText("?")
+            value_label.setText("?")
             return
         try:
             level = int(result)
         except (TypeError, ValueError):
             return
-        self._sql_slider.blockSignals(True)
-        self._sql_slider.setValue(level)
-        self._sql_slider.blockSignals(False)
-        self._sql_value.setText(str(level))
+        # Block signals so setting the value doesn't fire sliderReleased
+        # -> set_* round-trip.
+        slider.blockSignals(True)
+        slider.setValue(level)
+        slider.blockSignals(False)
+        value_label.setText(str(level))
 
     # ------------------------------------------------------------------
     # Worker bookkeeping

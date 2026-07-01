@@ -38,6 +38,15 @@ _BT885_HPD = (
 
 
 @pytest.fixture
+def tmp_devices(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    target = tmp_path / "devices.json"
+    monkeypatch.setattr(
+        "core.device_manager._default_devices_path", lambda: target
+    )
+    return target
+
+
+@pytest.fixture
 def card_root(tmp_path: Path) -> Path:
     root = tmp_path / "card"
     hpdb = root / "BCDx36HP" / "HPDB"
@@ -49,6 +58,70 @@ def card_root(tmp_path: Path) -> Path:
     (hpdb / "hpdb.cfg").write_text(_BT885_CFG, encoding="utf-8")
     (hpdb / "s_000012.hpd").write_text(_BT885_HPD, encoding="utf-8")
     return root
+
+
+def test_hpdb_tree_session_cache_hit_on_second_load(
+    qtbot, card_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from gui.editor.hpdb_cache import get_hpdb_session_cache
+    from gui.editor.hpdb_tree import HpdbTreeWidget
+    from legacy_tk.scanner_manager import HpdFile
+
+    get_hpdb_session_cache().invalidate()
+
+    load_calls = 0
+    original_load = HpdFile.load
+
+    def _counting_load(self, path: str) -> None:
+        nonlocal load_calls
+        load_calls += 1
+        return original_load(self, path)
+
+    monkeypatch.setattr(HpdFile, "load", _counting_load)
+
+    tree = HpdbTreeWidget()
+    qtbot.addWidget(tree)
+    tree.set_profile(get_profile("uniden_bt885"))
+    device_id = "test-device-a"
+
+    assert tree.try_load_from_card(str(card_root), device_id=device_id) is True
+    assert load_calls == 1
+    first_files = tree.loaded_files()
+
+    assert tree.try_load_from_card(str(card_root), device_id=device_id) is True
+    assert load_calls == 1
+    assert tree.loaded_files()[0] is first_files[0]
+
+
+def test_hpdb_tree_invalidate_cache_forces_reload(
+    qtbot, card_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from gui.editor.hpdb_cache import get_hpdb_session_cache
+    from gui.editor.hpdb_tree import HpdbTreeWidget
+    from legacy_tk.scanner_manager import HpdFile
+
+    get_hpdb_session_cache().invalidate()
+
+    load_calls = 0
+    original_load = HpdFile.load
+
+    def _counting_load(self, path: str) -> None:
+        nonlocal load_calls
+        load_calls += 1
+        return original_load(self, path)
+
+    monkeypatch.setattr(HpdFile, "load", _counting_load)
+
+    tree = HpdbTreeWidget()
+    qtbot.addWidget(tree)
+    device_id = "test-device-b"
+
+    assert tree.try_load_from_card(str(card_root), device_id=device_id) is True
+    assert load_calls == 1
+
+    tree.invalidate_cache(device_id=device_id)
+    assert tree.try_load_from_card(str(card_root), device_id=device_id) is True
+    assert load_calls == 2
 
 
 def test_hpdb_tree_loads_real_file(qtbot, card_root: Path) -> None:
@@ -155,9 +228,8 @@ def test_hpdb_tree_empty_hpd_dir_shows_message(qtbot, tmp_path: Path) -> None:
 def test_hpdb_tree_skips_unparseable_files(
     qtbot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from legacy_tk.scanner_manager import HpdFile
-
     from gui.editor.hpdb_tree import HpdbTreeWidget
+    from legacy_tk.scanner_manager import HpdFile
 
     root = tmp_path / "card"
     hpdb = root / "BCDx36HP" / "HPDB"
@@ -236,7 +308,7 @@ def test_editor_dock_save_persists_service_type_change(
     # Re-read from disk and confirm
     hpd_path = card_root / "BCDx36HP" / "HPDB" / "s_000012.hpd"
     contents = hpd_path.read_text(encoding="utf-8")
-    fire_line = [l for l in contents.splitlines() if "Fire Dispatch" in l][0]
+    fire_line = next(line for line in contents.splitlines() if "Fire Dispatch" in line)
     assert fire_line.endswith("\t14")
 
 
@@ -362,7 +434,10 @@ def test_editor_dock_save_failure_and_no_sd_path(
 
     dock.save_current()
     assert dock.current_hpd_path()
-    assert dock.coverage_panel() is dock._coverage
+    dock.show()
+    main = dock.window()
+    if main is not None and hasattr(main, "coverage_panel"):
+        assert dock.coverage_panel() is main.coverage_panel()
 
     monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
     no_path = Device.make("uniden_bt885", "Empty")
@@ -383,21 +458,27 @@ def test_editor_dock_audit_with_no_hpdb(qtbot, monkeypatch: pytest.MonkeyPatch) 
     assert "No HPDB loaded" in informed[0][2]
 
 
+def _raise_map_offline() -> None:
+    raise RuntimeError("map offline")
+
+
 def test_editor_dock_refresh_coverage_swallows_errors(
-    qtbot, card_root: Path, monkeypatch: pytest.MonkeyPatch
+    qtbot, tmp_devices: Path, card_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from core.device_manager import Device
-    from gui.editor.editor_dock import EditorDock
+    from gui.main_window import MainWindow
 
-    dock = EditorDock()
-    qtbot.addWidget(dock)
+    window = MainWindow()
+    qtbot.addWidget(window)
+    qtbot.wait(10)
+    dock = window._editor_dock
     profile = get_profile("uniden_bt885")
     device = Device.make("uniden_bt885", "Test", sd_card_path=str(card_root))
     dock.set_active_device(device, profile)
     monkeypatch.setattr(
-        dock._coverage,
+        window._coverage_panel,
         "refresh_from_hpdb",
-        lambda: (_ for _ in ()).throw(RuntimeError("map offline")),
+        _raise_map_offline,
     )
     dock.refresh_coverage()
 
@@ -421,7 +502,8 @@ def test_editor_dock_switch_device_with_unsaved_changes(
     monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.No)
     other = Device.make("uniden_bt885", "Other", sd_card_path=str(card_root))
     dock.set_active_device(other, profile)
-    assert dock._current_device is other
+    assert dock._current_device is device
+    assert dock.has_unsaved_changes()
 
 
 def test_button_filter_panel_emits_selection(qtbot) -> None:

@@ -8,10 +8,8 @@ re-parents it back to its original home.
 
 Today this module hosts:
 
-- :class:`CoverageWindow` - shows the editor's CoveragePanel as its
-  own window. Used by the SDS100/200 profile (the embedded panel is
-  hidden in the main editor) and as an opt-in Tools menu item for
-  every profile.
+- :class:`CoverageWindow` - shows the CoveragePanel as its own window.
+  Opened from View > Coverage / heatmap… for all profiles.
 - :class:`LogWindow` - shows the app log as its own window so users
   can park it on a second monitor while the main window holds the
   editor + live mirror.
@@ -37,8 +35,8 @@ class CoverageWindow(QMainWindow):
     """Detached coverage / heatmap / map window.
 
     The window does not own the CoveragePanel - it borrows it from
-    the editor dock. On close, the panel is returned (re-parented)
-    to its original owner if one was tracked.
+    MainWindow's hidden host. On close, the panel is returned
+    (re-parented) to that host.
     """
 
     closed = Signal()
@@ -66,22 +64,16 @@ class CoverageWindow(QMainWindow):
         self.setCentralWidget(self._coverage)
 
         bar = QStatusBar()
-        bar.showMessage(
-            "Coverage panel - close this window to return it to the editor."
-        )
+        bar.showMessage("View menu popout; close to hide.")
         self.setStatusBar(bar)
 
     def _on_refresh(self) -> None:
-        # Coverage panel exposes refresh via its data-source recompute;
-        # editor dock has a public refresh_coverage() entry point.
-        if self._original_parent is not None:
-            refresh = getattr(self._original_parent, "refresh_coverage", None)
-            if callable(refresh):
-                refresh()
+        refresh = getattr(self._coverage, "refresh_from_hpdb", None)
+        if callable(refresh):
+            refresh()
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
-        # Return the coverage widget to its original parent so the
-        # editor dock can show it again next time.
+        # Return the coverage widget to its hidden host.
         if self._original_parent is not None:
             try:
                 self._coverage.setParent(self._original_parent)
@@ -169,6 +161,12 @@ class FirmwareWindow(QMainWindow):
         # Re-parent firmware widget for the lifetime of the window
         self._firmware.setParent(self)
         self.setCentralWidget(self._firmware)
+
+    def showEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        on_shown = getattr(self._firmware, "on_firmware_window_shown", None)
+        if callable(on_shown):
+            on_shown()
+        super().showEvent(event)
 
     def closeEvent(self, event) -> None:  # noqa: N802
         if self._original_parent is not None:

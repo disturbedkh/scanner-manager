@@ -13,6 +13,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+_APP_NAME = "ScannerManager"
+_EXE_NAME = f"{_APP_NAME}.exe"
+_APP_BUNDLE = f"{_APP_NAME}.app"
+_WIN_ZIP = f"{_APP_NAME}-windows-x64.zip"
+_MACOS_TAR = f"{_APP_NAME}-macos.tar.gz"
+_LINUX_TAR = f"{_APP_NAME}-linux-x64.tar.gz"
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -30,12 +37,12 @@ def _frozen_binary(root: Path, build_type: str) -> Path:
     sys.path.insert(0, str(root / "scripts"))
     from build_paths import dist_dir, os_folder  # noqa: E402
 
-    base = dist_dir(root)
+    base = dist_dir(root, build_type=build_type)
     if os_folder() == "Windows":
-        return base / "ScannerManager.exe"
+        return base / _EXE_NAME
     if os_folder() == "macOS":
-        return base / "ScannerManager.app" / "Contents" / "MacOS" / "ScannerManager"
-    return base / "ScannerManager"
+        return base / _APP_BUNDLE / "Contents" / "MacOS" / _APP_NAME
+    return base / _APP_NAME
 
 
 def _sha256_file(path: Path) -> str:
@@ -66,35 +73,35 @@ def _package_release(root: Path, build_type: str) -> list[Path]:
     sys.path.insert(0, str(root / "scripts"))
     from build_paths import dist_dir, os_folder  # noqa: E402
 
-    out_dir = dist_dir(root)
+    out_dir = dist_dir(root, build_type=build_type)
     outputs: list[Path] = []
     if os_folder() == "Windows":
         import zipfile
 
-        exe = out_dir / "ScannerManager.exe"
+        exe = out_dir / _EXE_NAME
         _write_sidecar(exe)
-        zip_path = out_dir / "ScannerManager-windows-x64.zip"
+        zip_path = out_dir / _WIN_ZIP
         with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-            zf.write(exe, arcname="ScannerManager.exe")
+            zf.write(exe, arcname=_EXE_NAME)
         _write_sidecar(zip_path)
         outputs.extend([exe, zip_path])
     elif os_folder() == "macOS":
         import tarfile
 
-        app = out_dir / "ScannerManager.app"
-        tar_path = out_dir / "ScannerManager-macos.tar.gz"
+        app = out_dir / _APP_BUNDLE
+        tar_path = out_dir / _MACOS_TAR
         with tarfile.open(tar_path, "w:gz") as tar:
-            tar.add(app, arcname="ScannerManager.app")
+            tar.add(app, arcname=_APP_BUNDLE)
         _write_sidecar(tar_path)
         outputs.append(tar_path)
     else:
         import tarfile
 
-        binary = out_dir / "ScannerManager"
+        binary = out_dir / _APP_NAME
         binary.chmod(0o755)
-        tar_path = out_dir / "ScannerManager-linux-x64.tar.gz"
+        tar_path = out_dir / _LINUX_TAR
         with tarfile.open(tar_path, "w:gz") as tar:
-            tar.add(binary, arcname="ScannerManager")
+            tar.add(binary, arcname=_APP_NAME)
         _write_sidecar(tar_path)
         outputs.append(tar_path)
     return outputs
@@ -130,8 +137,8 @@ def main(argv: list[str] | None = None) -> int:
     sys.path.insert(0, str(root / "scripts"))
     from build_paths import dist_dir, work_dir  # noqa: E402
 
-    artifact_dir = dist_dir(root)
-    pyi_work = work_dir(root)
+    artifact_dir = dist_dir(root, build_type=args.type)
+    pyi_work = work_dir(root, build_type=args.type)
     _run(
         [
             sys.executable,
@@ -151,7 +158,11 @@ def main(argv: list[str] | None = None) -> int:
         from build_paths import dist_dir  # noqa: E402
         from build_provenance import write_provenance  # noqa: E402
 
-        write_provenance(dist_dir(root) / "build-provenance.json", build_type=args.type, repo_root=root)
+        write_provenance(
+            dist_dir(root, build_type=args.type) / "build-provenance.json",
+            build_type=args.type,
+            repo_root=root,
+        )
 
     packaged = _package_release(root, args.type)
     for artifact in packaged:

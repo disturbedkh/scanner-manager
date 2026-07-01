@@ -32,7 +32,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -44,6 +44,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSplitter,
     QStackedWidget,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -67,7 +68,7 @@ from scanner_drivers.usb_detect import (
 from scanner_profiles import ScannerProfile
 
 from .controllers import MainPollerController, SubPollerController
-from .scanner_control import ScannerControlWidget
+from .virtual_scanner import VirtualScannerPanel
 from .widgets import (
     GlgFeedWidget,
     GsiMirrorWidget,
@@ -79,6 +80,7 @@ from .widgets import (
 logger = logging.getLogger(__name__)
 
 _DIAG_CAPTURE_TITLE = "Diagnostic capture"
+_PORT_REFRESH_DEBOUNCE_MS = 300
 
 
 class LiveDock(QWidget):
@@ -96,6 +98,11 @@ class LiveDock(QWidget):
         self._profile: Optional[ScannerProfile] = None
         self._main_controller: Optional[MainPollerController] = None
         self._sub_controller: Optional[SubPollerController] = None
+        self._port_refresh_timer = QTimer(self)
+        self._port_refresh_timer.setSingleShot(True)
+        self._port_refresh_timer.setInterval(_PORT_REFRESH_DEBOUNCE_MS)
+        self._port_refresh_timer.timeout.connect(self._on_port_refresh_timer)
+        self._port_refresh_rescheduled = False
         self._build_ui()
         self._set_unsupported_message()
 
@@ -106,10 +113,36 @@ class LiveDock(QWidget):
     def set_active_profile(self, profile: ScannerProfile) -> None:
         self._profile = profile
         if not profile.supports_serial_mode:
+            self._port_refresh_timer.stop()
+            self._port_refresh_rescheduled = False
             self.disconnect()
             self._set_unsupported_message()
             return
         self._set_supported_message()
+        self._schedule_refresh_ports()
+
+    def _schedule_refresh_ports(self) -> None:
+        """Debounce port enumeration on rapid profile switches.
+
+        The first switch in a burst refreshes immediately; further switches
+        within ``_PORT_REFRESH_DEBOUNCE_MS`` coalesce into one trailing refresh.
+        """
+        if self._port_refresh_timer.isActive():
+            self._port_refresh_rescheduled = True
+            self._port_refresh_timer.stop()
+        else:
+            self.refresh_ports()
+        self._port_refresh_timer.start()
+
+    def _on_port_refresh_timer(self) -> None:
+        if self._port_refresh_rescheduled:
+            self.refresh_ports()
+        self._port_refresh_rescheduled = False
+
+    def _on_manual_refresh(self) -> None:
+        """Refresh ports immediately; cancel any pending debounced refresh."""
+        self._port_refresh_timer.stop()
+        self._port_refresh_rescheduled = False
         self.refresh_ports()
 
     def request_close(self) -> bool:
@@ -151,7 +184,7 @@ class LiveDock(QWidget):
         self._sub_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         self._refresh_btn = QPushButton("Refresh")
-        self._refresh_btn.clicked.connect(self.refresh_ports)
+        self._refresh_btn.clicked.connect(self._on_manual_refresh)
         self._connect_btn = QPushButton("Connect")
         self._connect_btn.clicked.connect(self._on_connect_clicked)
         self._disconnect_btn = QPushButton("Disconnect")
@@ -195,40 +228,34 @@ class LiveDock(QWidget):
         self._status_label.setStyleSheet("color: #555;")
         layout.addWidget(self._status_label)
 
-        # Splitter layout (all axes user-resizable):
+        # Two inner tabs under the shared connection header:
         #
-        #   +------------------+----------------------------+
-        #   | Scanner          |  Mirror | Meters            |
-        #   | control          |---------+-------------------|
-        #   | (vol/sql/        |  GLG feed                  |
-        #   |  hold/scan/...)  |                            |
-        #   +------------------+----------------------------+
-        #   |  Waterfall (FFT)                              |
-        #   +-----------------------------------------------+
-        self._control = ScannerControlWidget()
-        self._control.setMaximumWidth(280)
+        #   Live - Control     -> the virtual scanner faceplate
+        #   Live - Monitoring  -> GSI + Signal + recent calls + waterfall
+        self._live_tabs = QTabWidget()
+        self._live_tabs.setDocumentMode(True)
+        self._live_tabs.addTab(self._build_control_page(), "Live - Control")
+        self._live_tabs.addTab(self._build_monitoring_page(), "Live - Monitoring")
+        layout.addWidget(self._live_tabs, stretch=1)
+
+    def _build_control_page(self) -> QWidget:
+        """The virtual scanner faceplate, centred so the keypad keeps a
+        sensible width on wide windows."""
+        self._control = VirtualScannerPanel()
+        self._control.setMaximumWidth(960)
         self._control.statusMessage.connect(self._status_label.setText)
 
-        right_top = QWidget()
-        rtg = QGridLayout(right_top)
-        rtg.setContentsMargins(0, 0, 0, 0)
-        self._mirror = GsiMirrorWidget()
-        rtg.addWidget(self._mirror, 0, 0)
-        self._meters = MetersWidget()
-        rtg.addWidget(self._meters, 0, 1)
-        self._feed = GlgFeedWidget()
-        rtg.addWidget(self._feed, 1, 0, 1, 2)
-        rtg.setRowStretch(1, 1)
-        rtg.setColumnStretch(0, 2)
-        rtg.setColumnStretch(1, 1)
+        page = QWidget()
+        row = QHBoxLayout(page)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addStretch(1)
+        row.addWidget(self._control)
+        row.addStretch(1)
+        return page
 
-        top_h_splitter = QSplitter(Qt.Horizontal)
-        top_h_splitter.addWidget(self._control)
-        top_h_splitter.addWidget(right_top)
-        top_h_splitter.setStretchFactor(0, 0)
-        top_h_splitter.setStretchFactor(1, 1)
-        top_h_splitter.setHandleWidth(6)
-
+    def _build_monitoring_page(self) -> QWidget:
+        """Passive displays: GSI state + Signal, recent calls, and the
+        spectrum / waterfall stack - vertically resizable."""
         # Spectrum / waterfall stack: an SDR-style I/Q view (mirrors
         # the SDS100's built-in spectrum screen) and the legacy
         # raw-`m` waterfall, switchable from a combo box. Default to
@@ -251,6 +278,16 @@ class LiveDock(QWidget):
         self._wf_peak_reset_btn.clicked.connect(self._on_reset_peak_hold)
         wf_toolbar.addWidget(self._wf_peak_reset_btn)
 
+        # Peak/Max-hold decay window (mirrors the native scanner's
+        # "Set Max Hold Time": 3 s / 10 s / Infinite). Default Infinite.
+        wf_toolbar.addWidget(QLabel("Max hold:"))
+        self._wf_maxhold_combo = QComboBox()
+        self._wf_maxhold_combo.addItem("Infinite", None)
+        self._wf_maxhold_combo.addItem("10 s", 10.0)
+        self._wf_maxhold_combo.addItem("3 s", 3.0)
+        self._wf_maxhold_combo.currentIndexChanged.connect(self._on_max_hold_changed)
+        wf_toolbar.addWidget(self._wf_maxhold_combo)
+
         wf_toolbar.addStretch(1)
         wf_layout.addLayout(wf_toolbar)
 
@@ -262,13 +299,43 @@ class LiveDock(QWidget):
         self._wf_stack.addWidget(self._waterfall)      # index 1
         wf_layout.addWidget(self._wf_stack, stretch=1)
 
+        self._mirror = GsiMirrorWidget()
+        self._meters = MetersWidget()
+        self._feed = GlgFeedWidget()
+
+        # 2x2 grid built from nested splitters (all axes user-resizable):
+        #
+        #   +-----------------+--------------------------+
+        #   | GSI mirror      | Spectrum / waterfall      |
+        #   +-----------------+--------------------------+
+        #   | Recent calls    | Signal meters             |
+        #   +-----------------+--------------------------+
+        top_row = QSplitter(Qt.Horizontal)
+        top_row.addWidget(self._mirror)
+        top_row.addWidget(wf_box)
+        top_row.setStretchFactor(0, 1)
+        top_row.setStretchFactor(1, 2)
+        top_row.setHandleWidth(6)
+
+        bottom_row = QSplitter(Qt.Horizontal)
+        bottom_row.addWidget(self._feed)
+        bottom_row.addWidget(self._meters)
+        bottom_row.setStretchFactor(0, 2)
+        bottom_row.setStretchFactor(1, 1)
+        bottom_row.setHandleWidth(6)
+
         splitter = QSplitter(Qt.Vertical)
-        splitter.addWidget(top_h_splitter)
-        splitter.addWidget(wf_box)
+        splitter.addWidget(top_row)
+        splitter.addWidget(bottom_row)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 2)
         splitter.setHandleWidth(6)
-        layout.addWidget(splitter, stretch=1)
+
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.addWidget(splitter)
+        return page
 
     def _set_unsupported_message(self) -> None:
         self._status_label.setText(
@@ -390,6 +457,7 @@ class LiveDock(QWidget):
         self._main_controller = MainPollerController(main_driver, parent=self)
         self._main_controller.gsiUpdated.connect(self._on_gsi)
         self._main_controller.glgUpdated.connect(self._on_glg)
+        self._main_controller.stsUpdated.connect(self._on_sts)
         self._main_controller.failed.connect(self._on_main_failed)
         self._main_controller.start()
         # Bind the live driver into the scanner-control panel so the
@@ -429,11 +497,15 @@ class LiveDock(QWidget):
     def _on_gsi(self, snap: GsiSnapshot) -> None:
         self._mirror.update_snapshot(snap)
         self._meters.update_snapshot(snap)
+        self._control.update_gsi(snap)
         # Forward the tuned VC frequency to the I/Q waterfall so its
         # X axis is labelled in MHz instead of relative kHz offsets.
         if snap.frequency_hz:
             self._iq_waterfall.set_center_frequency(float(snap.frequency_hz))
         self.gsiUpdated.emit(snap)
+
+    def _on_sts(self, snap) -> None:
+        self._control.update_screen(snap)
 
     def _on_glg(self, evt: GlgEvent) -> None:
         self._feed.append_event(evt)
@@ -449,12 +521,16 @@ class LiveDock(QWidget):
 
     def _on_wf_mode_changed(self, _index: int) -> None:
         mode = self._wf_mode_combo.currentData() or "d"
-        # Show the matching widget in the stack.
+        # Show the matching widget in the stack, clearing the target
+        # widget's history so a previous source doesn't bleed across.
         if mode == "m":
+            self._waterfall.reset_history()
             self._wf_stack.setCurrentWidget(self._waterfall)
         else:
             self._wf_stack.setCurrentWidget(self._iq_waterfall)
-        # Different sample-rate hint for narrow vs wide I/Q.
+        # Different sample-rate hint for narrow vs wide I/Q. Note that
+        # set_sample_rate() also resets the I/Q widget's history so the
+        # peak-hold trace from the previous bandwidth can't stick.
         self._iq_waterfall.set_sample_rate(960_000.0 if mode == "v" else 16_000.0)
         # Push the new mode into the live controller if connected.
         if self._sub_controller is not None:
@@ -462,6 +538,9 @@ class LiveDock(QWidget):
 
     def _on_reset_peak_hold(self) -> None:
         self._iq_waterfall.reset_peak_hold()
+
+    def _on_max_hold_changed(self, _index: int) -> None:
+        self._iq_waterfall.set_max_hold_time(self._wf_maxhold_combo.currentData())
 
     # ------------------------------------------------------------------
     # Diagnostic capture

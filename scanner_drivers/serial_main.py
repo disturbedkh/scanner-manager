@@ -102,31 +102,64 @@ FORBIDDEN_HEADS = frozenset({
 VOLUME_RANGE = (0, 15)   # BCDx36HP / SDS spec
 SQUELCH_RANGE = (0, 15)
 
-SAFE_KEY_NAMES: frozenset = frozenset({
-    # Navigation / playback - safe to expose as on-screen buttons.
-    "H",        # Hold / Resume toggle
-    "S",        # Scan
-    ".",        # Avoid current channel (toggle)
-    "<",        # Previous
-    ">",        # Next
-    "^",        # Replay
-    "REPLAY",
-    # Volume / squelch popup buttons (open the on-screen meter, no
-    # config mutation).
-    "V",        # Volume popup
-    "Q",        # Squelch popup
-})
+# Canonical SDS100/SDS200 keypad, transcribed verbatim from the
+# "key code for KEY Command" sheet in the Uniden SDS Series Remote
+# Command Specification V2.00. ``code`` is what rides on the wire in
+# ``KEY,<code>,<mode>``; the label is what the GUI prints on the button.
+#
+# This is the full physical keypad - wiring all of it gives the GUI
+# complete control of the scanner (exactly like the on-device buttons),
+# which is the intended "virtual scanner" behavior. Any KEY press can
+# mutate scanner state; that mutation stays funneled through the
+# validated :meth:`SerialMainDriver.send_key` path below.
+KEYPAD_KEYS: Dict[str, str] = {
+    "M": "Menu",
+    "F": "Func",
+    "L": "Avoid",
+    "1": "1",
+    "2": "2",
+    "3": "3",
+    "4": "4",
+    "5": "5",
+    "6": "6",
+    "7": "7",
+    "8": "8",
+    "9": "9",
+    "0": "0",
+    ".": "No / Dot",
+    "E": "Yes / Enter",
+    "<": "Rotary L",
+    ">": "Rotary R",
+    "^": "Select",
+    "V": "Vol / Light",
+    "Q": "Squelch",
+    "Y": "Replay",
+    "A": "System",
+    "B": "Dept",
+    "C": "Channel",
+    "Z": "Zip",
+    "T": "Service",
+    "R": "Range",
+}
 
 KEY_PRESS_MODES = frozenset({"P", "L", "H"})  # press / long / hold
 
-# Map friendly UI labels to (key_code, press_mode).
+# Driver-accepted key codes: the full documented keypad, plus the legacy
+# Hold (``H``) / Scan (``S``) codes retained for backward compatibility
+# with callers that still reference :data:`SAFE_CONTROL_KEYS`.
+SAFE_KEY_NAMES: frozenset = frozenset(KEYPAD_KEYS) | {"H", "S"}
+
+# Map friendly UI labels to (key_code, press_mode). Kept for backward
+# compatibility; the codes are reconciled against the V2.00 key-code
+# sheet (``L`` = Avoid, ``Y`` = Replay - the prior ``.``/``^`` mappings
+# collided with No/Dot and rotary-Select respectively).
 SAFE_CONTROL_KEYS = {
     "Hold / Resume": ("H", "P"),
     "Scan":          ("S", "P"),
-    "Avoid":         (".", "P"),
+    "Avoid":         ("L", "P"),
     "Previous":      ("<", "P"),
     "Next":          (">", "P"),
-    "Replay":        ("^", "P"),
+    "Replay":        ("Y", "P"),
 }
 
 
@@ -182,6 +215,36 @@ class GlgEvent:
     chan_tag: str = ""
     p25_nac: str = ""
     is_receiving: bool = False
+    raw: str = ""
+    captured_at: float = 0.0
+
+
+@dataclass
+class ScreenLine:
+    """One line of the scanner LCD as returned by ``STS``.
+
+    :attr:`mode` is the per-character display-mode string the firmware
+    sends alongside the text: ``' '`` normal, ``'*'`` reverse video,
+    ``'_'`` underline. It is positionally aligned with :attr:`text`.
+    """
+
+    text: str = ""
+    mode: str = ""
+    large_font: bool = False
+
+
+@dataclass
+class ScreenSnapshot:
+    """Reconstructed LCD screen parsed from a ``STS`` response.
+
+    ``STS`` returns the literal on-device display: a ``DSP_FORM`` digit
+    string (one ``0``/``1`` per line, font size) followed by up to 20
+    ``(line_text, line_mode)`` pairs. This is the same data ProScan uses
+    to mirror the scanner screen.
+    """
+
+    dsp_form: str = ""
+    lines: list = field(default_factory=list)
     raw: str = ""
     captured_at: float = 0.0
 
@@ -474,6 +537,55 @@ class SerialMainDriver:
         ) = parts[:12]
         evt.is_receiving = bool(evt.frq) or bool(evt.name3)
         return evt
+
+    def poll_status(self) -> ScreenSnapshot:
+        """Send ``STS`` and parse the LCD screen into a snapshot.
+
+        ``STS`` is read-only (it is on :data:`SAFE_QUERIES`); it returns
+        the literal scanner display as::
+
+            STS,[DSP_FORM],[L1_CHAR],[L1_MODE],...,[L20_CHAR],[L20_MODE],
+            [RSV]×9
+
+        ``DSP_FORM`` has one ``0``/``1`` digit per displayed line (font
+        size). Each line then contributes a fixed-length text field and
+        a positionally-aligned mode field (``' '`` normal, ``'*'``
+        reverse, ``'_'`` underline).
+        """
+        raw = self.send_query("STS").decode("utf-8", errors="replace").strip()
+        snap = ScreenSnapshot(raw=raw, captured_at=time.time())
+        if not raw.upper().startswith("STS"):
+            return snap
+        return _parse_sts(raw, snap)
+
+
+def _parse_sts(raw: str, snap: ScreenSnapshot) -> ScreenSnapshot:
+    """Best-effort parse of a ``STS`` payload into a :class:`ScreenSnapshot`.
+
+    The firmware does not escape commas inside the line text, so we lean
+    on ``DSP_FORM`` (whose digit count equals the number of lines) to
+    bound how many ``(text, mode)`` pairs to read. When ``DSP_FORM`` is
+    not a clean ``0``/``1`` string we fall back to pairing the remaining
+    fields.
+    """
+    body = raw[4:] if raw.upper().startswith("STS,") else raw
+    fields = body.split(",")
+    if not fields:
+        return snap
+    dsp_form = fields[0].strip()
+    snap.dsp_form = dsp_form
+    is_form = bool(dsp_form) and set(dsp_form) <= {"0", "1"}
+    n_lines = len(dsp_form) if is_form else max(0, (len(fields) - 1) // 2)
+    for i in range(n_lines):
+        char_idx = 1 + i * 2
+        mode_idx = char_idx + 1
+        if char_idx >= len(fields):
+            break
+        text = fields[char_idx]
+        mode = fields[mode_idx] if mode_idx < len(fields) else ""
+        large = is_form and i < len(dsp_form) and dsp_form[i] == "1"
+        snap.lines.append(ScreenLine(text=text, mode=mode, large_font=large))
+    return snap
 
 
 def _extract_gsi_xml_text(raw: str) -> str:

@@ -61,9 +61,7 @@ def test_widget_starts_disabled(qtbot):
     qtbot.addWidget(w)
     assert not w._vol_slider.isEnabled()
     assert not w._sql_slider.isEnabled()
-    for btn in (w._hold_btn, w._scan_btn, w._avoid_btn,
-                w._prev_btn, w._next_btn, w._replay_btn):
-        assert not btn.isEnabled()
+    assert not w._read_state_btn.isEnabled()
 
 
 def test_set_driver_enables_controls(qtbot):
@@ -73,7 +71,7 @@ def test_set_driver_enables_controls(qtbot):
     qtbot.addWidget(w)
     w.set_driver(driver)
     assert w._vol_slider.isEnabled()
-    assert w._hold_btn.isEnabled()
+    assert w._sql_slider.isEnabled()
     # Drop the driver -> controls go back to disabled.
     w.set_driver(None)
     assert not w._vol_slider.isEnabled()
@@ -90,12 +88,11 @@ def test_safe_control_keys_match_driver_whitelist():
         driver.send_key(key, mode)
 
 
-def test_widget_does_not_crash_when_buttons_clicked_without_driver(qtbot):
+def test_widget_does_not_crash_when_committed_without_driver(qtbot):
     w = ScannerControlWidget()
     qtbot.addWidget(w)
-    # All buttons disabled, but force-click via the slot directly to
-    # confirm it no-ops gracefully.
-    w._on_key_clicked("Hold / Resume")
+    # Controls disabled, but force-call the slots directly to confirm
+    # they no-op gracefully without a bound driver.
     w._on_vol_committed()
     w._on_sql_committed()
 
@@ -107,14 +104,13 @@ def test_hold_button_label_resolves_via_safe_control_keys():
     assert mode == "P"
 
 
-def test_vol_sql_and_key_commands_with_driver(qtbot):
+def test_vol_sql_commands_with_driver(qtbot):
     fake = _FakeSerial(
         responses=[
             b"VOL,7\r",
             b"SQL,3\r",
             b"VOL,OK\r",
             b"SQL,OK\r",
-            b"KEY,OK\r",
         ]
     )
     driver = SerialMainDriver(fake)
@@ -135,9 +131,6 @@ def test_vol_sql_and_key_commands_with_driver(qtbot):
     w._on_sql_committed()
     qtbot.waitUntil(lambda: sum("SQL" in m for m in messages) >= 1, timeout=2000)
 
-    w._on_key_clicked("Hold / Resume")
-    qtbot.waitUntil(lambda: any("KEY" in m for m in messages), timeout=2000)
-
 
 def test_read_state_handles_driver_errors(qtbot):
     class _BrokenSerial(_FakeSerial):
@@ -150,16 +143,3 @@ def test_read_state_handles_driver_errors(qtbot):
     w.set_driver(driver)
     qtbot.waitUntil(lambda: w._vol_value.text() == "?", timeout=2000)
     assert w._sql_value.text() == "?"
-
-
-def test_unknown_key_label_emits_status(qtbot):
-    fake = _FakeSerial(responses=[b"VOL,1\r", b"SQL,1\r"])
-    driver = SerialMainDriver(fake)
-    w = ScannerControlWidget()
-    qtbot.addWidget(w)
-    messages: list = []
-    w.statusMessage.connect(messages.append)
-    w.set_driver(driver)
-    w._on_key_clicked("Not A Real Button")
-    qtbot.waitUntil(lambda: bool(messages), timeout=2000)
-    assert any("Unknown key" in m for m in messages)

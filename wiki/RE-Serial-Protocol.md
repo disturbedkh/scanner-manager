@@ -162,6 +162,16 @@ TGW  VLO  SLO  GLT (bare write form)  RST,SET  POF  GW2  GWF  BFH
 These either mutate state or are entry points to programming mode.
 **Never send any of these from any code path - even with `,?`.**
 
+> **GUI exception for `KEY` (deliberate).** The above rule governs the
+> read-only RE *probe* tooling. The desktop app's Live (Serial Mode)
+> dock intentionally drives the **full keypad** via `KEY,<code>,<mode>`
+> so the user can operate the scanner from the PC exactly like the
+> physical buttons (ProScan-style virtual scanner). This is funneled
+> through the validated `SerialMainDriver.send_key` path (whitelisted
+> against the V2.00 key-code sheet, `KEYPAD_KEYS`); the generic
+> read-only `send_query` path still rejects `KEY` outright. Probes
+> remain read-only.
+
 ## SUB port (PID 0x0019) - 13 debug commands + identity
 
 The SUB port is documented by Uniden... not at all. The Uniden

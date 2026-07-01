@@ -9,11 +9,24 @@ hardware in Metacache/Dev/RE/docs/{BT885,SDS100}.md.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from scanner_profiles import detect_from_card, get_active_profile, set_active_profile
+from scanner_profiles.registry import (
+    _read_text_safely,
+    invalidate_detect_from_card_cache,
+)
+
+
+@pytest.fixture(autouse=True)
+def _clear_detect_from_card_cache() -> None:
+    invalidate_detect_from_card_cache()
+    yield
+    invalidate_detect_from_card_cache()
 
 
 @pytest.fixture
@@ -83,6 +96,72 @@ def sds200_card(tmp_path: Path) -> Path:
     return root
 
 
+def test_detect_from_card_memo_skips_second_read(bt885_card: Path) -> None:
+    read_count = 0
+
+    def counting_read(path: Path, max_bytes: int = 65536) -> str:
+        nonlocal read_count
+        read_count += 1
+        return _read_text_safely(path, max_bytes)
+
+    with patch(
+        "scanner_profiles.registry._read_text_safely",
+        side_effect=counting_read,
+    ):
+        profile = detect_from_card(bt885_card)
+        reads_after_first = read_count
+        profile_again = detect_from_card(bt885_card)
+
+    assert profile is not None
+    assert profile.id == "uniden_bt885"
+    assert profile_again is profile
+    assert reads_after_first > 0
+    assert read_count == reads_after_first
+
+
+def test_detect_from_card_cache_invalidates_on_scanner_inf_mtime_change(
+    bt885_card: Path,
+) -> None:
+    read_count = 0
+
+    def counting_read(path: Path, max_bytes: int = 65536) -> str:
+        nonlocal read_count
+        read_count += 1
+        return _read_text_safely(path, max_bytes)
+
+    inf_path = bt885_card / "BCDx36HP" / "scanner.inf"
+    with patch(
+        "scanner_profiles.registry._read_text_safely",
+        side_effect=counting_read,
+    ):
+        detect_from_card(bt885_card)
+        reads_after_first = read_count
+        os.utime(inf_path, None)
+        detect_from_card(bt885_card)
+
+    assert read_count > reads_after_first
+
+
+def test_invalidate_detect_from_card_cache_forces_reread(bt885_card: Path) -> None:
+    read_count = 0
+
+    def counting_read(path: Path, max_bytes: int = 65536) -> str:
+        nonlocal read_count
+        read_count += 1
+        return _read_text_safely(path, max_bytes)
+
+    with patch(
+        "scanner_profiles.registry._read_text_safely",
+        side_effect=counting_read,
+    ):
+        detect_from_card(bt885_card)
+        reads_after_first = read_count
+        invalidate_detect_from_card_cache()
+        detect_from_card(bt885_card)
+
+    assert read_count > reads_after_first
+
+
 def test_detect_bt885_from_scanner_inf(bt885_card: Path) -> None:
     profile = detect_from_card(bt885_card)
     assert profile is not None
@@ -143,6 +222,28 @@ def test_detect_handles_missing_path_gracefully(tmp_path: Path) -> None:
     nonexistent = tmp_path / "does_not_exist"
     assert detect_from_card(nonexistent) is None
     assert detect_from_card(None) is None
+
+
+def test_detect_from_card_memo_caches_none(tmp_path: Path) -> None:
+    """Unknown cards memoize None so empty roots are not re-scanned."""
+    root = tmp_path / "empty_card"
+    root.mkdir()
+
+    read_count = 0
+
+    def counting_read(path: Path, max_bytes: int = 65536) -> str:
+        nonlocal read_count
+        read_count += 1
+        return _read_text_safely(path, max_bytes)
+
+    with patch(
+        "scanner_profiles.registry._read_text_safely",
+        side_effect=counting_read,
+    ):
+        assert detect_from_card(root) is None
+        first_count = read_count
+        assert detect_from_card(root) is None
+        assert read_count == first_count
 
 
 def test_active_profile_is_reassignable() -> None:

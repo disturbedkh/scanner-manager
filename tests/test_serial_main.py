@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Any, List, Optional, cast
 
 import pytest
 
 from scanner_drivers.serial_main import (
     FORBIDDEN_HEADS,
+    KEYPAD_KEYS,
     SAFE_CONTROL_KEYS,
     SAFE_KEY_NAMES,
     SAFE_QUERIES,
@@ -16,6 +17,7 @@ from scanner_drivers.serial_main import (
     GlgEvent,
     GsiSnapshot,
     MainDriverError,
+    ScreenSnapshot,
     SerialMainDriver,
     is_command_allowed,
 )
@@ -289,6 +291,35 @@ def test_poll_glg_handles_idle_response():
     assert evt.is_receiving is False
 
 
+def test_poll_status_parses_screen_lines():
+    # DSP_FORM "11" -> 2 lines; each line has a char field + a mode field.
+    raw = b"STS,11,Police Detectives,**************** ,852.4125 MHz,                \r"
+    driver = SerialMainDriver(FakeSerial(responses=[raw]))
+    snap = driver.poll_status()
+    assert isinstance(snap, ScreenSnapshot)
+    assert snap.dsp_form == "11"
+    assert len(snap.lines) == 2
+    assert snap.lines[0].text == "Police Detectives"
+    assert snap.lines[0].mode.startswith("*")
+    assert snap.lines[0].large_font is True
+    assert snap.lines[1].text == "852.4125 MHz"
+
+
+def test_poll_status_handles_non_sts_response():
+    driver = SerialMainDriver(FakeSerial(responses=[b"\r"]))
+    snap = driver.poll_status()
+    assert isinstance(snap, ScreenSnapshot)
+    assert snap.lines == []
+
+
+def test_poll_status_fallback_when_dsp_form_unexpected():
+    # No clean 0/1 DSP_FORM -> pair remaining fields best-effort.
+    raw = b"STS,X,Line A,  ,Line B,  \r"
+    driver = SerialMainDriver(FakeSerial(responses=[raw]))
+    snap = driver.poll_status()
+    assert [ln.text for ln in snap.lines] == ["Line A", "Line B"]
+
+
 def test_close_marks_port_closed():
     fake = FakeSerial()
     driver = SerialMainDriver(fake)
@@ -326,7 +357,7 @@ def test_set_volume_rejects_out_of_range():
     with pytest.raises(MainDriverError):
         driver.set_volume(hi + 1)
     with pytest.raises(MainDriverError):
-        driver.set_volume("LOUD")  # type: ignore[arg-type]
+        driver.set_volume(cast(Any, "LOUD"))
 
 
 def test_set_squelch_writes_sql_command_and_returns_true_on_ok():
@@ -369,9 +400,19 @@ def test_send_key_accepts_safe_navigation_keys():
         assert fake.writes == [f"KEY,{key},{mode}\r".encode("ascii")]
 
 
+def test_send_key_accepts_full_keypad():
+    """Every documented keypad code must round-trip through send_key."""
+    for code in KEYPAD_KEYS:
+        fake = FakeSerial(responses=[b"KEY,OK\r"])
+        driver = SerialMainDriver(fake)
+        assert driver.send_key(code) is True, f"{code} should be accepted"
+        assert fake.writes == [f"KEY,{code},P\r".encode("ascii")]
+
+
 def test_send_key_refuses_keys_outside_whitelist():
     driver = SerialMainDriver(FakeSerial())
-    for unsafe in ("MENU", "FUNC", "F", "1", "RECORD"):
+    # Multi-char mnemonics are not valid single-key codes.
+    for unsafe in ("MENU", "FUNC", "RECORD", "PWR", "WIPE"):
         with pytest.raises(MainDriverError) as excinfo:
             driver.send_key(unsafe)
         assert "SAFE_KEY_NAMES" in str(excinfo.value)
@@ -383,10 +424,21 @@ def test_send_key_refuses_invalid_press_mode():
         driver.send_key("H", "X")
 
 
-def test_safe_key_names_excludes_dangerous_keys():
-    """Sanity check on the whitelist itself."""
-    for unsafe in ("MENU", "FUNC", "F", "PWR", "RECORD", "1", "0"):
-        assert unsafe not in SAFE_KEY_NAMES
+def test_safe_key_names_covers_full_keypad():
+    """The whitelist must contain the whole documented keypad."""
+    assert set(KEYPAD_KEYS).issubset(SAFE_KEY_NAMES)
+    # Multi-char mnemonics are never valid key codes.
+    for non_code in ("MENU", "FUNC", "RECORD", "PWR"):
+        assert non_code not in SAFE_KEY_NAMES
+
+
+def test_send_query_still_rejects_key_command():
+    """Even with the full keypad wired, the generic read-only send_query
+    path must never emit a KEY (the dedicated send_key is the only door).
+    """
+    driver = SerialMainDriver(FakeSerial(responses=[b"KEY,OK\r"]))
+    with pytest.raises(MainDriverError):
+        driver.send_query("KEY,M,P")
 
 
 def test_control_methods_do_not_route_through_send_query():

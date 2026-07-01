@@ -38,6 +38,13 @@ from PySide6.QtWidgets import (
 from scanner_profiles import ScannerProfile
 
 from .display_helpers import entry_passes_button_filter, entry_row_color
+from .hpdb_cache import CachedHpdb, get_hpdb_session_cache
+from .location_filter import (
+    LocationFilterState,
+    group_coverage_info,
+    nearest_distance_miles,
+    system_matches_location,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +71,7 @@ class HpdbTreeWidget(QWidget):
         self._search_text: str = ""
         self._active_buttons: Optional[Set[str]] = None
         self._include_others: bool = True
+        self._location_filter: Optional[LocationFilterState] = None
 
         self._model = QStandardItemModel()
         self._model.setHorizontalHeaderLabels(list(self.COLUMNS))
@@ -102,15 +110,29 @@ class HpdbTreeWidget(QWidget):
             self._active_buttons = None
         self._apply_visibility_filters()
 
-    def set_button_filter(
-        self, selected_buttons: Set[str], *, include_others: bool = True
-    ) -> None:
+    def set_button_filter(self, selected_buttons: Set[str]) -> None:
         """Hide entries that would not play with the given BT885 buttons."""
         if self._profile is None or not self._profile.uses_hardware_button_semantics:
             return
         self._active_buttons = set(selected_buttons)
-        self._include_others = include_others
         self._apply_visibility_filters()
+
+    def set_include_others(self, include: bool) -> None:
+        """Toggle whether non-button service types remain visible."""
+        self._include_others = include
+        self._apply_visibility_filters()
+
+    def set_location_filter(self, state: Optional[LocationFilterState]) -> None:
+        """Apply ZIP/GPS location filter (systems, groups, distance labels)."""
+        self._location_filter = state
+        self._update_location_labels()
+        self._apply_visibility_filters()
+
+    def hpd_config(self) -> Optional[Any]:
+        return self._hpd_config
+
+    def sd_root(self) -> Optional[Path]:
+        return self._sd_root
 
     def reemit_current_selection(self) -> None:
         """Re-fire :attr:`entrySelected` for the current row (profile swap)."""
@@ -125,68 +147,118 @@ class HpdbTreeWidget(QWidget):
     def has_unsaved_changes(self) -> bool:
         return any(getattr(f, "has_changes", False) for f in self._hpd_files.values())
 
-    def try_load_from_card(self, sd_path: str) -> bool:
+    def try_load_from_card(self, sd_path: str, device_id: str = "") -> bool:
         """Load every state HPD under ``sd_path`` into the tree.
 
         Uses :class:`scanner_manager.HpdConfig` to enumerate state
         files via hpdb.cfg, then loads each ``s_*.hpd`` via
         :class:`scanner_manager.HpdFile`. Returns True if at least
         one file loaded.
+
+        When ``device_id`` is supplied, a session cache keyed by
+        ``(device_id, hpdb_dir, mtime fingerprint)`` can skip disk
+        parse and Qt model rebuild on repeat loads.
         """
         from legacy_tk.scanner_manager import HpdConfig, HpdFile
 
-        self._hpd_files.clear()
-        self._hpd_config = None
-        self._sd_root = Path(sd_path) if sd_path else None
-        self._model.removeRows(0, self._model.rowCount())
+        self._reset_load_state(sd_path)
 
         if not sd_path:
             return False
 
-        root = Path(sd_path)
-        candidates = (
-            root / "BCDx36HP" / "HPDB",
-            root / "HPDB",
-            root,
-        )
-        hpdb_dir = next((c for c in candidates if c.exists() and c.is_dir()), None)
+        hpdb_dir = self._resolve_hpdb_dir(Path(sd_path))
         if hpdb_dir is None:
             self._show_message_row(
                 f"No HPDB folder found under {sd_path!r}. Point the device at the SD card root."
             )
             return False
 
-        cfg_path = hpdb_dir / "hpdb.cfg"
-        if cfg_path.exists():
-            cfg = HpdConfig()
-            try:
-                cfg.load(str(cfg_path))
-                self._hpd_config = cfg
-            except Exception as exc:
-                logger.warning("Failed to parse hpdb.cfg: %s", exc)
+        cached = get_hpdb_session_cache().get(device_id, hpdb_dir)
+        if cached is not None:
+            return self._restore_from_cache(cached)
 
-        # Enumerate state HPDs the same way the Tk app does.
-        if self._hpd_config and self._hpd_config.state_files:
-            ordered_state_ids = sorted(
-                self._hpd_config.state_files.keys(),
-                key=lambda sid: self._hpd_config.get_state_name(sid).lower(),
-            )
-            sources = [
-                (sid, self._hpd_config.state_files[sid]) for sid in ordered_state_ids
-            ]
-        else:
-            sources = [
-                (i, str(p))
-                for i, p in enumerate(sorted(hpdb_dir.glob("s_*.hpd")))
-            ]
-
+        cfg = self._load_hpdb_config(hpdb_dir, HpdConfig)
+        sources = self._enumerate_hpd_sources(hpdb_dir, cfg)
         if not sources:
             self._show_message_row(f"No s_*.hpd files in {hpdb_dir}")
             return False
 
+        loaded = self._load_hpd_sources(sources, HpdFile)
+        if loaded == 0:
+            self._show_message_row(f"No HPDs could be parsed under {hpdb_dir}")
+            return False
+
+        get_hpdb_session_cache().put(
+            device_id,
+            hpdb_dir,
+            self._hpd_files,
+            self._hpd_config,
+            self._model,
+        )
+        self._view.collapseAll()
+        self._apply_visibility_filters()
+        return True
+
+    def invalidate_cache(
+        self,
+        device_id: Optional[str] = None,
+        hpdb_dir: Optional[Path] = None,
+    ) -> None:
+        """Drop cached HPDB data (Wave 2: after save/reload)."""
+        get_hpdb_session_cache().invalidate(device_id=device_id, hpdb_dir=hpdb_dir)
+
+    def _reset_load_state(self, sd_path: str) -> None:
+        self._hpd_files.clear()
+        self._hpd_config = None
+        self._sd_root = Path(sd_path) if sd_path else None
+        self._model.removeRows(0, self._model.rowCount())
+
+    def _restore_from_cache(self, cached: CachedHpdb) -> bool:
+        self._hpd_files = cached.hpd_files
+        self._hpd_config = cached.hpd_config
+        self._model = cached.model
+        self._view.setModel(self._model)
+        self._view.collapseAll()
+        self._apply_visibility_filters()
+        return True
+
+    def _resolve_hpdb_dir(self, root: Path) -> Optional[Path]:
+        candidates = (
+            root / "BCDx36HP" / "HPDB",
+            root / "HPDB",
+            root,
+        )
+        return next((c for c in candidates if c.exists() and c.is_dir()), None)
+
+    def _load_hpdb_config(self, hpdb_dir: Path, hpd_config_cls) -> Optional[Any]:
+        cfg_path = hpdb_dir / "hpdb.cfg"
+        if not cfg_path.exists():
+            return None
+        cfg = hpd_config_cls()
+        try:
+            cfg.load(str(cfg_path))
+            self._hpd_config = cfg
+            return cfg
+        except Exception as exc:
+            logger.warning("Failed to parse hpdb.cfg: %s", exc)
+            return None
+
+    def _enumerate_hpd_sources(
+        self, hpdb_dir: Path, cfg: Optional[Any]
+    ) -> List[tuple]:
+        if cfg and cfg.state_files:
+            ordered_state_ids = sorted(
+                cfg.state_files.keys(),
+                key=lambda sid: cfg.get_state_name(sid).lower(),
+            )
+            return [(sid, cfg.state_files[sid]) for sid in ordered_state_ids]
+        return [(i, str(p)) for i, p in enumerate(sorted(hpdb_dir.glob("s_*.hpd")))]
+
+    def _load_hpd_sources(self, sources: List[tuple], hpd_file_cls) -> int:
+        loaded = 0
         for state_id, hpd_path in sources:
             try:
-                hpd = HpdFile()
+                hpd = hpd_file_cls()
                 hpd.load(hpd_path)
             except Exception as exc:
                 logger.warning("Failed to parse %s: %s", hpd_path, exc)
@@ -194,14 +266,8 @@ class HpdbTreeWidget(QWidget):
             self._hpd_files[state_id] = hpd
             label = self._state_label(state_id, Path(hpd_path).name)
             self._append_state_row(state_id, label, hpd_path, hpd)
-
-        if not self._hpd_files:
-            self._show_message_row(f"No HPDs could be parsed under {hpdb_dir}")
-            return False
-
-        self._view.collapseAll()
-        self._apply_visibility_filters()
-        return True
+            loaded += 1
+        return loaded
 
     # ------------------------------------------------------------------
     # Build the tree
@@ -239,8 +305,10 @@ class HpdbTreeWidget(QWidget):
 
     def _build_system_row(self, hpd, sys_node) -> List[QStandardItem]:
         kind_label = sys_node.system_type or "?"
+        sys_prefix = "CONV" if sys_node.system_type == "Conventional" else "TRUNK"
+        base_text = f"[{kind_label}] {sys_node.name}"
         sys_items = self._make_row(
-            f"[{kind_label}] {sys_node.name}",
+            base_text,
             "",
             "",
             "",
@@ -252,6 +320,8 @@ class HpdbTreeWidget(QWidget):
                 "kind": "system",
                 "system": sys_node,
                 "hpd_file": hpd,
+                "base_label": base_text,
+                "sys_prefix": sys_prefix,
             },
             Qt.UserRole,
         )
@@ -266,8 +336,9 @@ class HpdbTreeWidget(QWidget):
         return sys_items
 
     def _build_group_row(self, hpd, sys_node, group) -> List[QStandardItem]:
+        base_text = group.name or "(unnamed group)"
         items = self._make_row(
-            group.name or "(unnamed group)",
+            base_text,
             "",
             "",
             "",
@@ -279,6 +350,7 @@ class HpdbTreeWidget(QWidget):
                 "system": sys_node,
                 "group": group,
                 "hpd_file": hpd,
+                "base_label": base_text,
             },
             Qt.UserRole,
         )
@@ -404,21 +476,73 @@ class HpdbTreeWidget(QWidget):
         self._apply_visibility_filters()
 
     def _apply_visibility_filters(self) -> None:
+        root_idx = self._model.invisibleRootItem().index()
         for state_row in range(self._model.rowCount()):
             state_item = self._model.item(state_row)
             if state_item is not None:
-                self._apply_visibility_row(state_item)
+                visible = self._apply_visibility_row(state_item)
+                self._view.setRowHidden(state_row, root_idx, not visible)
 
     def _apply_visibility_row(self, item: QStandardItem) -> bool:
         payload = item.data(Qt.UserRole)
-        if isinstance(payload, dict) and payload.get("kind") == "entry":
-            entry = payload["entry"]
-            mode = entry.record.get_field(6, "")
-            visible = self._entry_visible(entry, mode)
-            parent = item.parent() or self._model.invisibleRootItem()
-            self._view.setRowHidden(item.row(), parent.index(), not visible)
-            return visible
+        kind = payload.get("kind") if isinstance(payload, dict) else None
+        apply_location = self._location_filter_active()
 
+        entry_result = self._visibility_entry_item(item, kind, payload)
+        if entry_result is not None:
+            return entry_result
+
+        file_result = self._visibility_file_item(kind, payload, apply_location)
+        if file_result is False:
+            return False
+
+        if self._visibility_leaf_blocked(kind, payload, apply_location):
+            return False
+
+        any_child_visible = self._apply_visibility_children(item)
+
+        if kind == "system" and apply_location and not self._system_has_visible_group(
+            item
+        ):
+            return False
+
+        if not self._search_text:
+            return any_child_visible or not item.hasChildren()
+
+        return self._row_matches_search(item, any_child_visible)
+
+    def _visibility_entry_item(
+        self, item: QStandardItem, kind: Optional[str], payload: Any
+    ) -> Optional[bool]:
+        if kind != "entry" or not isinstance(payload, dict):
+            return None
+        entry = payload["entry"]
+        mode = entry.record.get_field(6, "")
+        visible = self._entry_visible(entry, mode)
+        parent = item.parent() or self._model.invisibleRootItem()
+        self._view.setRowHidden(item.row(), parent.index(), not visible)
+        return visible
+
+    def _visibility_file_item(
+        self, kind: Optional[str], payload: Any, apply_location: bool
+    ) -> Optional[bool]:
+        if kind != "file" or not apply_location or self._location_filter is None:
+            return None
+        filter_state_id = self._location_filter.state_id
+        if filter_state_id is not None and payload.get("state_id") != filter_state_id:
+            return False
+        return None
+
+    def _visibility_leaf_blocked(
+        self, kind: Optional[str], payload: Any, apply_location: bool
+    ) -> bool:
+        if kind == "system" and self._location_filter_blocks_system(payload):
+            return True
+        if kind == "group" and self._location_filter_blocks_group(payload):
+            return True
+        return kind == "site" and apply_location
+
+    def _apply_visibility_children(self, item: QStandardItem) -> bool:
         any_child_visible = False
         for child_row in range(item.rowCount()):
             child = item.child(child_row, 0)
@@ -428,34 +552,129 @@ class HpdbTreeWidget(QWidget):
             self._view.setRowHidden(child_row, item.index(), not child_visible)
             if child_visible:
                 any_child_visible = True
+        return any_child_visible
 
-        if not self._search_text:
-            return any_child_visible or not item.hasChildren()
-
+    def _row_matches_search(self, item: QStandardItem, any_child_visible: bool) -> bool:
         text = (item.text() or "").lower()
         ident_item = self._model.itemFromIndex(item.index().siblingAtColumn(1))
         if ident_item is not None:
             text = text + " " + (ident_item.text() or "").lower()
-        self_match = self._search_text in text
-        return self_match or any_child_visible
+        return self._search_text in text or any_child_visible
+
+    def _system_has_visible_group(self, system_item: QStandardItem) -> bool:
+        for child_row in range(system_item.rowCount()):
+            child = system_item.child(child_row, 0)
+            if child is None:
+                continue
+            child_payload = child.data(Qt.UserRole)
+            if not isinstance(child_payload, dict) or child_payload.get("kind") != "group":
+                continue
+            if not self._view.isRowHidden(child_row, system_item.index()):
+                return True
+        return False
+
+    def _location_filter_active(self) -> bool:
+        state = self._location_filter
+        if state is None or not state.enabled:
+            return False
+        return state.county_id is not None or state.coords is not None
+
+    def _location_filter_blocks_system(self, payload: dict) -> bool:
+        if not self._location_filter_active():
+            return False
+        sys_node = payload.get("system")
+        if sys_node is None or self._location_filter is None:
+            return False
+        return not system_matches_location(sys_node, self._location_filter)
+
+    def _location_filter_blocks_group(self, payload: dict) -> bool:
+        if not self._location_filter_active():
+            return False
+        state = self._location_filter
+        if state is None or state.coords is None:
+            return False
+        group = payload.get("group")
+        if group is None:
+            return False
+        tolerance = max(0.0, state.tolerance_mi)
+        info = group_coverage_info(group, state.coords, tolerance)
+        return info["status"] == "out_range"
+
+    def _update_location_labels(self) -> None:
+        state = self._location_filter
+        active = self._location_filter_active()
+        for state_row in range(self._model.rowCount()):
+            file_item = self._model.item(state_row, 0)
+            if file_item is None:
+                continue
+            for sys_row in range(file_item.rowCount()):
+                sys_item = file_item.child(sys_row, 0)
+                if sys_item is None:
+                    continue
+                self._refresh_system_label(sys_item, state, active)
+                for grp_row in range(sys_item.rowCount()):
+                    grp_item = sys_item.child(grp_row, 0)
+                    if grp_item is None:
+                        continue
+                    grp_payload = grp_item.data(Qt.UserRole)
+                    if not isinstance(grp_payload, dict) or grp_payload.get("kind") != "group":
+                        continue
+                    self._refresh_group_label(grp_item, grp_payload, state, active)
+
+    def _refresh_system_label(
+        self,
+        sys_item: QStandardItem,
+        state: Optional[LocationFilterState],
+        active: bool,
+    ) -> None:
+        payload = sys_item.data(Qt.UserRole)
+        if not isinstance(payload, dict):
+            return
+        base = payload.get("base_label") or sys_item.text()
+        if not active or state is None or state.coords is None:
+            sys_item.setText(base)
+            return
+        sys_node = payload.get("system")
+        if sys_node is None:
+            sys_item.setText(base)
+            return
+        distance = nearest_distance_miles(sys_node, state.coords[0], state.coords[1])
+        if distance is not None:
+            sys_item.setText(f"{base} ({distance:.1f} mi)")
+        else:
+            sys_item.setText(base)
+
+    def _refresh_group_label(
+        self,
+        grp_item: QStandardItem,
+        payload: dict,
+        state: Optional[LocationFilterState],
+        active: bool,
+    ) -> None:
+        base = payload.get("base_label") or grp_item.text()
+        if not active or state is None or state.coords is None:
+            grp_item.setText(base)
+            return
+        group = payload.get("group")
+        if group is None:
+            grp_item.setText(base)
+            return
+        tolerance = max(0.0, state.tolerance_mi)
+        info = group_coverage_info(group, state.coords, tolerance)
+        if info["has_geo"] and info.get("distance") is not None:
+            if info["range_miles"] is not None:
+                grp_item.setText(
+                    f"{base}  "
+                    f"[{info['distance']:.1f} mi / {info['range_miles']:.1f} mi range]"
+                )
+            else:
+                grp_item.setText(f"{base}  [{info['distance']:.1f} mi]")
+        else:
+            grp_item.setText(base)
 
     def _entry_visible(self, entry, mode: str) -> bool:
-        if self._search_text:
-            blob = " ".join(
-                [
-                    entry.name or "",
-                    entry.record.get_field(5, "") or "",
-                    mode or "",
-                    str(entry.service_type or ""),
-                ]
-            ).lower()
-            if self._search_text not in blob:
-                if self._profile is not None:
-                    label = self._profile.service_label(entry.service_type) or ""
-                    if self._search_text not in label.lower():
-                        return False
-                else:
-                    return False
+        if self._search_text and not self._entry_matches_search(entry, mode):
+            return False
         if (
             self._active_buttons is not None
             and self._profile is not None
@@ -468,6 +687,22 @@ class HpdbTreeWidget(QWidget):
                 include_others=self._include_others,
             )
         return True
+
+    def _entry_matches_search(self, entry, mode: str) -> bool:
+        blob = " ".join(
+            [
+                entry.name or "",
+                entry.record.get_field(5, "") or "",
+                mode or "",
+                str(entry.service_type or ""),
+            ]
+        ).lower()
+        if self._search_text in blob:
+            return True
+        if self._profile is None:
+            return False
+        label = self._profile.service_label(entry.service_type) or ""
+        return self._search_text in label.lower()
 
     def _restore_all(self) -> None:
         self._apply_visibility_filters()

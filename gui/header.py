@@ -258,6 +258,11 @@ class HeaderBar(QWidget):
         self._status_label.setStyleSheet("color: #555;")
         layout.addWidget(self._status_label)
 
+        self._source_label = QLabel("")
+        self._source_label.setStyleSheet("color: #666; font-size: 11px;")
+        self._source_label.setVisible(False)
+        layout.addWidget(self._source_label)
+
         layout.addStretch(1)
 
         self._fw_label = QLabel(_FW_PLACEHOLDER)
@@ -369,6 +374,28 @@ class HeaderBar(QWidget):
             self._fw_label.setText(f"FW: {main_version}")
         else:
             self._fw_label.setText(f"FW: Sub {sub_version}")
+
+    def set_data_source_context(
+        self,
+        *,
+        workspace_name: Optional[str] = None,
+        devices_path: Optional[str] = None,
+    ) -> None:
+        """Show whether a named workspace or the default device list is active."""
+        if workspace_name:
+            self._source_label.setText(f"Workspace: {workspace_name}")
+            self._source_label.setToolTip(
+                devices_path or "Named workspace (devices.json bundle)"
+            )
+        else:
+            path = devices_path or str(self._dm.path)
+            self._source_label.setText("Device list: default")
+            self._source_label.setToolTip(path)
+        self._source_label.setVisible(True)
+
+    def set_device_manager(self, device_manager: DeviceManager) -> None:
+        """Replace the backing manifest after a workspace switch."""
+        self._dm = device_manager
 
     # ------------------------------------------------------------------
     # Internals
