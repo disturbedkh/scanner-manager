@@ -20,6 +20,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from scanner_drivers.serial_main import (
     GlgEvent,
     GsiSnapshot,
+    ScreenSnapshot,
     SerialMainDriver,
 )
 from scanner_drivers.serial_sub import IqFrame, SerialSubDriver, WaterfallFrame
@@ -28,10 +29,11 @@ logger = logging.getLogger(__name__)
 
 
 class MainPollerController(QObject):
-    """Polls GSI + GLG on the MAIN port at fixed cadences."""
+    """Polls GSI + GLG + STS on the MAIN port at fixed cadences."""
 
     gsiUpdated = Signal(GsiSnapshot)
     glgUpdated = Signal(GlgEvent)
+    stsUpdated = Signal(ScreenSnapshot)
     failed = Signal(str)
 
     def __init__(
@@ -39,6 +41,7 @@ class MainPollerController(QObject):
         driver: SerialMainDriver,
         gsi_interval_ms: int = 200,   # 5 Hz
         glg_interval_ms: int = 250,   # 4 Hz
+        sts_interval_ms: int = 333,   # 3 Hz - screen mirror cadence
         parent: Optional[QObject] = None,
     ) -> None:
         super().__init__(parent)
@@ -52,6 +55,10 @@ class MainPollerController(QObject):
         self._glg_timer.setInterval(glg_interval_ms)
         self._glg_timer.timeout.connect(self._poll_glg)
 
+        self._sts_timer = QTimer(self)
+        self._sts_timer.setInterval(sts_interval_ms)
+        self._sts_timer.timeout.connect(self._poll_sts)
+
     @property
     def driver(self) -> SerialMainDriver:
         """Public read-only accessor used by the diagnostic-capture
@@ -62,10 +69,12 @@ class MainPollerController(QObject):
     def start(self) -> None:
         self._gsi_timer.start()
         self._glg_timer.start()
+        self._sts_timer.start()
 
     def stop(self) -> None:
         self._gsi_timer.stop()
         self._glg_timer.stop()
+        self._sts_timer.stop()
 
     def close(self) -> None:
         self.stop()
@@ -93,6 +102,16 @@ class MainPollerController(QObject):
             self.stop()
             return
         self.glgUpdated.emit(evt)
+
+    def _poll_sts(self) -> None:
+        try:
+            snap = self._driver.poll_status()
+        except Exception as exc:
+            logger.exception("STS poll failed")
+            self.failed.emit(f"STS: {exc}")
+            self.stop()
+            return
+        self.stsUpdated.emit(snap)
 
 
 class SubPollerController(QObject):

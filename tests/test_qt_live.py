@@ -8,6 +8,7 @@ covered by ``test_serial_main`` / ``test_serial_sub``.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -51,6 +52,47 @@ def _fake_port(device, vid, pid, sn="ABC") -> DetectedPort:
         pid=pid,
         serial_number=sn,
     )
+
+
+class _MinimalFakePort:
+    """Serial port stub for live-driver tests; I/O methods are intentional no-ops."""
+
+    in_waiting = 0
+
+    def write(self, _data: bytes) -> int:
+        return len(_data)
+
+    def flush(self) -> None:
+        return None  # stub: no hardware buffer
+
+    def reset_input_buffer(self) -> None:
+        return None  # stub
+
+    def close(self) -> None:
+        return None  # stub
+
+    def read(self, _n: int) -> bytes:
+        return b""
+
+
+class _PayloadFakePort(_MinimalFakePort):
+    def __init__(self, payload: bytes) -> None:
+        self._buf = payload + b"\r"
+        self.in_waiting = len(self._buf)
+
+    def read(self, n: int) -> bytes:
+        chunk = self._buf[:n]
+        self._buf = self._buf[n:]
+        self.in_waiting = len(self._buf)
+        return chunk
+
+
+def _raise_gsi_boom() -> None:
+    raise RuntimeError("gsi boom")
+
+
+def _raise_iq_fail() -> None:
+    raise RuntimeError("iq fail")
 
 
 def test_live_dock_hides_when_profile_unsupported(qtbot) -> None:
@@ -318,26 +360,6 @@ def test_gsi_mirror_widget_renders_real_sds_snapshot(qtbot) -> None:
     from gui.live.widgets import GsiMirrorWidget
     from scanner_drivers.serial_main import SerialMainDriver
 
-    class _FakePort:
-        def __init__(self, payload: bytes) -> None:
-            self._buf = payload + b"\r"
-            self.in_waiting = len(self._buf)
-
-        def write(self, _data: bytes) -> int:
-            return len(_data)
-
-        def flush(self) -> None:
-            pass
-
-        def reset_input_buffer(self) -> None:
-            pass
-
-        def read(self, n: int) -> bytes:
-            chunk = self._buf[:n]
-            self._buf = self._buf[n:]
-            self.in_waiting = len(self._buf)
-            return chunk
-
     payload = (
         b"<ScannerInfo Mode=\"Trunk Scan\">"
         b"<MonitorList Name=\"Home\"/>"
@@ -349,7 +371,7 @@ def test_gsi_mirror_widget_renders_real_sds_snapshot(qtbot) -> None:
         b"<Property VOL=\"7\" SQL=\"3\" Sig=\"5\" Mute=\"UnMute\" Rssi=\"-72\"/>"
         b"</ScannerInfo>"
     )
-    driver = SerialMainDriver(_FakePort(payload))
+    driver = SerialMainDriver(_PayloadFakePort(payload))
     snap = driver.poll_gsi()
     widget = GsiMirrorWidget()
     qtbot.addWidget(widget)
@@ -437,6 +459,118 @@ def test_iq_waterfall_widget_handles_missing_center_frequency(qtbot) -> None:
     assert widget._image_item is not None
 
 
+def _iq_tone(amplitude: float, n: int = 256, f0: float = 1000.0,
+             fs: float = 16_000.0):
+    """Build parallel I/Q lists for a single complex tone."""
+    import math
+
+    i = [int(amplitude * math.cos(2 * math.pi * f0 * k / fs)) for k in range(n)]
+    q = [int(amplitude * math.sin(2 * math.pi * f0 * k / fs)) for k in range(n)]
+    return i, q
+
+
+def test_iq_waterfall_resets_state_on_source_change(qtbot) -> None:
+    """Switching spectrum source (16 kHz <-> 960 kHz) must drop the
+    accumulated peak-hold / history / locked FFT size so a stronger
+    wide session's peak-hold trace can't 'stick' on the narrow view.
+    """
+    pytest.importorskip("pyqtgraph")
+    np = pytest.importorskip("numpy")
+
+    from gui.live.widgets import HAS_PYQTGRAPH, IqWaterfallWidget
+    from scanner_drivers.serial_sub import IqFrame
+
+    if not HAS_PYQTGRAPH:
+        pytest.skip("pyqtgraph not available at runtime")
+
+    widget = IqWaterfallWidget(history_rows=4, sample_rate_hz=16_000.0)
+    qtbot.addWidget(widget)
+    widget.set_center_frequency(852_125_000.0)
+
+    # Build a strong peak on the narrow source.
+    i, q = _iq_tone(15000.0)
+    widget.add_frame(IqFrame(i_samples=i, q_samples=q, source="d"))
+    widget.add_frame(IqFrame(i_samples=i, q_samples=q, source="d"))
+    strong_peak = float(np.asarray(widget._peak_hold).max())
+    assert widget._fft_size is not None
+    assert len(widget._frames) > 0
+
+    # Simulate the source switch (live_dock calls set_sample_rate()).
+    widget.set_sample_rate(960_000.0)
+    assert widget._peak_hold is None
+    assert widget._peak_times is None
+    assert widget._fft_size is None
+    assert len(widget._frames) == 0
+
+    # Switch back to narrow and feed a much weaker signal; the rebuilt
+    # peak-hold must reflect the weak frames, not the stale strong one.
+    widget.set_sample_rate(16_000.0)
+    wi, wq = _iq_tone(150.0)
+    widget.add_frame(IqFrame(i_samples=wi, q_samples=wq, source="d"))
+    widget.add_frame(IqFrame(i_samples=wi, q_samples=wq, source="d"))
+    weak_peak = float(np.asarray(widget._peak_hold).max())
+    assert weak_peak < strong_peak - 5.0, (
+        f"peak-hold stuck at stale level: weak={weak_peak} strong={strong_peak}"
+    )
+
+
+def test_iq_waterfall_marker_tracks_center_frequency(qtbot) -> None:
+    """The green center-frequency Marker line should appear at the tuned
+    VC frequency (MHz) once a centre is known."""
+    pytest.importorskip("pyqtgraph")
+    pytest.importorskip("numpy")
+
+    from gui.live.widgets import HAS_PYQTGRAPH, IqWaterfallWidget
+
+    if not HAS_PYQTGRAPH:
+        pytest.skip("pyqtgraph not available at runtime")
+
+    widget = IqWaterfallWidget(history_rows=4, sample_rate_hz=16_000.0)
+    qtbot.addWidget(widget)
+    # Hidden before a centre frequency is known.
+    assert not widget._marker_spectrum.isVisible()
+
+    widget.set_center_frequency(852_125_000.0)
+    assert widget._marker_spectrum.isVisible()
+    assert widget._marker_waterfall.isVisible()
+    assert abs(float(widget._marker_spectrum.value()) - 852.125) < 1e-6
+    assert abs(float(widget._marker_waterfall.value()) - 852.125) < 1e-6
+
+
+def test_iq_waterfall_max_hold_time_expires_old_peak(qtbot) -> None:
+    """A finite Max-Hold-Time must let a peak decay back toward the live
+    spectrum once it ages past the window."""
+    import time
+
+    pytest.importorskip("pyqtgraph")
+    np = pytest.importorskip("numpy")
+
+    from gui.live.widgets import HAS_PYQTGRAPH, IqWaterfallWidget
+    from scanner_drivers.serial_sub import IqFrame
+
+    if not HAS_PYQTGRAPH:
+        pytest.skip("pyqtgraph not available at runtime")
+
+    widget = IqWaterfallWidget(history_rows=8, sample_rate_hz=16_000.0)
+    qtbot.addWidget(widget)
+    widget.set_center_frequency(852_125_000.0)
+    widget.set_max_hold_time(0.05)
+
+    # Strong frame seeds a high peak.
+    i, q = _iq_tone(15000.0)
+    widget.add_frame(IqFrame(i_samples=i, q_samples=q, source="d"))
+    strong_peak = float(np.asarray(widget._peak_hold).max())
+
+    # Let the peak age past the hold window, then feed weak frames.
+    time.sleep(0.12)
+    wi, wq = _iq_tone(150.0)
+    widget.add_frame(IqFrame(i_samples=wi, q_samples=wq, source="d"))
+    decayed_peak = float(np.asarray(widget._peak_hold).max())
+    assert decayed_peak < strong_peak - 5.0, (
+        f"peak failed to decay: decayed={decayed_peak} strong={strong_peak}"
+    )
+
+
 # ------------------------------------------------------------------
 # gui/live/controllers.py
 # ------------------------------------------------------------------
@@ -448,25 +582,7 @@ def test_main_poller_controller_emits_gsi_and_glg(qtbot) -> None:
     from gui.live.controllers import MainPollerController
     from scanner_drivers.serial_main import GlgEvent, GsiSnapshot, SerialMainDriver
 
-    class _FakePort:
-        def write(self, _data: bytes) -> int:
-            return 0
-
-        def flush(self) -> None:
-            pass
-
-        def reset_input_buffer(self) -> None:
-            pass
-
-        def read(self, _n: int) -> bytes:
-            return b""
-
-        def close(self) -> None:
-            pass
-
-        in_waiting = 0
-
-    driver = SerialMainDriver(_FakePort())
+    driver = SerialMainDriver(_MinimalFakePort())
     snap = GsiSnapshot(mode="Scan", system_name="Test")
     evt = GlgEvent(frq="154445000", is_receiving=True)
     driver.poll_gsi = lambda: snap  # type: ignore[method-assign]
@@ -492,26 +608,8 @@ def test_main_poller_controller_failed_on_gsi_error(qtbot) -> None:
     from gui.live.controllers import MainPollerController
     from scanner_drivers.serial_main import GlgEvent, SerialMainDriver
 
-    class _FakePort:
-        def write(self, _data: bytes) -> int:
-            return 0
-
-        def flush(self) -> None:
-            pass
-
-        def reset_input_buffer(self) -> None:
-            pass
-
-        def read(self, _n: int) -> bytes:
-            return b""
-
-        def close(self) -> None:
-            pass
-
-        in_waiting = 0
-
-    driver = SerialMainDriver(_FakePort())
-    driver.poll_gsi = lambda: (_ for _ in ()).throw(RuntimeError("gsi boom"))  # type: ignore[method-assign]
+    driver = SerialMainDriver(_MinimalFakePort())
+    driver.poll_gsi = _raise_gsi_boom  # type: ignore[method-assign]
     driver.poll_glg = lambda: GlgEvent()  # type: ignore[method-assign]
 
     host = QWidget()
@@ -531,22 +629,7 @@ def test_sub_poller_controller_modes(qtbot) -> None:
     from gui.live.controllers import SubPollerController
     from scanner_drivers.serial_sub import IqFrame, SerialSubDriver, WaterfallFrame
 
-    class _FakePort:
-        def write(self, _data: bytes) -> int:
-            return 0
-
-        def flush(self) -> None:
-            pass
-
-        def read(self, _n: int) -> bytes:
-            return b""
-
-        def close(self) -> None:
-            pass
-
-        in_waiting = 0
-
-    driver = SerialSubDriver(_FakePort())
+    driver = SerialSubDriver(_MinimalFakePort())
     wf = WaterfallFrame(samples=[1, 2, 3])
     iq = IqFrame(i_samples=[1], q_samples=[2], source="d")
     driver.fetch_waterfall_frame = lambda: wf  # type: ignore[method-assign]
@@ -578,23 +661,8 @@ def test_sub_poller_controller_failed_on_poll_error(qtbot) -> None:
     from gui.live.controllers import SubPollerController
     from scanner_drivers.serial_sub import SerialSubDriver
 
-    class _FakePort:
-        def write(self, _data: bytes) -> int:
-            return 0
-
-        def flush(self) -> None:
-            pass
-
-        def read(self, _n: int) -> bytes:
-            return b""
-
-        def close(self) -> None:
-            pass
-
-        in_waiting = 0
-
-    driver = SerialSubDriver(_FakePort())
-    driver.fetch_iq_pairs = lambda: (_ for _ in ()).throw(RuntimeError("iq fail"))  # type: ignore[method-assign]
+    driver = SerialSubDriver(_MinimalFakePort())
+    driver.fetch_iq_pairs = _raise_iq_fail  # type: ignore[method-assign]
 
     host = QWidget()
     qtbot.addWidget(host)
@@ -623,26 +691,8 @@ def test_live_dock_connect_and_disconnect_with_mocks(qtbot, monkeypatch) -> None
         _fake_port("COM3", UNIDEN_VID, SDS_PID_SUB),
     ]
 
-    class _FakePort:
-        def write(self, _data: bytes) -> int:
-            return 0
-
-        def flush(self) -> None:
-            pass
-
-        def reset_input_buffer(self) -> None:
-            pass
-
-        def read(self, _n: int) -> bytes:
-            return b""
-
-        def close(self) -> None:
-            pass
-
-        in_waiting = 0
-
     def _open_main(device):
-        d = SerialMainDriver(_FakePort())
+        d = SerialMainDriver(_MinimalFakePort())
         d.query_model = lambda: "SDS100"  # type: ignore[method-assign]
         d.query_firmware = lambda: {"version": "1.25.99"}  # type: ignore[method-assign]
         d.poll_gsi = lambda: GsiSnapshot(mode="Scan", system_name="Sys", frequency_hz=154_445_000)  # type: ignore[method-assign]
@@ -650,7 +700,7 @@ def test_live_dock_connect_and_disconnect_with_mocks(qtbot, monkeypatch) -> None
         return d
 
     def _open_sub(device):
-        d = SerialSubDriver(_FakePort())
+        d = SerialSubDriver(_MinimalFakePort())
         d.fetch_iq_pairs = lambda: IqFrame(i_samples=[1, 2], q_samples=[3, 4], source="d")  # type: ignore[method-assign]
         d.fetch_waterfall_frame = lambda: WaterfallFrame(samples=[1, 2, 3])  # type: ignore[method-assign]
         return d
@@ -751,31 +801,13 @@ def test_live_dock_diagnostic_capture_writes_json(
     from scanner_drivers.serial_main import GlgEvent, GsiSnapshot, SerialMainDriver
     from scanner_drivers.serial_sub import SerialSubDriver
 
-    class _FakePort:
-        def write(self, _data: bytes) -> int:
-            return 0
-
-        def flush(self) -> None:
-            pass
-
-        def reset_input_buffer(self) -> None:
-            pass
-
-        def read(self, _n: int) -> bytes:
-            return b""
-
-        def close(self) -> None:
-            pass
-
-        in_waiting = 0
-
-    main_driver = SerialMainDriver(_FakePort())
+    main_driver = SerialMainDriver(_MinimalFakePort())
     payload = b"<ScannerInfo Mode=\"Scan\"/>"
     main_driver.send_query = lambda cmd: payload  # type: ignore[method-assign]
     main_driver.poll_gsi = lambda: GsiSnapshot(mode="Scan", system_name="Cap")  # type: ignore[method-assign]
     main_driver.poll_glg = lambda: GlgEvent(is_receiving=True, frq="154445000")  # type: ignore[method-assign]
 
-    sub_driver = SerialSubDriver(_FakePort())
+    sub_driver = SerialSubDriver(_MinimalFakePort())
     sub_driver.send_command = lambda cmd: b"12345"  # type: ignore[method-assign]
 
     out = tmp_path / "capture.json"

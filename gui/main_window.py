@@ -30,9 +30,10 @@ from __future__ import annotations
 
 import logging
 import webbrowser
+from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QDockWidget,
@@ -45,7 +46,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.device_manager import Device, DeviceManager
+from core.device_manager import Device, DeviceManager, _default_devices_path
 from scanner_profiles import ScannerProfile, set_active_profile
 
 from .devices_dialog import AddDeviceDialog, ManageDevicesDialog
@@ -55,7 +56,8 @@ from .dialogs.profile_snapshots import ProfileSnapshotsDialog
 from .dialogs.report_issue import ReportIssueDialog
 from .dialogs.uniden_tools import UnidenToolsDialog
 from .dialogs.update_available import UpdateAvailableDialog
-from .dialogs.workspaces import WorkspaceManagerDialog
+from .dialogs.workspaces import Workspace, WorkspaceManagerDialog
+from .editor.coverage_panel import CoveragePanel
 from .editor.editor_dock import EditorDock
 from .firmware.firmware_dock import FirmwareDock
 from .header import HeaderBar
@@ -85,11 +87,16 @@ class MainWindow(QMainWindow):
 
         self._device_manager = DeviceManager()
         self._current_device: Optional[Device] = None
+        self._active_workspace: Optional[Workspace] = None
+        self._settings = QSettings("scanner-manager", "scanner-manager")
 
         self._build_header()
         self._build_docks()
         self._build_menus()
         self._build_status_bar()
+
+        self._restore_workspace_if_saved()
+        self._update_data_source_indicators()
 
         # Now that every dock + listener is wired up, fire the initial
         # device-changed broadcast so the docks pick up the default
@@ -118,6 +125,8 @@ class MainWindow(QMainWindow):
         self._header.updateFirmwareRequested.connect(self._on_update_firmware)
         self._header.connectionModeChanged.connect(self._on_connection_mode_changed)
         self._current_connection_mode = "storage"
+        # Device id when HPDB load was skipped (Live + serial-capable).
+        self._deferred_hpdb_device_id: Optional[str] = None
 
     def _build_docks(self) -> None:
         # Storage-mode editor (HPDB tree, coverage, profile side panels).
@@ -139,7 +148,7 @@ class MainWindow(QMainWindow):
 
         live_tabs = QTabWidget()
         live_tabs.setDocumentMode(True)
-        live_tabs.addTab(self._live_dock, "Live (Serial Mode)")
+        live_tabs.addTab(self._live_dock, "Live")
         live_tabs.addTab(self._streaming_dock, "Streaming")
         self._live_host = live_tabs
 
@@ -156,7 +165,7 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.BottomDockWidgetArea, self._firmware_dock_container)
 
         # Log + Coverage are owned but rendered in standalone windows
-        # (View > Log window… and Tools > Coverage window…). The log
+        # (View > Log window… and View > Coverage / heatmap…). The log
         # view itself stays a child of the main window when its
         # standalone window is closed, so messages keep accumulating.
         log_widget = QPlainTextEdit()
@@ -167,6 +176,12 @@ class MainWindow(QMainWindow):
         self._hidden_log_host = QWidget(self)
         self._hidden_log_host.setVisible(False)
         log_widget.setParent(self._hidden_log_host)
+        self._hidden_coverage_host = QWidget(self)
+        self._hidden_coverage_host.setVisible(False)
+        self._coverage_panel = CoveragePanel(self._hidden_coverage_host)
+        self._coverage_panel.set_data_source(
+            lambda: self._editor_dock._tree.loaded_files()
+        )
         self._log_window: Optional[LogWindow] = None
         self._coverage_window: Optional[CoverageWindow] = None
         self._firmware_window: Optional[FirmwareWindow] = None
@@ -204,16 +219,15 @@ class MainWindow(QMainWindow):
         log_window_action = QAction("&Log window…", self)
         log_window_action.triggered.connect(self._on_show_log_window)
         view_menu.addAction(log_window_action)
+        coverage_window_action = QAction("Coverage / &heatmap…", self)
+        coverage_window_action.triggered.connect(self._on_show_coverage_window)
+        view_menu.addAction(coverage_window_action)
 
         tools_menu = menubar.addMenu("&Tools")
         self._firmware_window_action = QAction("&Firmware updater…", self)
         self._firmware_window_action.setShortcut("Ctrl+Shift+F")
         self._firmware_window_action.triggered.connect(self._on_show_firmware_window)
         tools_menu.addAction(self._firmware_window_action)
-
-        coverage_window_action = QAction("&Coverage window…", self)
-        coverage_window_action.triggered.connect(self._on_show_coverage_window)
-        tools_menu.addAction(coverage_window_action)
         tools_menu.addSeparator()
 
         workspaces_action = QAction("&Workspaces…", self)
@@ -288,12 +302,44 @@ class MainWindow(QMainWindow):
         self._header.set_connection_mode(persisted)
         self._current_connection_mode = persisted
 
-        # Push the new device through to docks that care.
-        self._editor_dock.set_active_device(device, profile)
+        # Flip the central page first so Live switches feel instant; defer
+        # the heavy editor/HPDB work to the next event-loop tick.
+        self._apply_mode_visibility(profile, persisted)
         self._live_dock.set_active_profile(profile)
         self._firmware_dock.set_active_device(device, profile)
-        self._apply_mode_visibility(profile, persisted)
         self.activeDeviceChanged.emit(device, profile)
+        QTimer.singleShot(
+            0,
+            lambda d=device, p=profile, m=persisted: self._finish_device_switch(
+                d, p, m
+            ),
+        )
+
+    def _finish_device_switch(
+        self,
+        device: Device,
+        profile: ScannerProfile,
+        mode: str,
+    ) -> None:
+        """Complete editor bind after the mode stack has flipped."""
+        skip_hpdb = mode == "live" and profile.supports_serial_mode
+        if skip_hpdb:
+            self._deferred_hpdb_device_id = device.id
+        else:
+            self._deferred_hpdb_device_id = None
+
+        status = self.statusBar()
+        ready_msg = f"Active: {profile.display_name} — {device.label}"
+        if not skip_hpdb:
+            status.showMessage("Loading HPDB…")
+        try:
+            self._editor_dock.set_active_device(
+                device, profile, load_hpdb=not skip_hpdb
+            )
+        finally:
+            if not skip_hpdb:
+                status.showMessage(ready_msg)
+        self.refresh_coverage()
 
     def _on_connection_mode_changed(self, mode: str) -> None:
         """Operator picked Live or Storage from the header switcher."""
@@ -316,12 +362,29 @@ class MainWindow(QMainWindow):
         # the other at a time. Tear down the active live serial session
         # when entering Storage so the operator can put the scanner into
         # Mass Storage mode without a "port in use" error.
+        profile = device.resolve_profile()
         if mode == "storage":
             try:
                 self._live_dock.disconnect()
             except Exception:
                 logger.exception("LiveDock.disconnect() failed during mode switch")
-        self._apply_mode_visibility(device.resolve_profile(), mode)
+        self._apply_mode_visibility(profile, mode)
+        if (
+            mode == "storage"
+            and self._deferred_hpdb_device_id is not None
+            and device.id == self._deferred_hpdb_device_id
+        ):
+            status = self.statusBar()
+            ready_msg = f"Active: {profile.display_name} — {device.label}"
+            status.showMessage("Loading HPDB…")
+            try:
+                self._editor_dock.set_active_device(
+                    device, profile, load_hpdb=True
+                )
+            finally:
+                status.showMessage(ready_msg)
+            self._deferred_hpdb_device_id = None
+            self.refresh_coverage()
 
     def _apply_mode_visibility(self, profile: ScannerProfile, mode: str) -> None:
         """Swap the central mode stack between Storage and Live surfaces.
@@ -391,21 +454,32 @@ class MainWindow(QMainWindow):
         self._log_view.setParent(self._hidden_log_host)
         self._log_window = None
 
+    def coverage_panel(self) -> CoveragePanel:
+        """Expose the popout CoveragePanel for editor integration."""
+        return self._coverage_panel
+
+    def refresh_coverage(self) -> None:
+        """Refresh heatmap/map from the current HPDB load."""
+        visible = (
+            self._coverage_window is not None
+            and self._coverage_window.isVisible()
+        )
+        self._coverage_panel.set_refresh_enabled(visible)
+        self._coverage_panel.refresh_from_hpdb()
+
     def _on_show_coverage_window(self) -> None:
         if self._coverage_window is not None and self._coverage_window.isVisible():
             self._coverage_window.raise_()
             self._coverage_window.activateWindow()
             return
-        coverage_widget = self._editor_dock.coverage_panel()
         self._coverage_window = CoverageWindow(
-            coverage_widget,
-            original_parent=self._editor_dock,
+            self._coverage_panel,
+            original_parent=self._hidden_coverage_host,
             parent=None,
         )
         self._coverage_window.closed.connect(self._on_coverage_window_closed)
         self._coverage_window.show()
-        # Trigger a refresh so the window has live data on first open.
-        self._editor_dock.refresh_coverage()
+        self.refresh_coverage()
 
     def _on_show_firmware_window(self) -> None:
         if self._firmware_window is not None and self._firmware_window.isVisible():
@@ -429,18 +503,7 @@ class MainWindow(QMainWindow):
         # its hidden bottom dock; nothing else to do.
 
     def _on_coverage_window_closed(self) -> None:
-        # CoverageWindow already re-parented the panel back to the
-        # editor dock in its closeEvent; we just drop the reference.
         self._coverage_window = None
-        # If the active profile uses the embedded coverage panel,
-        # make sure it's visible in the editor again.
-        try:
-            if self._current_device:
-                p = self._current_device.resolve_profile()
-                if p.supports_coverage_simulation:
-                    self._editor_dock.coverage_panel().setVisible(True)
-        except Exception:
-            pass
 
     def _on_about(self) -> None:
         QMessageBox.about(
@@ -459,7 +522,80 @@ class MainWindow(QMainWindow):
 
     def _on_workspaces(self) -> None:
         dlg = WorkspaceManagerDialog(parent=self)
+        dlg.workspaceLoaded.connect(self._apply_workspace)
+        dlg.defaultDeviceListRequested.connect(self._clear_workspace)
         dlg.exec()
+
+    def _apply_workspace(self, workspace: Workspace) -> None:
+        path = Path(workspace.devices_path)
+        if not path.exists():
+            QMessageBox.warning(
+                self,
+                "Workspace",
+                f"devices.json not found:\n{workspace.devices_path}",
+            )
+            return
+        self._active_workspace = workspace
+        self._device_manager.reload_from(path)
+        self._header.set_device_manager(self._device_manager)
+        self._persist_workspace_settings()
+        self._update_data_source_indicators()
+        self._header.refresh_devices()
+        self.statusBar().showMessage(f"Loaded workspace: {workspace.name}")
+
+    def _clear_workspace(self) -> None:
+        self._active_workspace = None
+        self._device_manager.reload_from(_default_devices_path())
+        self._header.set_device_manager(self._device_manager)
+        self._clear_workspace_settings()
+        self._update_data_source_indicators()
+        self._header.refresh_devices()
+        self.statusBar().showMessage("Using default device list")
+
+    def _update_data_source_indicators(self) -> None:
+        ws = self._active_workspace
+        if ws is not None:
+            self._header.set_data_source_context(
+                workspace_name=ws.name,
+                devices_path=ws.devices_path,
+            )
+            self._editor_dock.set_data_source_context(workspace_name=ws.name)
+        else:
+            devices_path = str(self._device_manager.path)
+            self._header.set_data_source_context(
+                workspace_name=None,
+                devices_path=devices_path,
+            )
+            self._editor_dock.set_data_source_context(workspace_name=None)
+
+    def _persist_workspace_settings(self) -> None:
+        ws = self._active_workspace
+        if ws is None:
+            self._clear_workspace_settings()
+            return
+        self._settings.setValue("workspace/name", ws.name)
+        self._settings.setValue("workspace/devices_path", ws.devices_path)
+
+    def _clear_workspace_settings(self) -> None:
+        self._settings.remove("workspace/name")
+        self._settings.remove("workspace/devices_path")
+
+    def _restore_workspace_if_saved(self) -> None:
+        name = self._settings.value("workspace/name")
+        devices_path = self._settings.value("workspace/devices_path")
+        if not name or not devices_path:
+            return
+        path = Path(str(devices_path))
+        if not path.exists():
+            logger.warning("Saved workspace devices.json missing: %s", path)
+            self._clear_workspace_settings()
+            return
+        self._active_workspace = Workspace(
+            name=str(name),
+            devices_path=str(devices_path),
+        )
+        self._device_manager.reload_from(path)
+        self._header.set_device_manager(self._device_manager)
 
     def _on_snapshots(self) -> None:
         if self._current_device is None:

@@ -15,7 +15,7 @@ write it.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Set
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from .base import ScannerProfile
 
@@ -98,6 +98,24 @@ def _read_text_safely(path: Path, max_bytes: int = 65536) -> str:
         return ""
 
 
+def _scanner_inf_paths(card_root: Path) -> Tuple[Path, ...]:
+    return (
+        card_root / "BCDx36HP" / "scanner.inf",
+        card_root / "scanner.inf",
+    )
+
+
+def _scanner_inf_mtime(card_root: Path) -> float:
+    """Return mtime of the first existing scanner.inf, or 0.0."""
+    for inf_path in _scanner_inf_paths(card_root):
+        if inf_path.exists():
+            try:
+                return inf_path.stat().st_mtime
+            except OSError:
+                return 0.0
+    return 0.0
+
+
 def _scanner_inf_field1(card_root: Path) -> str:
     """Return the model fingerprint from BCDx36HP/scanner.inf, or ''.
 
@@ -108,10 +126,7 @@ def _scanner_inf_field1(card_root: Path) -> str:
     Field 1 (after the literal ``Scanner`` token) is the canonical
     model: ``SDS100``, ``SDS200``, ``BT885-SCN``, etc.
     """
-    inf_paths = (
-        card_root / "BCDx36HP" / "scanner.inf",
-        card_root / "scanner.inf",
-    )
+    inf_paths = _scanner_inf_paths(card_root)
     for inf_path in inf_paths:
         if not inf_path.exists():
             continue
@@ -185,6 +200,14 @@ def _profile_for_product_name(name: str) -> Optional[ScannerProfile]:
     return None
 
 
+_DETECT_FROM_CARD_CACHE: Dict[Tuple[str, float], Optional[ScannerProfile]] = {}
+
+
+def invalidate_detect_from_card_cache() -> None:
+    """Clear the :func:`detect_from_card` memo (for tests and card reload)."""
+    _DETECT_FROM_CARD_CACHE.clear()
+
+
 def detect_from_card(card_root) -> Optional[ScannerProfile]:
     """Resolve a ``ScannerProfile`` from a mounted SD card root.
 
@@ -202,6 +225,9 @@ def detect_from_card(card_root) -> Optional[ScannerProfile]:
 
     Returns ``None`` when the card looks unknown; callers should
     fall back to :func:`get_profile` with the default ID.
+
+    Results are memoized by ``(resolved card root, scanner.inf mtime)``
+    so repeat device switches skip redundant disk reads.
     """
     if card_root is None:
         return None
@@ -209,15 +235,22 @@ def detect_from_card(card_root) -> Optional[ScannerProfile]:
     if not root.exists():
         return None
 
+    cache_key = (str(root.resolve()), _scanner_inf_mtime(root))
+    if cache_key in _DETECT_FROM_CARD_CACHE:
+        return _DETECT_FROM_CARD_CACHE[cache_key]
+
     via_inf = _profile_for_scanner_inf(_scanner_inf_field1(root))
     if via_inf is not None:
-        return via_inf
+        result: Optional[ScannerProfile] = via_inf
+    else:
+        via_product = _profile_for_product_name(_profile_cfg_product_name(root))
+        if via_product is not None:
+            result = via_product
+        else:
+            result = profiles_for_target_model(_hpdb_target_model(root))
 
-    via_product = _profile_for_product_name(_profile_cfg_product_name(root))
-    if via_product is not None:
-        return via_product
-
-    return profiles_for_target_model(_hpdb_target_model(root))
+    _DETECT_FROM_CARD_CACHE[cache_key] = result
+    return result
 
 
 # ---------------------------------------------------------------------------

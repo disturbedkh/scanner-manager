@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 from scanner_profiles import ScannerProfile
 
 from .display_helpers import bulk_action_label, format_service_type_details
+from ..widgets.scaling_label import ScalingHelpLabel
 from .entry_dialog import (
     Bt885BulkServiceTypeDialog,
     Bt885EntryEditDialog,
@@ -82,13 +83,11 @@ class BaseDetailsPanel(QWidget):
         actions_layout.addStretch(1)
         layout.addWidget(self._actions_widget)
 
-        self._help_label = QLabel("")
-        self._help_label.setWordWrap(True)
+        self._help_label = ScalingHelpLabel("")
         self._help_label.setStyleSheet("color: #555555;")
         self._help_label.setVisible(False)
-        layout.addWidget(self._help_label)
-
-        layout.addStretch(1)
+        self._help_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        layout.addWidget(self._help_label, stretch=1)
 
         self._actions_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         self._reset()

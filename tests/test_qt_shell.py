@@ -26,7 +26,7 @@ pytest.importorskip("pytestqt")
 from PySide6.QtWidgets import QDockWidget  # noqa: E402
 
 from core.device_manager import Device, DeviceManager  # noqa: E402
-from gui.main_window import MainWindow, _LIVE_PAGE, _STORAGE_PAGE  # noqa: E402
+from gui.main_window import _LIVE_PAGE, _STORAGE_PAGE, MainWindow  # noqa: E402
 
 
 @pytest.fixture
@@ -215,6 +215,58 @@ def test_status_light_state_transitions(qtbot) -> None:
     assert light.state() == "unknown"
 
 
+def test_main_window_coverage_not_in_editor_dock(
+    qtbot, tmp_devices: Path, tmp_path: Path
+) -> None:
+    """Coverage lives on MainWindow hidden host, not inside EditorDock."""
+    from core.device_manager import Device, DeviceManager
+    from gui.editor.coverage_panel import CoveragePanel
+    from gui.main_window import MainWindow
+
+    mgr = DeviceManager(devices_path=tmp_devices)
+    bt = Device.make("uniden_bt885", "BT885", sd_card_path=str(tmp_path))
+    mgr.add_device(bt)
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window._header.select_device(bt.id)
+
+    assert window.coverage_panel() is window._coverage_panel
+    assert window._coverage_panel.parent() is window._hidden_coverage_host
+    assert window._editor_dock.findChildren(CoveragePanel) == []
+
+
+def _menu_action_texts(window: MainWindow, title: str) -> list[str]:
+    """Collect submenu action labels without retaining a QMenu reference."""
+    for action in window.menuBar().actions():
+        label = action.text().replace("&", "")
+        if label == title:
+            menu = action.menu()
+            assert menu is not None, f"Top-level action {title!r} has no submenu"
+            return [a.text().replace("&", "") for a in menu.actions()]
+    raise AssertionError(f"Menu {title!r} not found")
+
+
+def test_coverage_action_under_view_menu(qtbot, tmp_devices: Path) -> None:
+    """Coverage / heatmap opens from View menu, not Tools."""
+    mgr = DeviceManager(devices_path=tmp_devices)
+    bt = Device.make("uniden_bt885", "BT885")
+    mgr.add_device(bt)
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    # Native menu bar on Windows drops QMenu wrappers in offscreen tests.
+    window.menuBar().setNativeMenuBar(False)
+    window._header.select_device(bt.id)
+
+    view_texts = _menu_action_texts(window, "View")
+    assert "Coverage / heatmap…" in view_texts
+    assert "Log window…" in view_texts
+
+    tools_texts = _menu_action_texts(window, "Tools")
+    assert not any("Coverage" in t or "heatmap" in t for t in tools_texts)
+
+
 def test_main_window_log_and_coverage_windows(qtbot, tmp_devices: Path, monkeypatch) -> None:
     from PySide6.QtWidgets import QMessageBox
 
@@ -346,7 +398,8 @@ def test_main_window_add_manage_and_firmware_menu(
     from PySide6.QtWidgets import QDialog
 
     class _FakeAddDlg:
-        Accepted = QDialog.DialogCode.Accepted
+        accepted = QDialog.DialogCode.Accepted
+        Accepted = accepted  # Qt DialogCode alias for main_window comparison
 
         def __init__(self, dm, parent=None):
             self._dm = dm
@@ -356,17 +409,18 @@ def test_main_window_add_manage_and_firmware_menu(
 
         def exec(self):
             self._dm.add_device(self.created_device)
-            return self.Accepted
+            return self.accepted
 
     class _FakeManageDlg:
         class _Sig:
             def connect(self, _cb):
-                return None
+                return None  # stub signal connector
 
-        devicesChanged = _Sig()
+        devices_changed = _Sig()
+        devicesChanged = devices_changed  # Qt signal alias for main_window wiring
 
-        def __init__(self, dm, parent=None):
-            pass  # test double: intentionally empty
+        def __init__(self, _dm, parent=None):
+            """Test double; arguments unused."""
 
         def exec(self):
             return 0

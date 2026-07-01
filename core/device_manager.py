@@ -165,6 +165,11 @@ class DeviceManager:
         if isinstance(default, str):
             self._default_device_id = default
 
+    def reload_from(self, path: Path) -> None:
+        """Point at a different on-disk manifest and reload without writing."""
+        self.path = Path(path)
+        self.load()
+
     def save(self) -> None:
         """Persist to disk atomically (write-temp + rename)."""
         self.path.parent.mkdir(parents=True, exist_ok=True)

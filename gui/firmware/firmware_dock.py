@@ -66,7 +66,6 @@ from firmware.library import (
 )
 from firmware.updater import (
     FirmwareError,
-    PreflightResult,
     apply_hpdb,
     apply_main_firmware,
     apply_sub_firmware,
@@ -237,6 +236,7 @@ class FirmwareDock(QWidget):
         self._refresh_worker: Optional[_RefreshWorker] = None
         self._download_worker: Optional[QThread] = None
         self._virtual_card: Optional[VirtualCard] = None
+        self._card_context_device_id: Optional[str] = None
         self._build_ui()
         self._set_unloaded_state()
 
@@ -245,6 +245,12 @@ class FirmwareDock(QWidget):
     # ------------------------------------------------------------------
 
     def set_active_device(self, device: Device, profile: ScannerProfile) -> None:
+        device_changed = (
+            self._device is None
+            or self._device.id != device.id
+            or self._profile is None
+            or self._profile.id != profile.id
+        )
         self._device = device
         self._profile = profile
         endpoint_label = self._endpoint_label_for_profile(profile)
@@ -253,17 +259,17 @@ class FirmwareDock(QWidget):
         )
         self._refresh_btn.setEnabled(True)
         self._open_cache_btn.setEnabled(True)
-        self._reset_trees()
-        self._populate_current_versions_from_card()
-        # Open / create the per-device virtual card so staged downloads
-        # land in a stable workspace rather than the OS temp dir.
-        try:
-            self._virtual_card = VirtualCard.from_device(device)
-        except Exception:
-            logger.exception("Could not open virtual card for device %s", device.id)
+        if device_changed:
+            self._card_context_device_id = None
             self._virtual_card = None
-        self._refresh_pending_view()
-        self._log(f"Active device set: {profile.display_name}")
+        if self._defer_card_context():
+            self._set_deferred_card_state()
+        else:
+            self._ensure_card_context_loaded()
+
+    def on_firmware_window_shown(self) -> None:
+        """Load SD-card context when the detached firmware window opens."""
+        self._ensure_card_context_loaded()
 
     def request_close(self) -> bool:
         if self._refresh_worker is not None and self._refresh_worker.isRunning():
@@ -447,6 +453,51 @@ class FirmwareDock(QWidget):
         self._current_label.setText("(no card loaded)")
         self._details_label.setText(_NOTHING_SELECTED)
 
+    def _defer_card_context(self) -> bool:
+        """True when the dock is hosted in MainWindow's hidden firmware container."""
+        if self.isVisible():
+            return False
+        parent = self.parentWidget()
+        return parent is not None and not parent.isVisible()
+
+    def _set_deferred_card_state(self) -> None:
+        """Placeholder UI until card context is loaded on first show."""
+        if self._device is None:
+            return
+        if not self._device.sd_card_path:
+            self._current_label.setText(
+                "<i>This device has no SD card path configured.</i><br>"
+                "Set one in Devices > Manage devices."
+            )
+        else:
+            self._current_label.setText(
+                "<i>SD card details load when the firmware window is opened.</i>"
+            )
+        self._pending_label.setText("(virtual card not loaded)")
+        self._apply_btn.setEnabled(False)
+        self._discard_btn.setEnabled(False)
+        self._discard_all_btn.setEnabled(False)
+        self._stage_btn.setEnabled(False)
+
+    def _ensure_card_context_loaded(self) -> None:
+        """Read scanner.inf and open the virtual card once per active device."""
+        if self._device is None or self._profile is None:
+            return
+        if self._card_context_device_id == self._device.id:
+            return
+        self._reset_trees()
+        self._populate_current_versions_from_card()
+        try:
+            self._virtual_card = VirtualCard.from_device(self._device)
+        except Exception:
+            logger.exception(
+                "Could not open virtual card for device %s", self._device.id
+            )
+            self._virtual_card = None
+        self._refresh_pending_view()
+        self._card_context_device_id = self._device.id
+        self._log(f"Active device set: {self._profile.display_name}")
+
     def _reset_trees(self) -> None:
         self._main_tree.clear()
         self._sub_tree.clear()
@@ -486,6 +537,7 @@ class FirmwareDock(QWidget):
             return
         if self._refresh_worker is not None and self._refresh_worker.isRunning():
             return
+        self._ensure_card_context_loaded()
         endpoint = self._endpoint_for_profile(self._profile)
         self._refresh_btn.setEnabled(False)
         self._refresh_btn.setText("Refreshing…")
@@ -670,6 +722,7 @@ class FirmwareDock(QWidget):
 
     def _virtual_card_required(self) -> Optional[VirtualCard]:
         """Return the active virtual card or surface a friendly error."""
+        self._ensure_card_context_loaded()
         if self._virtual_card is None:
             QMessageBox.information(
                 self,

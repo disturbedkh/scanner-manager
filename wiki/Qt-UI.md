@@ -76,8 +76,9 @@ selection.
 
 Phase 6 ports the secondary Tk dialogs to Qt:
 
-- **Workspaces…** — load / save named devices.json bundles
-  (`gui.dialogs.workspaces`).
+- **Workspaces…** — load named `devices.json` bundles; header shows
+  **Workspace:** vs **Device list: default**; editor toolbar prefixes
+  HPDB status when a workspace is active (`gui.dialogs.workspaces`).
 - **Profile snapshots…** — capture and roll back HPDB state
   (`gui.dialogs.profile_snapshots`).
 - **Recent changes…** — metastore event log viewer

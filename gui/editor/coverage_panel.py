@@ -1,4 +1,4 @@
-"""Coverage panel: ZIP/GPS sim + heatmap + map.
+﻿"""Coverage panel: heatmap + map (popout-only).
 
 Two visualisations:
 
@@ -18,12 +18,7 @@ from typing import List, Optional, Tuple
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QDoubleSpinBox,
-    QFormLayout,
-    QGroupBox,
-    QHBoxLayout,
     QLabel,
-    QPushButton,
     QStackedWidget,
     QTabWidget,
     QVBoxLayout,
@@ -48,7 +43,7 @@ except Exception:  # pragma: no cover - optional dep
     HAS_WEBENGINE = False
 
 
-_LEAFLET_HTML = """
+_LEAFLET_SHELL_HTML = """
 <!DOCTYPE html>
 <html>
 <head>
@@ -64,17 +59,17 @@ _LEAFLET_HTML = """
 <div id="map"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    const map = L.map('map').setView([__LAT__, __LON__], __ZOOM__);
+    const map = L.map('map').setView([34.0, -118.0], 4);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 18,
-        attribution: '© OpenStreetMap'
+        attribution: 'Â© OpenStreetMap'
     }).addTo(map);
 
-    const data = __DATA_JSON__;
     const layer = L.layerGroup().addTo(map);
 
-    function rebuild() {
+    window.updateCoverageData = function(lat, lon, zoom, data) {
         layer.clearLayers();
+        data = data || [];
         for (const item of data) {
             if (item.kind === 'circle') {
                 L.circle([item.lat, item.lon], {
@@ -99,9 +94,10 @@ _LEAFLET_HTML = """
                 const bounds = layer.getBounds();
                 if (bounds.isValid()) map.fitBounds(bounds, {padding: [20, 20]});
             } catch (e) { /* ignore */ }
+        } else if (lat != null && lon != null) {
+            map.setView([lat, lon], zoom != null ? zoom : map.getZoom());
         }
-    }
-    rebuild();
+    };
 </script>
 </body>
 </html>
@@ -195,8 +191,13 @@ class CoverageMapView(QWidget):
         self._stack = QStackedWidget()
         layout.addWidget(self._stack)
 
+        self._shell_loaded = False
+        self._loading_shell = False
+        self._pending_view: Optional[Tuple[float, float, int, List[dict]]] = None
+
         if HAS_WEBENGINE:
             self._view = QWebEngineView()
+            self._view.loadFinished.connect(self._on_shell_loaded)
             self._stack.addWidget(self._view)
         else:
             placeholder = QLabel(
@@ -211,6 +212,12 @@ class CoverageMapView(QWidget):
 
         self.set_view(34.0, -118.0, zoom=4, items=[])
 
+    def invalidate_shell(self) -> None:
+        """Drop the one-time Leaflet shell so the next update reloads HTML."""
+        self._shell_loaded = False
+        self._loading_shell = False
+        self._pending_view = None
+
     def set_view(
         self,
         lat: float,
@@ -218,7 +225,7 @@ class CoverageMapView(QWidget):
         zoom: int = 6,
         items: Optional[List[dict]] = None,
     ) -> None:
-        """Render a fresh map centered on (lat, lon).
+        """Update map center and overlay items.
 
         ``items`` is a list of dicts. Each item is one of:
         - ``{"kind": "circle", "lat": ..., "lon": ..., "radius_m": ...,
@@ -230,14 +237,41 @@ class CoverageMapView(QWidget):
         if self._view is None:
             return
         items = items or []
-        html = (
-            _LEAFLET_HTML
-            .replace("__LAT__", str(lat))
-            .replace("__LON__", str(lon))
-            .replace("__ZOOM__", str(zoom))
-            .replace("__DATA_JSON__", json.dumps(items))
+        if not self._shell_loaded:
+            self._pending_view = (lat, lon, zoom, items)
+            if not self._loading_shell:
+                self._loading_shell = True
+                self._view.setHtml(_LEAFLET_SHELL_HTML)
+            return
+        self._update_via_javascript(lat, lon, zoom, items)
+
+    def _on_shell_loaded(self, ok: bool) -> None:
+        if not ok or self._shell_loaded:
+            self._loading_shell = False
+            return
+        self._shell_loaded = True
+        self._loading_shell = False
+        pending = self._pending_view
+        if pending is None:
+            return
+        lat, lon, zoom, items = pending
+        self._pending_view = None
+        self._update_via_javascript(lat, lon, zoom, items)
+
+    def _update_via_javascript(
+        self,
+        lat: float,
+        lon: float,
+        zoom: int,
+        items: List[dict],
+    ) -> None:
+        payload = json.dumps(items)
+        js = (
+            f"if (window.updateCoverageData) {{"
+            f"window.updateCoverageData({lat}, {lon}, {zoom}, {payload});"
+            f"}}"
         )
-        self._view.setHtml(html)
+        self._view.page().runJavaScript(js)
 
 
 def _rectangle_items_for_group(group) -> List[dict]:
@@ -336,42 +370,18 @@ def _map_center_from_items(items: List[dict]) -> Optional[Tuple[float, float]]:
 
 
 class CoveragePanel(QWidget):
-    """ZIP / GPS sim toolbar + heatmap tab + map tab."""
+    """Heatmap + map tabs for the View-menu coverage popout."""
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self._tree_provider = None  # set via set_data_source
+        self._sim_lat = 34.0522
+        self._sim_lon = -118.2437
+        self._refresh_enabled = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(6)
-
-        controls = QGroupBox("ZIP / GPS simulation")
-        form = QFormLayout(controls)
-
-        self._lat_spin = QDoubleSpinBox()
-        self._lat_spin.setRange(-90.0, 90.0)
-        self._lat_spin.setDecimals(6)
-        self._lat_spin.setValue(34.0522)
-        form.addRow("Latitude:", self._lat_spin)
-
-        self._lon_spin = QDoubleSpinBox()
-        self._lon_spin.setRange(-180.0, 180.0)
-        self._lon_spin.setDecimals(6)
-        self._lon_spin.setValue(-118.2437)
-        form.addRow("Longitude:", self._lon_spin)
-
-        btn_row = QHBoxLayout()
-        center_btn = QPushButton("Center map here")
-        center_btn.clicked.connect(self._center_map)
-        btn_row.addWidget(center_btn)
-        refresh_btn = QPushButton("Refresh from HPDB")
-        refresh_btn.clicked.connect(self.refresh_from_hpdb)
-        btn_row.addWidget(refresh_btn)
-        btn_row.addStretch(1)
-        form.addRow(btn_row)
-
-        layout.addWidget(controls)
 
         self._tabs = QTabWidget()
         self._heatmap = CoverageHeatmapWidget()
@@ -390,9 +400,33 @@ class CoveragePanel(QWidget):
         on every refresh so swaps are picked up automatically."""
         self._tree_provider = hpd_files_provider
 
-    def refresh_from_hpdb(self) -> None:
+    def set_sim_center(self, lat: float, lon: float) -> None:
+        """Update the map fallback center (driven by LocationSimBar)."""
+        self._sim_lat = lat
+        self._sim_lon = lon
+
+    def set_refresh_enabled(self, enabled: bool) -> None:
+        """Enable or disable automatic coverage refresh (heatmap + map).
+
+        When disabled, :meth:`refresh_from_hpdb` is a no-op unless
+        ``force=True``. Wave 2 wires this to coverage-window visibility.
+        """
+        self._refresh_enabled = enabled
+
+    def invalidate_map_shell(self) -> None:
+        """Force the Leaflet shell to reload on the next map update."""
+        self._map.invalidate_shell()
+
+    def refresh_from_hpdb(self, *, force: bool = False) -> bool:
+        """Recompute heatmap and map from the current HPDB tree data.
+
+        Returns ``True`` when a refresh ran, ``False`` when skipped or
+        when no data source is configured.
+        """
+        if not force and not self._refresh_enabled:
+            return False
         if self._tree_provider is None:
-            return
+            return False
         try:
             files = self._tree_provider() or []
         except Exception:
@@ -402,8 +436,6 @@ class CoveragePanel(QWidget):
         center = _map_center_from_items(items)
         if center is not None:
             self._map.set_view(center[0], center[1], zoom=7, items=items)
-            return
-        self._map.set_view(self._lat_spin.value(), self._lon_spin.value(), zoom=4, items=items)
-
-    def _center_map(self) -> None:
-        self._map.set_view(self._lat_spin.value(), self._lon_spin.value(), zoom=8)
+        else:
+            self._map.set_view(self._sim_lat, self._sim_lon, zoom=4, items=items)
+        return True
