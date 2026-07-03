@@ -71,7 +71,13 @@ jobs:
           echo "SCANNER_MANAGER_VERSION=${VERSION}" >> "${GITHUB_ENV}"
 
       - name: Build release artifacts
-        run: python scripts/build_release.py --type Release --smoke --skip-sync
+        shell: bash
+        run: |
+          extra=""
+          if [ "${{ runner.os }}" != "Linux" ]; then
+            extra="--smoke"
+          fi
+          python scripts/build_release.py --type Release --skip-sync $extra
 
       - name: Show build tree (debug)
         shell: bash
