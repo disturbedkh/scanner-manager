@@ -41,21 +41,22 @@ function Resolve-RemoteUrl {
     return $url
 }
 
-function Resolve-FilterRepo {
-    $fromPath = Get-Command git-filter-repo -ErrorAction SilentlyContinue
-    $candidates = @(
-        $(if ($fromPath) { $fromPath.Source }),
-        (Join-Path $RepoRoot ".venv\Scripts\git-filter-repo.exe"),
-        (Join-Path $RepoRoot ".venv\bin\git-filter-repo")
-    ) | Where-Object { $_ -and (Test-Path $_) }
-    if ($candidates.Count -eq 0) {
-        throw "git-filter-repo not found. Run: pip install git-filter-repo"
+function Invoke-FilterRepo {
+    param([string[]]$FilterArgs)
+    $venvPython = Join-Path $RepoRoot ".venv\Scripts\python.exe"
+    if (Test-Path $venvPython) {
+        & $venvPython -m git_filter_repo @FilterArgs
+        return
     }
-    return $candidates[0]
+    $fromPath = Get-Command git-filter-repo -ErrorAction SilentlyContinue
+    if ($fromPath) {
+        & $fromPath.Source @FilterArgs
+        return
+    }
+    throw "git-filter-repo not found. Run: pip install git-filter-repo"
 }
 
 Require-Command git "Install Git."
-$FilterRepo = Resolve-FilterRepo
 
 $gitlabUrl = Resolve-RemoteUrl -Remote $GitLabRemote
 $githubUrl = Resolve-RemoteUrl -Remote $GitHubRemote
@@ -101,7 +102,7 @@ try {
     foreach ($p in $invertPaths) {
         $filterArgs += @("--path", $p)
     }
-    & $FilterRepo @filterArgs
+    Invoke-FilterRepo -FilterArgs $filterArgs
 
     Write-Host ""
     Write-Host "Auditing filtered tree for machine-specific strings..." -ForegroundColor Green
