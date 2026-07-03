@@ -63,48 +63,19 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[full,dev]"
 
-      - name: Propagate version into Info.plist (macOS)
-        if: runner.os == 'macOS'
+      - name: Set release version
         shell: bash
         run: |
           VERSION="${{ inputs.ref }}"
           VERSION="${VERSION#v}"
           echo "SCANNER_MANAGER_VERSION=${VERSION}" >> "${GITHUB_ENV}"
 
-      - name: Build with PyInstaller
-        run: pyinstaller packaging/scanner-manager.spec --noconfirm
+      - name: Build release artifacts
+        run: python scripts/build_release.py --type Release --smoke --skip-sync
 
       - name: Show build tree (debug)
         shell: bash
         run: ls -la "${{ matrix.build_root }}"
-
-      - name: Package artifact (Windows zip)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $root = "${{ matrix.build_root }}"
-          $hash = (Get-FileHash -Algorithm SHA256 "$root/ScannerManager.exe").Hash.ToLower()
-          "$hash  ScannerManager.exe" | Out-File -Encoding ascii "$root/ScannerManager.exe.sha256"
-          Compress-Archive -Path "$root/ScannerManager.exe" -DestinationPath "$root/${{ matrix.artifact_name }}.zip" -Force
-          $ziphash = (Get-FileHash -Algorithm SHA256 "$root/${{ matrix.artifact_name }}.zip").Hash.ToLower()
-          "$ziphash  ${{ matrix.artifact_name }}.zip" | Out-File -Encoding ascii "$root/${{ matrix.artifact_name }}.zip.sha256"
-
-      - name: Package artifact (macOS tarball)
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          cd "${{ matrix.build_root }}"
-          tar -czf "${{ matrix.artifact_name }}.tar.gz" ScannerManager.app
-          shasum -a 256 "${{ matrix.artifact_name }}.tar.gz" > "${{ matrix.artifact_name }}.tar.gz.sha256"
-
-      - name: Package artifact (Linux tarball)
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          cd "${{ matrix.build_root }}"
-          chmod +x ScannerManager
-          tar -czf "${{ matrix.artifact_name }}.tar.gz" ScannerManager
-          sha256sum "${{ matrix.artifact_name }}.tar.gz" > "${{ matrix.artifact_name }}.tar.gz.sha256"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
