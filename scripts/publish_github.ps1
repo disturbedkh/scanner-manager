@@ -7,7 +7,7 @@
 #
 # Prerequisites:
 #   pip install git-filter-repo
-#   git remote "gitlab" -> https://gitlab.com/garudadev1/scanner-manager.git
+#   git remote "gitlab" -> private GitLab mirror (optional)
 #   git remote "origin"  -> https://github.com/disturbedkh/scanner-manager.git
 #
 # Usage:
@@ -41,8 +41,21 @@ function Resolve-RemoteUrl {
     return $url
 }
 
+function Resolve-FilterRepo {
+    $fromPath = Get-Command git-filter-repo -ErrorAction SilentlyContinue
+    $candidates = @(
+        $(if ($fromPath) { $fromPath.Source }),
+        (Join-Path $RepoRoot ".venv\Scripts\git-filter-repo.exe"),
+        (Join-Path $RepoRoot ".venv\bin\git-filter-repo")
+    ) | Where-Object { $_ -and (Test-Path $_) }
+    if ($candidates.Count -eq 0) {
+        throw "git-filter-repo not found. Run: pip install git-filter-repo"
+    }
+    return $candidates[0]
+}
+
 Require-Command git "Install Git."
-Require-Command git-filter-repo "Run: pip install git-filter-repo"
+$FilterRepo = Resolve-FilterRepo
 
 $gitlabUrl = Resolve-RemoteUrl -Remote $GitLabRemote
 $githubUrl = Resolve-RemoteUrl -Remote $GitHubRemote
@@ -88,7 +101,7 @@ try {
     foreach ($p in $invertPaths) {
         $filterArgs += @("--path", $p)
     }
-    & git filter-repo @filterArgs
+    & $FilterRepo @filterArgs
 
     Write-Host ""
     Write-Host "Auditing filtered tree for machine-specific strings..." -ForegroundColor Green
@@ -96,13 +109,13 @@ try {
         "khutt",
         "MAINGAMINGPC",
         "MiniLaptop",
-        "garudadev",
         "G:\\scanner-manager",
         "C:\\Users\\khutt"
     )
+    $auditExclude = ":(exclude)scripts/publish_github.ps1"
     $hits = @()
     foreach ($pat in $patterns) {
-        git grep -i -n $pat 2>$null | ForEach-Object { $hits += $_ }
+        git grep -i -n $pat -- . $auditExclude 2>$null | ForEach-Object { $hits += $_ }
     }
     if ($hits.Count -gt 0) {
         Write-Host "AUDIT FAILED — sensitive strings remain:" -ForegroundColor Red

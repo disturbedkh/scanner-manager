@@ -9,7 +9,7 @@ and a full revertable change log.**
 > Unofficial, community-built. Not affiliated with or endorsed by Uniden.
 > See [DISCLAIMER.md](DISCLAIMER.md).
 
-> **v0.10.0:** the default `scanner-manager` console script launches the
+> **v0.11.0:** the default `scanner-manager` console script launches the
 > [Qt UI](https://github.com/disturbedkh/scanner-manager/wiki/Qt-UI)
 > (PySide6). The legacy Tkinter shell remains available as
 > `scanner-manager-tk`.
@@ -107,15 +107,12 @@ Requires Python 3.9+. The default UI is Qt (PySide6); legacy Tk is
 still available via `scanner-manager-tk` for one release.
 
 ```bash
-# private dev mirror (full context)
-git clone https://gitlab.com/garudadev1/scanner-manager.git
+git clone https://github.com/disturbedkh/scanner-manager.git
 cd scanner-manager
 python -m pip install -U pip
 python -m pip install -e ".[full]"
 scanner-manager
 ```
-
-Public mirror: `https://github.com/disturbedkh/scanner-manager.git`
 
 Platform notes:
 
