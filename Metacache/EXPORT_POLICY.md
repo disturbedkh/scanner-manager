@@ -29,7 +29,7 @@ The script:
 1. Clones GitLab into a temp directory (never mutates your working tree).
 2. Runs `git filter-repo --invert-paths` for every `gitignore_only` path.
 3. Runs `scripts/sanitize_for_github.py` on `public_sanitize` globs.
-4. Audits for blocked strings (`khutt`, real hostnames, etc.).
+4. Audits for blocked strings (local usernames, real hostnames, etc.).
 5. Force-pushes `main` and the release tag to GitHub.
 
 ## Adding new Metacache files

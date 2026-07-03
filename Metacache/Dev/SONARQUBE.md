@@ -3,7 +3,7 @@
 Local quality + coverage analysis for **active product code** (Qt default path).
 `legacy_tk/` is excluded from `sonar.sources` — it is maintenance-only.
 
-## Quick start (MAINGAMINGPC)
+## Quick start (local Windows host)
 
 ```powershell
 # 1. SonarQube server (if not already on :9000)

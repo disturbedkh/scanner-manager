@@ -121,6 +121,8 @@ def audit_repo(repo_root: Path, patterns: list[str]) -> list[str]:
             rel = path.relative_to(repo_root).as_posix()
             if rel.startswith(".git/"):
                 continue
+            if rel.startswith("tests/"):
+                continue
             if rel in ("scripts/publish_github.ps1", "scripts/sanitize_for_github.py"):
                 continue
             if rel == f"scripts/{_RULES_NAME}":

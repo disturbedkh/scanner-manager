@@ -42,7 +42,7 @@ def main() -> int:
                         timeout=0.05, write_timeout=0.5)
     try:
         print(f"# GLT chain probe @ {datetime.datetime.now().isoformat(timespec='seconds')}")
-        print("# Port: COM4, host: MAINGAMINGPC")
+        print("# Port: COM4, host: <HOST>")
         print()
         for label, cmd in CHAIN:
             head = cmd.split(",", 1)[0].upper()
