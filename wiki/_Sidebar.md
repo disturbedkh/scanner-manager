@@ -32,6 +32,7 @@
 **RE / Development**
 
 - [Overview](Reverse-Engineering)
+- [Adding a Scanner](Adding-a-Scanner)
 - [Architecture](RE-Architecture)
 - [USB Modes](RE-USB-Modes)
 - [SD Card](RE-SD-Card)

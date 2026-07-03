@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "beartracker-885-scanner-manager"
-version = "0.10.0"
+version = "0.11.0"
 description = "Desktop GUI for managing Uniden BearTracker 885 HPD files, ZIP/coverage simulation, RadioReference imports, and Uniden Sentinel/Updater integration."
 readme = "README.md"
 license = { file = "LICENSE" }

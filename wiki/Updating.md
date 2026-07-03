@@ -56,6 +56,14 @@ direct you to the release page rather than attempting a binary swap.
 Deleting or zeroing `updater_skipped_version` will re-enable prompts
 for a previously-skipped release.
 
+## Repository mirrors
+
+Development happens on a private GitLab mirror with full RE context.
+The public GitHub repo (`disturbedkh/scanner-manager`) is a **filtered
+export** — private Metacache notes, probe sessions, and dev tooling are
+stripped before push. Release tags and binaries are published from
+GitHub only.
+
 ## Privacy
 
 The updater talks only to

@@ -37,6 +37,13 @@ Out of scope (but still feel free to file a normal issue):
   app is local-only; denial-of-service on your own PC is not a
   security vulnerability).
 
+## Repository mirrors
+
+The public GitHub repo is a filtered export of the product code and
+wiki. A private GitLab mirror retains RE lab artifacts, probe sessions,
+and developer notebooks that are never pushed to GitHub. Use
+`scripts/publish_github.ps1` to sync a sanitized tree to GitHub.
+
 ## Installer manifest integrity
 
 Scanner Manager downloads Uniden installers from URLs pinned in
