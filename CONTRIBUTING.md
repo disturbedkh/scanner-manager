@@ -9,7 +9,7 @@ Python 3.9+ with Tkinter. On Linux, install your distro's Tk package
 (`sudo apt install python3-tk` on Debian/Ubuntu).
 
 ```bash
-git clone https://gitlab.com/garudadev1/scanner-manager.git
+git clone https://github.com/disturbedkh/scanner-manager.git
 cd scanner-manager
 python -m pip install -U pip
 python -m pip install -e ".[full,dev]"
@@ -21,7 +21,7 @@ Smoke-test the install:
 scanner-manager --help  # verifies the console-script hook
 pytest -q               # runs the test suite
 ruff check core/ gui/ legacy_tk/ scanner_profiles/ scanner_drivers/ \
-  firmware/ streaming/ audio/ virtual_sd/ tests/ scripts/ Metacache/Dev/RE/tools/
+  firmware/ streaming/ audio/ virtual_sd/ tests/ scripts/
 ```
 
 ## Running tests
