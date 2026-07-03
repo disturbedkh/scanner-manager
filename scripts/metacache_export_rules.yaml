@@ -1,0 +1,53 @@
+# GitHub export policy (SSOT). GitLab keeps the full tree; publish_github.ps1
+# strips gitignore_only paths and runs public_sanitize redaction before push.
+#
+# public_original: everything under Metacache/ not listed below (~150 files).
+
+gitignore_only:
+  paths:
+    # Agent / lead notebooks
+    - Metacache/Dev/WORKER_LOG.md
+    - Metacache/Dev/PROJECT_STATE.md
+    - Metacache/Dev/CURSOR.md
+    - Metacache/Dev/REVIEW_2026-06.md
+    - Metacache/Dev/MACHINES.md
+    # Ghidra workspace + logs (regenerate via ghidra_import_runbook.md)
+    - Metacache/Dev/RE/firmware/SDS100_SUB.gpr
+    - Metacache/Dev/RE/firmware/SDS100_SUB.rep
+    - Metacache/Dev/RE/firmware/analyzeHeadless.log
+    # Vendor installer trees (string tables in sentinel_decompile/strings/ remain)
+    - Metacache/Dev/RE/sentinel_decompile/sentinel_zip
+    - Metacache/Dev/RE/sentinel_decompile/bt885_zip
+    # Non-Metacache GitLab-only trees
+    - AI
+    - vendor
+    - .cursor
+    - .sonarlint
+    - docker-compose.sonar.yml
+    - dev_mcp
+  path_globs:
+    # Firmware blobs (copyright + size; RE docs describe acquisition)
+    - Metacache/Dev/RE/firmware/*.bin
+    - Metacache/Dev/RE/firmware/*.firm
+    - Metacache/Dev/RE/firmware/*.zip
+    - Metacache/Dev/RE/firmware/**/*.bin
+    - Metacache/Dev/RE/firmware/**/*.firm
+    - Metacache/Dev/RE/firmware/**/*.zip
+    # Raw USB captures (summaries in *.summary.md remain public)
+    - Metacache/Dev/RE/sentinel_pcaps/*.pcap
+    - Metacache/Dev/RE/sentinel_pcaps/*.scsi.jsonl
+    # Per-machine Ghidra path shim
+    - "**/.ghidra_env.ps1"
+
+public_sanitize:
+  path_globs:
+    - Metacache/Dev/RE/sessions/*.txt
+    - Metacache/Dev/RE/sessions/*.jsonl
+    - Metacache/Dev/RE/firmware/analysis_dump.json
+
+audit_patterns:
+  - khutt
+  - MAINGAMINGPC
+  - MiniLaptop
+  - "G:\\scanner-manager"
+  - "C:\\Users\\khutt"

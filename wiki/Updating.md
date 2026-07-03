@@ -59,10 +59,11 @@ for a previously-skipped release.
 ## Repository mirrors
 
 Development happens on a private GitLab mirror with full RE context.
-The public GitHub repo (`disturbedkh/scanner-manager`) is a **filtered
-export** — private Metacache notes, probe sessions, and dev tooling are
-stripped before push. Release tags and binaries are published from
-GitHub only.
+The public GitHub repo is a **filtered export** — see
+[`Metacache/EXPORT_POLICY.md`](../Metacache/EXPORT_POLICY.md). Safe
+Metacache RE files (docs, tools, specs) ship on GitHub; agent
+notebooks, firmware blobs, and raw captures do not. Release tags and
+binaries are published from GitHub only.
 
 ## Privacy
 

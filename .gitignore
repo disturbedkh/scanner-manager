@@ -1,12 +1,10 @@
-# ---------------------------------------------------------------------------
 # Private GitLab mirror: full RE context, probe sessions, firmware
 # captures, and dev tooling are tracked for cross-machine dev work.
-# The public GitHub mirror (origin) should not receive these paths —
-# use scripts/publish_github.ps1 to export a filtered tree.
+# The public GitHub mirror uses scripts/publish_github.ps1 with
+# scripts/metacache_export_rules.yaml (selective Metacache export).
 # ---------------------------------------------------------------------------
 
-# Public GitHub mirror — GitLab-only (see header comment)
-Metacache/
+# Never commit anywhere (both mirrors)
 AI/
 vendor/
 .cursor/

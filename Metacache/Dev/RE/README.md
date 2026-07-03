@@ -33,13 +33,14 @@ Metacache/Dev/RE/
 ├── plans/                # forward-looking RE plans (e.g. virtual
 │                          #  scanner roadmap)
 ├── firmware/             # firmware blobs + Ghidra projects
-│                          #  (gitignored; bring your own)
-├── firmware_analysis/    # strings dumps + diffs (gitignored)
-├── sentinel_pcaps/       # raw USBPcap captures (gitignored) + the
-│                          #  decoded *.summary.md / *.files.md /
-│                          #  *.scsi.jsonl artifacts (committed)
-└── sessions/             # raw probe session logs (gitignored)
+│                          #  (GitLab-only; see EXPORT_POLICY.md)
+├── firmware_analysis/    # strings dumps + diffs (public on GitHub)
+├── sentinel_pcaps/       # raw USBPcap captures (GitLab-only) +
+│                          #  decoded *.summary.md / *.files.md (public)
+└── sessions/             # raw probe logs (sanitized on GitHub export)
 ```
+
+Export tiers for GitHub vs GitLab: [`Metacache/EXPORT_POLICY.md`](../../EXPORT_POLICY.md).
 
 The `tools/` folder is the new home for everything executable -
 serial probes, firmware analyzers, Sentinel decoders, Ghidra glue.

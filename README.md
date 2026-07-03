@@ -9,7 +9,7 @@ and a full revertable change log.**
 > Unofficial, community-built. Not affiliated with or endorsed by Uniden.
 > See [DISCLAIMER.md](DISCLAIMER.md).
 
-> **v0.11.0:** the default `scanner-manager` console script launches the
+> **v0.11.1:** the default `scanner-manager` console script launches the
 > [Qt UI](https://github.com/disturbedkh/scanner-manager/wiki/Qt-UI)
 > (PySide6). The legacy Tkinter shell remains available as
 > `scanner-manager-tk`.

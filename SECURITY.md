@@ -39,10 +39,13 @@ Out of scope (but still feel free to file a normal issue):
 
 ## Repository mirrors
 
-The public GitHub repo is a filtered export of the product code and
-wiki. A private GitLab mirror retains RE lab artifacts, probe sessions,
-and developer notebooks that are never pushed to GitHub. Use
-`scripts/publish_github.ps1` to sync a sanitized tree to GitHub.
+The public GitHub repo is a filtered export of product code, wiki, and
+**safe Metacache RE context** (docs, tools, specs, decompiles, decoded
+pcap summaries). GitLab-only content includes agent notebooks
+(`WORKER_LOG.md`), raw USB pcaps, firmware blobs, vendor installer
+trees, and unsanitized probe sessions. Export policy:
+[`Metacache/EXPORT_POLICY.md`](Metacache/EXPORT_POLICY.md). Sync via
+`scripts/publish_github.ps1`.
 
 ## Installer manifest integrity
 

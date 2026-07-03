@@ -1,21 +1,20 @@
 # Publish a sanitized public export to GitHub (disturbedkh/scanner-manager).
 #
-# GitLab retains the full private tree (Metacache, RE lab, dev tooling).
-# This script clones GitLab main into a temp directory, strips GitLab-only
-# paths from history with git-filter-repo, audits for machine-specific
-# strings, then force-pushes the rewritten main branch and release tag.
+# GitLab retains the full private tree. This script clones GitLab main,
+# applies scripts/metacache_export_rules.yaml (strip gitignore_only paths),
+# runs scripts/sanitize_for_github.py, audits, then force-pushes main + tag.
 #
 # Prerequisites:
-#   pip install git-filter-repo
-#   git remote "gitlab" -> private GitLab mirror (optional)
+#   pip install git-filter-repo pyyaml
+#   git remote "gitlab" -> private GitLab mirror
 #   git remote "origin"  -> https://github.com/disturbedkh/scanner-manager.git
 #
 # Usage:
 #   .\scripts\publish_github.ps1
-#   .\scripts\publish_github.ps1 -Tag v0.11.0 -Force
+#   .\scripts\publish_github.ps1 -Tag v0.11.1 -Force
 
 param(
-    [string]$Tag = "v0.11.0",
+    [string]$Tag = "v0.11.1",
     [string]$GitLabRemote = "gitlab",
     [string]$GitHubRemote = "origin",
     [switch]$Force
@@ -41,22 +40,20 @@ function Resolve-RemoteUrl {
     return $url
 }
 
+function Get-VenvPython {
+    $venvPython = Join-Path $RepoRoot ".venv\Scripts\python.exe"
+    if (Test-Path $venvPython) { return $venvPython }
+    return "python"
+}
+
 function Invoke-FilterRepo {
     param([string[]]$FilterArgs)
-    $venvPython = Join-Path $RepoRoot ".venv\Scripts\python.exe"
-    if (Test-Path $venvPython) {
-        & $venvPython -m git_filter_repo @FilterArgs
-        return
-    }
-    $fromPath = Get-Command git-filter-repo -ErrorAction SilentlyContinue
-    if ($fromPath) {
-        & $fromPath.Source @FilterArgs
-        return
-    }
-    throw "git-filter-repo not found. Run: pip install git-filter-repo"
+    $venvPython = Get-VenvPython
+    & $venvPython -m git_filter_repo @FilterArgs
 }
 
 Require-Command git "Install Git."
+$Python = Get-VenvPython
 
 $gitlabUrl = Resolve-RemoteUrl -Remote $GitLabRemote
 $githubUrl = Resolve-RemoteUrl -Remote $GitHubRemote
@@ -68,7 +65,7 @@ Write-Host "Release tag   : $Tag" -ForegroundColor Cyan
 if (-not $Force) {
     Write-Host ""
     Write-Host "This will REWRITE GitHub history and force-push main + tags." -ForegroundColor Yellow
-    Write-Host "Private paths (Metacache/, AI/, vendor/, .cursor/, ...) are removed." -ForegroundColor Yellow
+    Write-Host "Applying scripts/metacache_export_rules.yaml (selective Metacache export)." -ForegroundColor Yellow
     $confirm = Read-Host "Type YES to continue"
     if ($confirm -ne "YES") {
         Write-Host "Aborted." -ForegroundColor Red
@@ -86,44 +83,31 @@ try {
     git clone --branch main --single-branch $gitlabUrl $cloneDir
     Set-Location $cloneDir
 
-    $invertPaths = @(
-        "Metacache/",
-        "AI/",
-        "vendor/",
-        ".cursor/",
-        ".sonarlint/",
-        "docker-compose.sonar.yml",
-        "dev_mcp/"
-    )
-
     Write-Host ""
-    Write-Host "Running git filter-repo (invert-paths)..." -ForegroundColor Green
+    Write-Host "Running git filter-repo (metacache_export_rules.yaml)..." -ForegroundColor Green
     $filterArgs = @("--force", "--invert-paths")
-    foreach ($p in $invertPaths) {
-        $filterArgs += @("--path", $p)
+    $specLines = & $Python (Join-Path $RepoRoot "scripts\print_export_filter_args.py")
+    foreach ($line in $specLines) {
+        if ($line -match "^PATH`t(.+)$") {
+            $filterArgs += @("--path", $Matches[1])
+        } elseif ($line -match "^GLOB`t(.+)$") {
+            $filterArgs += @("--path-glob", $Matches[1])
+        }
     }
     Invoke-FilterRepo -FilterArgs $filterArgs
 
     Write-Host ""
-    Write-Host "Auditing filtered tree for machine-specific strings..." -ForegroundColor Green
-    $patterns = @(
-        "khutt",
-        "MAINGAMINGPC",
-        "MiniLaptop",
-        "G:\\scanner-manager",
-        "C:\\Users\\khutt"
-    )
-    $auditExclude = ":(exclude)scripts/publish_github.ps1"
-    $hits = @()
-    foreach ($pat in $patterns) {
-        git grep -i -n $pat -- . $auditExclude 2>$null | ForEach-Object { $hits += $_ }
+    Write-Host "Sanitizing public_sanitize paths..." -ForegroundColor Green
+    & $Python (Join-Path $RepoRoot "scripts\sanitize_for_github.py") --repo-root $cloneDir
+    if ($LASTEXITCODE -ne 0) { throw "sanitize_for_github.py failed" }
+
+    Write-Host ""
+    Write-Host "Committing sanitized export..." -ForegroundColor Green
+    git add -A
+    git diff --cached --quiet
+    if ($LASTEXITCODE -ne 0) {
+        git commit -m "chore: sanitize Metacache for public GitHub export"
     }
-    if ($hits.Count -gt 0) {
-        Write-Host "AUDIT FAILED — sensitive strings remain:" -ForegroundColor Red
-        $hits | Select-Object -First 30 | ForEach-Object { Write-Host $_ }
-        throw "Sanitization audit failed. Fix hits in GitLab main and retry."
-    }
-    Write-Host "Audit clean." -ForegroundColor Green
 
     Write-Host ""
     Write-Host "Creating annotated tag $Tag..." -ForegroundColor Green
@@ -143,7 +127,7 @@ try {
 
     Write-Host ""
     Write-Host "Force-pushing tags to GitHub..." -ForegroundColor Green
-    git push --force origin --tags
+    git push --force origin $Tag
 
     Write-Host ""
     Write-Host "Done. GitHub main and tag $Tag published." -ForegroundColor Green

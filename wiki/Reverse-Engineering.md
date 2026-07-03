@@ -33,6 +33,10 @@ is:
    forward-looking plan for an SDR-backed software scanner that
    inherits everything we know.
 
+**Lab notebook (repo):** [`Metacache/Dev/RE/`](../Metacache/Dev/RE/) holds
+probe scripts, vendor specs, decompiles, and session captures. Safe
+files ship on GitHub; see [`Metacache/EXPORT_POLICY.md`](../Metacache/EXPORT_POLICY.md).
+
 ## TL;DR
 
 - The SDS100 has **two USB modes**: Mass Storage and Serial.

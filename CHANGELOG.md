@@ -6,6 +6,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-07-03
+
+### Added
+
+- **Metacache RE lab on GitHub.** Safe reverse-engineering context
+  (docs, specs, tools, decompiles, decoded Sentinel summaries) is
+  included in the public export; agent notebooks, firmware blobs, raw
+  pcaps, and machine-specific session paths remain GitLab-only.
+- [`Metacache/EXPORT_POLICY.md`](Metacache/EXPORT_POLICY.md) and
+  [`scripts/metacache_export_rules.yaml`](scripts/metacache_export_rules.yaml)
+  — file-level export tiers (public / sanitize / strip).
+- [`scripts/sanitize_for_github.py`](scripts/sanitize_for_github.py) —
+  redacts probe session headers and paths at export time.
+
+### Changed
+
+- [`scripts/publish_github.ps1`](scripts/publish_github.ps1) applies
+  selective Metacache export instead of stripping the entire tree.
+- [`.gitignore`](.gitignore) no longer blocks all of `Metacache/` on
+  GitLab; GitHub exclusions are export-time only.
+
 ## [0.11.0] - 2026-07-03
 
 ### Added
