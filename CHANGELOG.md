@@ -6,6 +6,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-07-03
+
+### Added
+
+- **Virtual scanner faceplate** in the Live dock — clickable keypad, soft
+  keys, and LCD mirror of the SDS100/200 control surface.
+- **Live / Monitoring tabs** — Control page for the faceplate; Monitoring
+  page for GSI mirror, GLG feed, signal meters, and spectrum/waterfall.
+- **Location simulation bar** — ZIP/GPS-based HPDB location filter with
+  profile-aware editor panels.
+- **Editor overhaul** — HPDB cache, BT885 inspector, location filter,
+  profile panels, and expanded tree/details/coverage views.
+- **Workspace reload** and **device-switch performance** improvements.
+- Expanded Qt test coverage (virtual scanner, location sim, workspace
+  load, switch perf, scaling label, live dock).
+
+### Changed
+
+- PyInstaller entry fix via `packaging/entry_qt.py`.
+- Stacked Live/Storage layout and profile-aware editor panels (0.11.0
+  release candidate work landed on GitLab).
+
 ## [0.10.0] - 2026-06-19
 
 ### Changed
