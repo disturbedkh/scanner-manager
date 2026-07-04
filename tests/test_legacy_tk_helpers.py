@@ -948,7 +948,7 @@ def test_crossref_hint_for_rr_row_callsign_and_fuzzy() -> None:
     )
     assert cs_hint is not None
     assert cs_hint["kind"] == "callsign"
-    assert cs_hint["score"] == 1.0
+    assert cs_hint["score"] == pytest.approx(1.0)
     assert "W1ABC" in cs_hint["label"]
 
     fuzzy_hint = crossref_hint_for_rr_row(

@@ -38,16 +38,24 @@ Quick status:
 
 Linux/macOS: use `./scripts/sonar_truststore.sh` then `./scripts/sonar_scan.sh`.
 
-## Baseline (2026-07-04, Round 5 Phase 5–6 — pending Cloud re-scan after push)
+## Baseline (2026-07-04, Round 6 — local fixes landed, pending Cloud re-scan)
 
 | Metric | VPS (`scanner-manager`) | SonarCloud (`disturbedkh_scanner-manager`) |
 | --- | --- | --- |
 | Host | `https://217.216.48.172:18443` | `https://sonarcloud.io` |
 | Scope | Full tree (no legacy/Metacache/scripts exclusions) | Same — `sonar-project.properties` aligned |
-| OPEN issues (`main`) | TBD after GitLab push | **34 → 0 target** (export: `.sonar/issues_checklist_r5.json`; MCP verified 34 OPEN pre-push 2026-07-04) |
-| Coverage (`main`) | **91.9%** (prior product-only upload) | **≥ 88%** via GitHub Actions `coverage.xml` upload |
-| Quality gate | TBD full-scope | **OK target** (`new_security_rating`, `new_reliability_rating`, `new_duplicated_lines_density` ≤ 3%) |
+| OPEN issues (`main`) | TBD after GitLab push | **10 → 0 target** (export: `.sonar/issues_checklist_r6.json`; MCP verified 10 OPEN pre-push 2026-07-04) |
+| Coverage (`main`) | **91.9%** (prior product-only upload) | **≥ 88%** via GitHub Actions `coverage.xml` upload (Linux xvfb) |
+| Quality gate | TBD full-scope | **ERROR** pre-push (`new_security_rating=5`, `new_reliability_rating=3`); **OK target** after re-scan |
 | CI floor | GitLab `--cov-fail-under=88` | GitHub `sonarcloud` job + `check_quality_gate.ps1 -Cloud -MaxOpenIssues 0` |
+
+Round 6 highlights (Phases 0–4 local, not yet pushed):
+
+- **Phase 0:** `pytest-qt>=4` in dev extras + `requirements.lock`; `pytestmark = pytest.mark.qt` on orphan Qt test modules; GitHub matrix + GitLab `.test_matrix` exclude `qt`; GitLab `.test_linux_base` adds `libegl1 libgl1-mesa-glx libglib2.0-0`.
+- **Phase 1:** `core/path_utils.py` — inline validated writes via `base_resolved / relative` (removed `_write_text_at` / `_write_bytes_at`); `scripts/generate_sonar_checklist.py` routes through `safe_write_text` with basename-only guard under `.sonar/`.
+- **Phase 2:** `legacy_tk/geo_tables.py` — `str.split` for `_split_group_name`; `sm_helpers.py` — `_mode_audit_row_for_entry` extraction; `test_legacy_tk_helpers.py` — `pytest.approx(1.0)`.
+- **Phase 3:** Policy issues documented below (UI Accept required; MCP cannot Accept).
+- **Phase 4:** Focused tests green; full suite **1054 passed** / 2 skipped locally; `test_sonar_open_count` → `issues_checklist_r6.json`, `BASELINE_OPEN=0`.
 
 Round 5 highlights (Phases 0–5 local, pushed 2026-07-04):
 
@@ -71,6 +79,26 @@ Round 3 highlights:
 - Security: `safe_resolve_path` / `safe_user_path` on scripts + RE tools; `tests/test_security_paths.py` extended.
 - Duplication: shared `core/hpd.py` geo helpers; thin `rr_parsing` facade re-exports parsers.
 - **`text:S8565` (`pyproject.toml`):** project uses committed [`requirements.lock`](../../requirements.lock) (pip-tools SSOT) via `[tool.pip-tools] output-file` instead of `uv.lock`/`poetry.lock` — documented here; no Sonar suppression.
+
+## Policy issues — SonarCloud UI Accept (Round 6)
+
+House rule: **no in-code suppressions**. Two remaining findings require manual resolution in the SonarCloud UI. The SonarCloud MCP can list issues and check the quality gate but **cannot** mark issues as Accept / Won't fix — that step is human-only.
+
+### `python:S5332` — plain FTP in `firmware/vendor_ftp_transport.py`
+
+1. Open [SonarCloud Issues](https://sonarcloud.io/project/issues?id=disturbedkh_scanner-manager&branch=main&resolved=false&rules=python%3AS5332).
+2. Select the open issue on `firmware/vendor_ftp_transport.py` (line 15).
+3. Click **Change status** → **Accept** (or **Won't fix**).
+4. Comment rationale: *Vendor CDN offers plain FTP only; isolated module with host allowlist in `firmware/ftp_client.py`; see Metacache/Dev/SONARQUBE.md Vendor FTP policy.*
+
+### `text:S8565` — lock file in `pyproject.toml`
+
+1. Open [SonarCloud Issues](https://sonarcloud.io/project/issues?id=disturbedkh_scanner-manager&branch=main&resolved=false&rules=text%3AS8565).
+2. Select the open issue on `pyproject.toml`.
+3. Click **Change status** → **Accept**.
+4. Comment rationale: *Committed `requirements.lock` is pip-tools SSOT (`[tool.pip-tools] output-file`); enforced by `scripts/check_lockfile_stale.py`; Sonar rule only recognizes uv/poetry/pdm/pylock filenames.*
+
+After both UI accepts and a successful re-scan clearing the eight code fixes, MCP OPEN count should reach **0** and the quality gate should pass.
 
 ## Vendor FTP policy (`python:S5332`)
 
@@ -105,7 +133,7 @@ pytest -m "not requires_serial and not slow" --cov --cov-report=xml:coverage.xml
 
 - User-global MCP: **`Sonarcloud`** (primary) + **`Sonarqube`** (VPS fallback). See [`CURSOR.md`](CURSOR.md).
 - Sonar skills: `sonar-list-issues`, `sonar-quality-gate`, `sonar-coverage`, `sonar-analyze`.
-- Issue checklist export: `.sonar/issues_checklist_r5.json` (gitignored; export via `user-Sonarcloud` MCP, then `python scripts/generate_sonar_checklist.py .sonar/issues_checklist_r5.json < export.json`).
+- Issue checklist export: `.sonar/issues_checklist_r6.json` (gitignored; export via `user-Sonarcloud` MCP, then `python scripts/generate_sonar_checklist.py issues_checklist_r6.json < export.json`).
 
 ## GitLab CI
 

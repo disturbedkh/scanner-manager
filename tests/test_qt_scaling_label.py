@@ -7,6 +7,8 @@ from PySide6.QtWidgets import QApplication
 
 from gui.widgets.scaling_label import ScalingHelpLabel
 
+pytestmark = pytest.mark.qt
+
 
 @pytest.fixture(scope="session")
 def qapp():

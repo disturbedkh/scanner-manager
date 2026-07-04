@@ -53,14 +53,6 @@ def safe_open_for_write(base: Path, user_path: Path | str, *args, **kwargs):
     return resolved.open(*args, **kwargs)
 
 
-def _write_text_at(resolved: Path, text: str, *, encoding: str = "utf-8") -> None:
-    resolved.write_text(text, encoding=encoding)
-
-
-def _write_bytes_at(resolved: Path, data: bytes) -> None:
-    resolved.write_bytes(data)
-
-
 def safe_write_text(
     base: Path,
     user_path: Path | str,
@@ -69,15 +61,21 @@ def safe_write_text(
     encoding: str = "utf-8",
 ) -> Path:
     """Write ``text`` only when ``user_path`` resolves under ``base``."""
-    resolved = _resolved_under_base(base, user_path)
-    resolved.parent.mkdir(parents=True, exist_ok=True)
-    _write_text_at(resolved, text, encoding=encoding)
-    return resolved
+    base_resolved = base.expanduser().resolve(strict=False)
+    relative = _resolved_under_base(base, user_path).relative_to(base_resolved)
+    target = base_resolved / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("w", encoding=encoding) as fh:
+        fh.write(text)
+    return target
 
 
 def safe_write_bytes(base: Path, user_path: Path | str, data: bytes) -> Path:
     """Write ``data`` only when ``user_path`` resolves under ``base``."""
-    resolved = _resolved_under_base(base, user_path)
-    resolved.parent.mkdir(parents=True, exist_ok=True)
-    _write_bytes_at(resolved, data)
-    return resolved
+    base_resolved = base.expanduser().resolve(strict=False)
+    relative = _resolved_under_base(base, user_path).relative_to(base_resolved)
+    target = base_resolved / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("wb") as fh:
+        fh.write(data)
+    return target

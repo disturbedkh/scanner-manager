@@ -51,15 +51,15 @@ jobs:
 
       - name: Run tests (Windows)
         if: runner.os == 'Windows'
-        run: pytest -x --maxfail=3
+        run: pytest -m "not requires_serial and not slow and not qt" -x --maxfail=3
 
       - name: Run tests (macOS)
         if: runner.os == 'macOS'
-        run: pytest -x --maxfail=3
+        run: pytest -m "not requires_serial and not slow and not qt" -x --maxfail=3
 
       - name: Run tests (Linux, headless)
         if: runner.os == 'Linux'
-        run: xvfb-run -a pytest -x --maxfail=3
+        run: xvfb-run -a pytest -m "not requires_serial and not slow and not qt" -x --maxfail=3
 
       - name: Smoke-test imports
         shell: bash

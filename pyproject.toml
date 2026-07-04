@@ -86,6 +86,7 @@ firmware = [
 ]
 dev = [
     "pytest>=8",
+    "pytest-qt>=4",
     "pytest-cov>=5",
     "pytest-xdist>=3.5",
     "pip-tools>=7.4",

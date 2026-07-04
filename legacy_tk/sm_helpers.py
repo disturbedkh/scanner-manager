@@ -1639,6 +1639,20 @@ def _mode_audit_row(
     }
 
 
+def _mode_audit_row_for_entry(
+    sys_node: "SystemNode",
+    group: "GroupNode",
+    entry: "FreqEntry",
+    rr_reference: Dict[int, Dict[str, Any]],
+    audit_fn: Callable[["FreqEntry", Dict[int, Dict[str, Any]]], Optional[Tuple[str, str, str]]],
+) -> Optional[Tuple[Dict[str, Any], str]]:
+    result = audit_fn(entry, rr_reference)
+    if result is None:
+        return None
+    issue, suggested, source = result
+    return _mode_audit_row(sys_node, group, entry, issue, suggested, source), source
+
+
 def collect_mode_audit_rows(
     systems: List["SystemNode"],
     rr_reference: Dict[int, Dict[str, Any]],
@@ -1652,17 +1666,17 @@ def collect_mode_audit_rows(
                 if entry.entry_type != "C-Freq":
                     continue
                 total += 1
-                result = audit_fn(entry, rr_reference)
-                if result is None:
+                outcome = _mode_audit_row_for_entry(
+                    sys_node, group, entry, rr_reference, audit_fn
+                )
+                if outcome is None:
                     continue
-                issue, suggested, source = result
+                row, source = outcome
                 if source == "rr":
                     rr_flags += 1
                 else:
                     band_flags += 1
-                rows.append(
-                    _mode_audit_row(sys_node, group, entry, issue, suggested, source)
-                )
+                rows.append(row)
     return rows, total, rr_flags, band_flags
 
 

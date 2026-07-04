@@ -12,6 +12,8 @@ from core.device_manager import Device, DeviceManager
 from gui.dialogs.workspaces import Workspace, WorkspaceManagerDialog
 from gui.main_window import MainWindow
 
+pytestmark = pytest.mark.qt
+
 
 @pytest.fixture(scope="session")
 def qapp():

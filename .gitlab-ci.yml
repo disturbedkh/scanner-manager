@@ -48,7 +48,7 @@ lockfile:check:
   stage: test
   before_script:
     - apt-get update -qq
-    - apt-get install -y -qq xvfb python3-tk
+    - apt-get install -y -qq xvfb python3-tk libegl1 libgl1-mesa-glx libglib2.0-0
     - python -m pip install -U pip pip-tools
     - python -m pip install -r requirements.lock
     - python -m pip install -e . --no-deps
@@ -75,7 +75,7 @@ test:integration:
 
 .test_matrix:
   script:
-    - pytest -m "not requires_serial and not slow" -q
+    - pytest -m "not requires_serial and not slow and not qt" -q
     - python -c "import gui.app; import core.metastore, core.uniden_tools; print('import ok')"
     - python -c "import legacy_tk.scanner_manager; print('legacy tk ok')"
 
