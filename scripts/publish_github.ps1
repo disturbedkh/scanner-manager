@@ -118,7 +118,10 @@ try {
     $version = $Tag.TrimStart("v")
     git tag -a $Tag -m "Scanner Manager $version (public export)"
 
-    git remote remove origin 2>$null
+    $remotes = @(git remote)
+    if ($remotes -contains 'origin') {
+        git remote remove origin
+    }
     git remote add origin $githubUrl
 
     Write-Host ""
