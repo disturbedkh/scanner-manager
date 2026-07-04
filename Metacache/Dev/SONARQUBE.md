@@ -40,12 +40,16 @@ Linux/macOS: use `./scripts/sonar_truststore.sh` then `./scripts/sonar_scan.sh`.
 
 ## SonarCloud analysis mode
 
-**Automatic Analysis must stay disabled** for `disturbedkh_scanner-manager`. Autoscan ignores repo [`sonar-project.properties`](../../sonar-project.properties) (`sonar.python.version`, `sonar.exclusions`, `coverage.xml`) and triggers Python-version / file-encoding warnings on the full GitHub tree.
+**Automatic Analysis must stay disabled** for `disturbedkh_scanner-manager`. Autoscan ignores repo [`sonar-project.properties`](../../sonar-project.properties) (`sonar.python.version`, `sonar.exclusions`, `coverage.xml`) and triggers Python-version / file-encoding warnings on the full GitHub tree. **CI scanner upload is rejected while autoscan remains enabled** (`You are running CI analysis while Automatic Analysis is enabled`).
 
-- Admin: [Analysis Method](https://sonarcloud.io/project/administration/analysis_method?id=disturbedkh_scanner-manager)
-- Authoritative upload: GitHub Actions `coverage` → `sonarcloud` jobs in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml), or local [`scripts/sonar_scan_cloud.ps1`](../../scripts/sonar_scan_cloud.ps1)
+Disable at **both** levels if needed:
 
-Verify after a green CI scan:
+- **Organization:** [GarudaDev → Analysis Method](https://sonarcloud.io/organizations/disturbedkh/administration/analysis_method)
+- **Project:** [scanner-manager → Analysis Method](https://sonarcloud.io/project/administration/analysis_method?id=disturbedkh_scanner-manager)
+
+Authoritative upload: GitHub Actions `coverage` → `sonarcloud` jobs in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml), or local [`scripts/sonar_scan_cloud.ps1`](../../scripts/sonar_scan_cloud.ps1)
+
+Verify autoscan is off (no new autoscan CE tasks after push; latest task must not contain `sonar.autoscan.enabled=true`):
 
 ```powershell
 Remove-Item Env:SONAR_HOST_URL, Env:SONARQUBE_CLI_SERVER -ErrorAction SilentlyContinue
@@ -53,7 +57,7 @@ sonar api GET "/api/ce/activity?component=disturbedkh_scanner-manager&ps=1&type=
 sonar api GET "/api/ce/task?id=<taskId>&additionalFields=warnings,scannerContext"
 ```
 
-Expect `warningCount: 0`, no `sonar.autoscan.enabled=true`, and `sonar.python.version=3.12` in scanner context.
+After a green CI `sonarcloud` job: `warningCount: 0`, `sonar.python.version=3.12` in scanner context.
 
 ## Baseline (2026-07-04, Final 3 — 3→0 OPEN target)
 
