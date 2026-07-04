@@ -330,6 +330,7 @@ def test_refresh_worker_run_success(monkeypatch):
     captured = []
     worker.finished_with_data.connect(lambda *args: captured.append(args))
     worker.run()
+    assert len(captured) == 1
     assert captured[0][3] == ""
     assert len(captured[0][0]) == 1
 
@@ -349,6 +350,7 @@ def test_refresh_worker_run_failure(monkeypatch):
     captured = []
     worker.finished_with_data.connect(lambda *args: captured.append(args))
     worker.run()
+    assert len(captured) == 1
     assert captured[0][0] == []
     assert "network down" in captured[0][3]
 
@@ -373,6 +375,7 @@ def test_download_worker_run_success(monkeypatch, tmp_path):
     results = []
     worker.done.connect(lambda ok, msg: results.append((ok, msg)))
     worker.run()
+    assert len(results) == 1
     assert results[0][0] is True
     assert cache.has("uniden_sds100", version)
 
@@ -395,6 +398,7 @@ def test_download_worker_run_failure(monkeypatch, tmp_path):
     results = []
     worker.done.connect(lambda ok, msg: results.append((ok, msg)))
     worker.run()
+    assert len(results) == 1
     assert results[0][0] is False
     assert "xfer failed" in results[0][1]
 
@@ -419,6 +423,7 @@ def test_hpdb_download_worker_run(monkeypatch, tmp_path):
     results = []
     worker.done.connect(lambda ok, msg: results.append((ok, msg)))
     worker.run()
+    assert len(results) == 1
     assert results[0][0] is True
     assert Path(results[0][1]).exists()
 
@@ -866,6 +871,7 @@ def test_hpdb_download_worker_run_failure(monkeypatch, tmp_path):
     results = []
     worker.done.connect(lambda ok, msg: results.append((ok, msg)))
     worker.run()
+    assert len(results) == 1
     assert results[0][0] is False
     assert "hpdb xfer failed" in results[0][1]
 

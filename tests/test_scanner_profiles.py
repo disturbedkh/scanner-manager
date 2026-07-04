@@ -47,7 +47,7 @@ def test_target_model_unknown_returns_none() -> None:
 
 def test_register_profile_rejects_non_profile() -> None:
     with pytest.raises(TypeError):
-        register_profile(object())  # type: ignore[arg-type]
+        register_profile("not-a-scanner-profile")  # type: ignore[arg-type]
 
 
 def test_profile_is_abstract() -> None:

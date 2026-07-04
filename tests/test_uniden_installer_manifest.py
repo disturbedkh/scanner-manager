@@ -20,8 +20,14 @@ import re
 from pathlib import Path
 
 import core.uniden_tools as uniden_tools
+import pytest
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+@pytest.fixture(autouse=True)
+def _installer_hash_under_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SCANNER_MANAGER_CACHE_DIR", str(tmp_path))
 
 # ---------------------------------------------------------------------------
 # Manifest shape

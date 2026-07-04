@@ -380,16 +380,20 @@ def test_telemetry_websocket_disconnect_is_swallowed() -> None:
     )
 
     class _MockWebSocket:
+        def __init__(self, connected: asyncio.Event) -> None:
+            self._connected = connected
+
         async def accept(self) -> None:
-            return None
+            await asyncio.sleep(0)
+            self._connected.set()
 
         async def send_text(self, _payload: str) -> None:
             raise WebSocketDisconnect()
 
     async def _run() -> None:
-        task = asyncio.create_task(endpoint(_MockWebSocket()))
-        while not server._telemetry_subscribers:
-            await asyncio.sleep(0)
+        connected = asyncio.Event()
+        task = asyncio.create_task(endpoint(_MockWebSocket(connected)))
+        await asyncio.wait_for(connected.wait(), timeout=2.0)
         queue = next(iter(server._telemetry_subscribers))
         await queue.put({"kind": "gsi", "mode": "Scan"})
         await task

@@ -29,6 +29,8 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import re
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -69,6 +71,48 @@ def ensure_dir(path: Path) -> Path:
     """Create ``path`` (and parents) if missing; return it."""
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def safe_user_path(base: Path, user_path: Path | str) -> Path:
+    """Resolve ``user_path`` under ``base``; reject directory traversal."""
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    from core.path_utils import safe_resolve_path
+
+    return safe_resolve_path(base, user_path)
+
+
+def validate_executable(path: Path | str, *, label: str = "executable") -> Path:
+    """Return a resolved executable path or raise ``FileNotFoundError``."""
+    resolved = Path(path).expanduser().resolve(strict=False)
+    if not resolved.is_file():
+        raise FileNotFoundError(f"{label} not found: {resolved}")
+    return resolved
+
+
+_USBPCAP_INTERFACE_RE = re.compile(r"^\\\\\.\\USBPcap\d+$", re.IGNORECASE)
+
+
+def validate_usbpcap_interface(interface: str) -> str:
+    """Reject malformed USBPcap interface tokens before subprocess use."""
+    if not _USBPCAP_INTERFACE_RE.match(interface):
+        raise ValueError(f"Invalid USBPcap interface: {interface!r}")
+    return interface
+
+
+def validate_drive_root(drive: str) -> Path:
+    """Accept a Windows drive root like ``E:`` or ``E:\\``."""
+    text = str(drive).strip().rstrip("\\/")
+    if not re.fullmatch(r"[A-Za-z]:", text):
+        raise ValueError(f"Invalid drive root: {drive!r}")
+    return Path(text + "\\")
+
+
+def validate_capture_devices(devices: str) -> str:
+    """Allow only comma-separated decimal USB device addresses."""
+    if not re.fullmatch(r"[0-9]+(?:,[0-9]+)*", devices.strip()):
+        raise ValueError(f"Invalid --devices value: {devices!r}")
+    return devices.strip()
 
 
 def utc_stamp(fmt: str = "%Y%m%dT%H%M%SZ") -> str:
@@ -251,7 +295,7 @@ def resolve_firmware(
     """
     explicit = getattr(args, attr, None)
     if explicit:
-        return Path(explicit)
+        return safe_user_path(REPO_ROOT, explicit)
     found = finder()
     if not found:
         raise FileNotFoundError(
@@ -296,6 +340,11 @@ __all__ = [
     "DOCS_DIR",
     "SPECS_DIR",
     "ensure_dir",
+    "safe_user_path",
+    "validate_executable",
+    "validate_usbpcap_interface",
+    "validate_drive_root",
+    "validate_capture_devices",
     "utc_stamp",
     "PortDetectionError",
     "list_uniden_ports",
@@ -331,9 +380,12 @@ def _selftest() -> None:
         return
     print("\nUniden CDC ports currently visible:")
     for p in ports:
-        role = "MAIN" if p.pid == UNIDEN_MAIN_PID else (
-            "SUB" if p.pid == UNIDEN_SUB_PID else "?"
-        )
+        if p.pid == UNIDEN_MAIN_PID:
+            role = "MAIN"
+        elif p.pid == UNIDEN_SUB_PID:
+            role = "SUB"
+        else:
+            role = "?"
         print(f"  {p.device}  PID=0x{p.pid:04x} ({role})  {p.description}")
 
 

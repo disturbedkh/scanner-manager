@@ -260,7 +260,7 @@ def test_sync_pull_copies_card_change_and_flags_external(tmp_path: Path):
         encoding="utf-8",
     )
 
-    report, diffs = sync_pull(
+    report, _diffs = sync_pull(
         card_root=str(card_root),
         workspace_root=str(ws_root),
         baseline=baseline,
@@ -432,9 +432,9 @@ def test_restore_snapshot_roundtrip(tmp_path: Path):
 def test_snapshot_workspace_missing_dir_raises(tmp_path: Path):
     from core.sdcard import snapshot_workspace
 
-    missing = tmp_path / "nope"
+    missing_path = str(tmp_path / "nope")
     with pytest.raises(FileNotFoundError, match="Workspace not found"):
-        snapshot_workspace(str(missing))
+        snapshot_workspace(missing_path)
 
 
 def test_probe_empty_root_path_returns_empty_identity():
@@ -636,8 +636,9 @@ def test_restore_snapshot_missing_payload_raises(tmp_path: Path):
 
     ws = tmp_path / "workspace"
     ws.mkdir()
+    ws_path = str(ws)
     with pytest.raises(FileNotFoundError, match="Snapshot folder missing"):
-        restore_snapshot(str(ws), "does-not-exist")
+        restore_snapshot(ws_path, "does-not-exist")
 
 
 def test_snapshot_disk_usage_empty_profile(tmp_path: Path):

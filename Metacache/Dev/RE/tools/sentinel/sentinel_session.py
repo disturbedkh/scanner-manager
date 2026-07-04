@@ -194,6 +194,37 @@ def is_usbpcapcmd(tool: Path) -> bool:
     return tool.name.lower().startswith("usbpcapcmd")
 
 
+def _parse_usbpcap_interface_line(line: str) -> tuple[str, str] | None:
+    if "value=" not in line:
+        return None
+    try:
+        token = line.split("value=", 1)[1].split("}", 1)[0]
+        display = (
+            line.split("display=", 1)[1].split("}", 1)[0]
+            if "display=" in line
+            else token
+        )
+        return token, f"{display} ({token})"
+    except IndexError:
+        return None
+
+
+def _parse_dumpcap_interface_line(line: str) -> tuple[str, str] | None:
+    text = line.strip()
+    if "USBPcap" not in text:
+        return None
+    idx = text.find("\\\\.\\USBPcap")
+    if idx < 0:
+        idx = text.find("USBPcap")
+    if idx < 0:
+        return None
+    tail = text[idx:]
+    token = tail.split()[0].rstrip("()").rstrip()
+    if not token.startswith("\\\\.\\"):
+        token = "\\\\.\\" + token
+    return token, text
+
+
 def list_usbpcap_interfaces(tool: Path) -> list[tuple[str, str]]:
     """Return [(interface_id, friendly_name), ...] for USBPcap roots."""
     if is_usbpcapcmd(tool):
@@ -207,35 +238,19 @@ def list_usbpcap_interfaces(tool: Path) -> list[tuple[str, str]]:
         )
         interfaces: list[tuple[str, str]] = []
         for line in out.stdout.splitlines():
-            if "value=" not in line:
-                continue
-            try:
-                token = line.split("value=", 1)[1].split("}", 1)[0]
-                display = line.split("display=", 1)[1].split("}", 1)[0] if "display=" in line else token
-                interfaces.append((token, f"{display} ({token})"))
-            except IndexError:
-                continue
+            parsed = _parse_usbpcap_interface_line(line)
+            if parsed:
+                interfaces.append(parsed)
         return interfaces
 
-    # dumpcap path (legacy fallback).
     out = subprocess.run(
         [str(tool), "-D"], capture_output=True, text=True, check=False,
     )
     interfaces = []
     for raw_line in out.stdout.splitlines():
-        line = raw_line.strip()
-        if "USBPcap" not in line:
-            continue
-        idx = line.find("\\\\.\\USBPcap")
-        if idx < 0:
-            idx = line.find("USBPcap")
-        if idx < 0:
-            continue
-        tail = line[idx:]
-        token = tail.split()[0].rstrip("()").rstrip()
-        if not token.startswith("\\\\.\\"):
-            token = "\\\\.\\" + token
-        interfaces.append((token, line))
+        parsed = _parse_dumpcap_interface_line(raw_line)
+        if parsed:
+            interfaces.append(parsed)
     return interfaces
 
 
@@ -247,6 +262,10 @@ def _spawn_capture(
 ) -> subprocess.Popen:
     """Start a capture subprocess and return it. Caller is responsible for
     sending CTRL_BREAK_EVENT to stop it."""
+    tool = _c.validate_executable(tool, label="capture tool")
+    interface = _c.validate_usbpcap_interface(interface)
+    if devices:
+        devices = _c.validate_capture_devices(devices)
     if is_usbpcapcmd(tool):
         cmd = [str(tool), "-d", interface, "-o", str(out_path), "-A"]
         if devices:
@@ -642,10 +661,9 @@ def run_session(args: argparse.Namespace) -> int:
         source == "traffic"
         and not args.no_verify_interface
     )
-    if needs_verify:
-        if not verify_interface_or_warn(tool, interface):
-            print("[X] Aborting at user request.")
-            return 1
+    if needs_verify and not verify_interface_or_warn(tool, interface):
+        print("[X] Aborting at user request.")
+        return 1
 
     state = SessionState(
         capture_tool=tool,

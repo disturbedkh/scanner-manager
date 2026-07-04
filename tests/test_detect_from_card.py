@@ -10,6 +10,7 @@ hardware in Metacache/Dev/RE/docs/{BT885,SDS100}.md.
 from __future__ import annotations
 
 import os
+from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import patch
 
@@ -23,7 +24,7 @@ from scanner_profiles.registry import (
 
 
 @pytest.fixture(autouse=True)
-def _clear_detect_from_card_cache() -> None:
+def _clear_detect_from_card_cache() -> Generator[None, None, None]:
     invalidate_detect_from_card_cache()
     yield
     invalidate_detect_from_card_cache()

@@ -138,6 +138,23 @@ def find_string_xrefs(payload: bytes, marker: bytes) -> list[int]:
     return out
 
 
+def build_string_xrefs(
+    payload: bytes,
+    target_strings: list[bytes],
+) -> list[tuple[bytes, int, list[int]]]:
+    string_xrefs: list[tuple[bytes, int, list[int]]] = []
+    for marker in target_strings:
+        offsets = find_string_xrefs(payload, marker)
+        code_refs = []
+        for soff in offsets:
+            target = CODE_BASE + soff
+            target_bytes = struct.pack("<I", target)
+            for cm in re.finditer(re.escape(target_bytes), payload):
+                code_refs.append(cm.start())
+        string_xrefs.append((marker, offsets[0] if offsets else -1, code_refs))
+    return string_xrefs
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     _c.add_firmware_arg(p)
@@ -149,7 +166,7 @@ def main() -> int:
 
     fw_path = _c.resolve_firmware(args)
     payload = fw_path.read_bytes()
-    OUT = args.output
+    OUT = _c.safe_user_path(_c.RE_ROOT, args.output)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     print(f"# Loaded {fw_path.relative_to(_c.REPO_ROOT)}: {len(payload)} bytes")
 
@@ -186,21 +203,10 @@ def main() -> int:
         b"SDS100-SUB\x00",
     ]
     # Try to anchor on the version string from the firmware itself.
-    ver_match = re.search(rb"Version [0-9]+\.[0-9]+\.[0-9]+ \x00", payload)
+    ver_match = re.search(rb"Version \d+\.\d+\.\d+ \x00", payload)
     if ver_match:
         target_strings.append(ver_match.group(0))
-    string_xrefs: list[tuple[bytes, int, list[int]]] = []
-    for s in target_strings:
-        offsets = find_string_xrefs(payload, s)
-        # For each offset, find code positions that load CODE_BASE + offset
-        # as a 32-bit literal.
-        code_refs = []
-        for soff in offsets:
-            target = CODE_BASE + soff
-            target_bytes = struct.pack("<I", target)
-            for cm in re.finditer(re.escape(target_bytes), payload):
-                code_refs.append(cm.start())
-        string_xrefs.append((s, offsets[0] if offsets else -1, code_refs))
+    string_xrefs = build_string_xrefs(payload, target_strings)
 
     with open(OUT, "w", encoding="utf-8") as f:
         f.write("# Sub firmware static analysis (best-effort)\n\n")

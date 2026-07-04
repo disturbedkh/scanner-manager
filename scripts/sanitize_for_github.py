@@ -17,29 +17,50 @@ except ImportError as exc:  # pragma: no cover
 
 _RULES_NAME = "metacache_export_rules.yaml"
 
-# Hostnames and path patterns to genericize in session captures.
-_HOST_RE = re.compile(
-    r"^(# Host\s*:?\s*).*$",
-    re.IGNORECASE | re.MULTILINE,
-)
-_OUTPUT_RE = re.compile(
-    r"^(# Output\s*:?\s*).*$",
-    re.IGNORECASE | re.MULTILINE,
-)
+_HOST_RE = re.compile(r"^# Host\s*:?\s*.*$", re.IGNORECASE | re.MULTILINE)
+_OUTPUT_RE = re.compile(r"^# Output\s*:?\s*.*$", re.IGNORECASE | re.MULTILINE)
 _WIN_USER_PATH = re.compile(r"[A-Za-z]:\\Users\\[^\\/\s\"']+", re.IGNORECASE)
 _WIN_DRIVE_REPO = re.compile(r"[A-Za-z]:\\scanner-manager", re.IGNORECASE)
-_KNOWN_HOSTS = re.compile(r"\b(MAINGAMINGPC|MINILAPTOP|MiniLaptop)\b", re.IGNORECASE)
+_KNOWN_HOSTS = re.compile(r"\b(?:MAINGAMINGPC|MINILAPTOP)\b", re.IGNORECASE)
 _KHUTT = re.compile(r"\bkhutt\b", re.IGNORECASE)
+
+_JSONL_KEYS = ("host", "hostname", "output", "output_path", "repo_root", "path")
 
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def load_rules(rules_path: Path | None = None) -> dict:
-    path = rules_path or (_repo_root() / "scripts" / _RULES_NAME)
-    with path.open(encoding="utf-8") as fh:
+def _safe_repo_root(user_root: Path) -> Path:
+    resolved = user_root.expanduser().resolve(strict=False)
+    anchor = _repo_root()
+    try:
+        resolved.relative_to(anchor)
+    except ValueError as exc:
+        raise ValueError(
+            f"--repo-root must stay inside {anchor}, got {resolved}"
+        ) from exc
+    return resolved
+
+
+def load_rules(rules_path: Path | None, repo_root: Path) -> dict:
+    path = rules_path or (repo_root / "scripts" / _RULES_NAME)
+    safe_rules = _safe_repo_root(path.parent) / path.name
+    with safe_rules.open(encoding="utf-8") as fh:
         return yaml.safe_load(fh)
+
+
+def _glob_matches(rel: str, pattern: str) -> bool:
+    return fnmatch.fnmatch(rel, pattern.replace("\\", "/"))
+
+
+def _collect_rglob(repo_root: Path, pattern: str) -> list[Path]:
+    norm = pattern.replace("\\", "/").lstrip("/")
+    return [
+        candidate
+        for candidate in repo_root.rglob(norm)
+        if candidate.is_file() and _glob_matches(candidate.relative_to(repo_root).as_posix(), pattern)
+    ]
 
 
 def _matching_files(repo_root: Path, globs: list[str]) -> list[Path]:
@@ -47,13 +68,8 @@ def _matching_files(repo_root: Path, globs: list[str]) -> list[Path]:
     for pattern in globs:
         norm = pattern.replace("\\", "/")
         if "**" in norm or norm.startswith("*"):
-            for candidate in repo_root.rglob(norm.lstrip("/")):
-                if candidate.is_file():
-                    rel = candidate.relative_to(repo_root).as_posix()
-                    if fnmatch.fnmatch(rel, norm):
-                        out.append(candidate)
+            out.extend(_collect_rglob(repo_root, norm))
         else:
-            # Simple glob relative to repo root
             for candidate in repo_root.glob(norm):
                 if candidate.is_file():
                     out.append(candidate)
@@ -61,14 +77,20 @@ def _matching_files(repo_root: Path, globs: list[str]) -> list[Path]:
 
 
 def sanitize_session_text(text: str, rel_path: str) -> str:
-    text = _HOST_RE.sub(r"\1<HOST>", text)
+    text = _HOST_RE.sub("# Host: <HOST>", text)
     placeholder = f"<repo>/{rel_path.replace(chr(92), '/')}"
-    text = _OUTPUT_RE.sub(rf"\1{placeholder}", text)
-    text = _WIN_USER_PATH.sub(r"<user-home>", text)
-    text = _WIN_DRIVE_REPO.sub(r"<repo>", text)
+    text = _OUTPUT_RE.sub(f"# Output: {placeholder}", text)
+    text = _WIN_USER_PATH.sub("<user-home>", text)
+    text = _WIN_DRIVE_REPO.sub("<repo>", text)
     text = _KNOWN_HOSTS.sub("<HOST>", text)
-    text = _KHUTT.sub("<user>", text)
-    return text
+    return _KHUTT.sub("<user>", text)
+
+
+def _sanitize_json_value(obj: dict, rel_path: str) -> None:
+    for key in _JSONL_KEYS:
+        value = obj.get(key)
+        if isinstance(value, str):
+            obj[key] = sanitize_session_text(value, rel_path)
 
 
 def sanitize_jsonl_line(line: str, rel_path: str) -> str:
@@ -80,30 +102,30 @@ def sanitize_jsonl_line(line: str, rel_path: str) -> str:
     except json.JSONDecodeError:
         return sanitize_session_text(line, rel_path)
     if isinstance(obj, dict):
-        for key in ("host", "hostname", "output", "output_path", "repo_root", "path"):
-            if key in obj and isinstance(obj[key], str):
-                obj[key] = sanitize_session_text(obj[key], rel_path)
+        _sanitize_json_value(obj, rel_path)
         return json.dumps(obj, ensure_ascii=False) + "\n"
     return sanitize_session_text(line, rel_path)
 
 
 def sanitize_analysis_dump(text: str) -> str:
+    rel = "Metacache/Dev/RE/firmware/analysis_dump.json"
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        return sanitize_session_text(text, "Metacache/Dev/RE/firmware/analysis_dump.json")
-    if isinstance(data, dict):
-        if "repo_root" in data:
-            data["repo_root"] = "<repo>"
+        return sanitize_session_text(text, rel)
+    if isinstance(data, dict) and "repo_root" in data:
+        data["repo_root"] = "<repo>"
         text = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
-    return sanitize_session_text(text, "Metacache/Dev/RE/firmware/analysis_dump.json")
+    return sanitize_session_text(text, rel)
 
 
 def sanitize_file(path: Path, repo_root: Path) -> None:
     rel = path.relative_to(repo_root).as_posix()
     raw = path.read_text(encoding="utf-8", errors="replace")
     if rel.endswith(".jsonl"):
-        sanitized = "".join(sanitize_jsonl_line(line, rel) for line in raw.splitlines(keepends=True))
+        sanitized = "".join(
+            sanitize_jsonl_line(line, rel) for line in raw.splitlines(keepends=True)
+        )
     elif rel.endswith(".json"):
         sanitized = sanitize_analysis_dump(raw)
     else:
@@ -111,28 +133,38 @@ def sanitize_file(path: Path, repo_root: Path) -> None:
     path.write_text(sanitized, encoding="utf-8")
 
 
+def _audit_skip(rel: str) -> bool:
+    if rel.startswith(".git/") or rel.startswith("tests/"):
+        return True
+    return rel in (
+        "scripts/publish_github.ps1",
+        "scripts/sanitize_for_github.py",
+        f"scripts/{_RULES_NAME}",
+    )
+
+
+def _file_matches_pattern(path: Path, repo_root: Path, pattern: str) -> str | None:
+    rel = path.relative_to(repo_root).as_posix()
+    if _audit_skip(rel):
+        return None
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    if re.search(re.escape(pattern), text, re.IGNORECASE):
+        return f"{rel}: matched {pattern!r}"
+    return None
+
+
 def audit_repo(repo_root: Path, patterns: list[str]) -> list[str]:
     hits: list[str] = []
     for pat in patterns:
-        regex = re.compile(re.escape(pat), re.IGNORECASE)
         for path in repo_root.rglob("*"):
             if not path.is_file():
                 continue
-            rel = path.relative_to(repo_root).as_posix()
-            if rel.startswith(".git/"):
-                continue
-            if rel.startswith("tests/"):
-                continue
-            if rel in ("scripts/publish_github.ps1", "scripts/sanitize_for_github.py"):
-                continue
-            if rel == f"scripts/{_RULES_NAME}":
-                continue
-            try:
-                text = path.read_text(encoding="utf-8", errors="replace")
-            except OSError:
-                continue
-            if regex.search(text):
-                hits.append(f"{rel}: matched {pat!r}")
+            hit = _file_matches_pattern(path, repo_root, pat)
+            if hit:
+                hits.append(hit)
     return hits
 
 
@@ -157,9 +189,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    repo_root = args.repo_root.resolve()
-    rules_path = args.rules or (repo_root / "scripts" / _RULES_NAME)
-    rules = load_rules(rules_path)
+    repo_root = _safe_repo_root(args.repo_root)
+    rules_path = args.rules
+    if rules_path is not None:
+        rules_path = _safe_repo_root(rules_path.parent) / rules_path.name
+    rules = load_rules(rules_path, repo_root)
 
     if not args.audit_only:
         globs = rules.get("public_sanitize", {}).get("path_globs", [])

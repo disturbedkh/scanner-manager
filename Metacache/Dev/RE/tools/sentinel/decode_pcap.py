@@ -63,6 +63,9 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import _common as _c  # noqa: E402
+
 # --- Known-command universe used to flag novel mnemonics -----------------
 
 # Every command head we've already seen (case-sensitive). Anything
@@ -274,6 +277,19 @@ def write_jsonl(pairs: list[CommandResponse], path: Path) -> None:
             }) + "\n")
 
 
+def _write_device_breakdown(f, by_dev: dict[str, list[CommandResponse]]) -> None:
+    f.write("## Per-device breakdown\n\n")
+    for dkey, plist in by_dev.items():
+        heads = Counter(p.head for p in plist)
+        f.write(f"### `{dkey}`\n\n")
+        f.write(f"- Total commands: {len(plist)}\n")
+        f.write("- Top mnemonics:\n")
+        for h, n in heads.most_common(20):
+            marker = "" if h in KNOWN_HEADS else " **(novel)**"
+            f.write(f"  - `{h or '<empty>'}` x {n}{marker}\n")
+        f.write("\n")
+
+
 def write_summary(
     pairs: list[CommandResponse],
     src_pcap: Path,
@@ -292,16 +308,7 @@ def write_summary(
         f.write(f"- Pairs decoded: {len(pairs)}\n")
         f.write(f"- Devices observed: {len(by_dev)}\n\n")
 
-        f.write("## Per-device breakdown\n\n")
-        for dkey, plist in by_dev.items():
-            heads = Counter(p.head for p in plist)
-            f.write(f"### `{dkey}`\n\n")
-            f.write(f"- Total commands: {len(plist)}\n")
-            f.write("- Top mnemonics:\n")
-            for h, n in heads.most_common(20):
-                marker = "" if h in KNOWN_HEADS else " **(novel)**"
-                f.write(f"  - `{h or '<empty>'}` x {n}{marker}\n")
-            f.write("\n")
+        _write_device_breakdown(f, by_dev)
 
         f.write("## Novel mnemonics (not in any known spec or probe)\n\n")
         if not novel:
@@ -369,11 +376,12 @@ def main() -> int:
 
     pair_window_s = args.pair_window_ms / 1000.0
     for pcap in args.pcaps:
-        if not pcap.exists():
+        pcap_path = _c.safe_user_path(_c.RE_ROOT, pcap)
+        if not pcap_path.exists():
             print(f"!! not found: {pcap}", file=sys.stderr)
             continue
         try:
-            decode_one(pcap, tshark, pair_window_s)
+            decode_one(pcap_path, tshark, pair_window_s)
         except Exception as exc:
             print(f"!! {pcap}: {exc!r}", file=sys.stderr)
     return 0

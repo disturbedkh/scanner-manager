@@ -8,6 +8,14 @@ $script:SonarTruststorePath = Join-Path $SonarTruststoreDir "truststore.jks"
 $script:SonarTruststorePassword = "changeit"
 $script:SonarCertExportPath = Join-Path $SonarTruststoreDir "sonarqube-vps.cer"
 
+function Show-Info {
+    param(
+        [string]$Message,
+        [ConsoleColor]$Color = 'White'
+    )
+    Write-Host $Message -ForegroundColor $Color
+}
+
 function Get-SonarHostUrl {
     if ($env:SCANNER_MANAGER_SONAR_HOST_URL) {
         return $env:SCANNER_MANAGER_SONAR_HOST_URL.TrimEnd('/')
@@ -147,7 +155,7 @@ function Invoke-SonarScannerUpload {
         throw "Docker is not running and sonar-scanner was not found on PATH. Start Docker Desktop or install sonar-scanner-cli."
     }
 
-    Write-Host "==> Docker unavailable; using native sonar-scanner at $($native.Source)" -ForegroundColor Yellow
+    Show-Info "==> Docker unavailable; using native sonar-scanner at $($native.Source)" -Color Yellow
     $scannerOpts = Get-SonarScannerOpts -HostUrl $HostUrl -Runtime Native
     $prevHost = $env:SONAR_HOST_URL
     $prevToken = $env:SONAR_TOKEN
@@ -314,7 +322,7 @@ function Confirm-SonarAnalysisFresh {
     if ($age.TotalHours -gt $MaxAgeHours) {
         Write-Warning "Branch '$($status.Branch)' last analysis is $($status.AnalysisDate) ($([int]$age.TotalHours)h ago). Re-run .\sonar_scan.ps1 if you expected a fresh upload."
     } else {
-        Write-Host "VPS branch '$($status.Branch)': analysis $($status.AnalysisDate), coverage $($status.Coverage)%, gate $($status.QualityGate)" -ForegroundColor Green
+        Show-Info "VPS branch '$($status.Branch)': analysis $($status.AnalysisDate), coverage $($status.Coverage)%, gate $($status.QualityGate)" -Color Green
     }
     return $status
 }
@@ -404,7 +412,7 @@ function Confirm-SonarCloudAnalysisFresh {
     if ($age.TotalHours -gt $MaxAgeHours) {
         Write-Warning "Cloud branch '$($status.Branch)' last analysis is $($status.AnalysisDate) ($([int]$age.TotalHours)h ago)."
     } else {
-        Write-Host "Cloud branch '$($status.Branch)': analysis $($status.AnalysisDate), coverage $($status.Coverage)%, gate $($status.QualityGate)" -ForegroundColor Green
+        Show-Info "Cloud branch '$($status.Branch)': analysis $($status.AnalysisDate), coverage $($status.Coverage)%, gate $($status.QualityGate)" -Color Green
     }
     return $status
 }

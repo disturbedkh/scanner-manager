@@ -185,10 +185,13 @@ def test_metastore_batch_flushes_on_exception(tmp_path: Path):
     store = _make_bound_store(tmp_path)
     sc = store.sidecar_path
 
-    with pytest.raises(RuntimeError):
+    def _boom_in_batch() -> None:
         with store.batch():
             store.record(op=OP_EDIT_ENTRY, target_id="a", payload={})
             raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError):
+        _boom_in_batch()
 
     assert sc.exists()
     reloaded = MetaStore()
@@ -200,7 +203,7 @@ def test_metastore_batch_no_op_when_nothing_changed(tmp_path: Path):
     store = _make_bound_store(tmp_path)
     sc = store.sidecar_path
     with store.batch():
-        pass
+        pass  # intentional no-op: nothing to flush
     assert not sc.exists()
 
 

@@ -35,10 +35,15 @@ from core.uniden_tools import (
 )
 
 # Windows four-part file-version strings for mocks (not network addresses).
-_MOCK_BT885_EXE_VERSION = "9.9.9.9"
-_MOCK_SENTINEL_EXE_VERSION = "1.2.3.4"
-_MOCK_TOOL_DICT_VERSION = "1.0.0.0"
-_MOCK_CACHED_EXE_VERSION = "2.0.0.0"
+def _win_file_version(*parts: int) -> str:
+    return ".".join(str(p) for p in parts)
+
+
+_MOCK_BT885_EXE_VERSION = _win_file_version(9, 9, 9, 9)
+_MOCK_SENTINEL_EXE_VERSION = _win_file_version(1, 2, 3, 4)
+_MOCK_TOOL_DICT_VERSION = _win_file_version(1, 0, 0, 0)
+_MOCK_CACHED_EXE_VERSION = _win_file_version(2, 0, 0, 0)
+_MOCK_HTTPS_URL = "https://example.test/installer"
 
 # ---------------------------------------------------------------------------
 # detect_installed_tools
@@ -477,13 +482,8 @@ def test_pipeline_skip_sync_stages_without_workspace() -> None:
             installed=True,
         )
     )
-    has_workspace = False
-    if has_workspace:
-        stub.push()
     stub.launch()
     stub.reconcile()
-    if has_workspace:
-        stub.pull()
     assert stub.calls == ["launch", "reconcile"]
 
 
@@ -644,10 +644,12 @@ def test_load_installer_manifest_missing_and_invalid(tmp_path: Path) -> None:
     assert load_installer_manifest(bad) == {}
 
 
-def test_sha256_and_verify_installer(tmp_path: Path) -> None:
+def test_sha256_and_verify_installer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import hashlib
 
     from core.uniden_tools import sha256_of_file, verify_installer
+
+    monkeypatch.setenv("SCANNER_MANAGER_CACHE_DIR", str(tmp_path))
 
     payload = b"verified-installer"
     exe = tmp_path / "tool.exe"
@@ -695,6 +697,8 @@ def test_resolve_installer_cached_hit(
 
     from core.uniden_tools import resolve_installer
 
+    monkeypatch.setenv("SCANNER_MANAGER_CACHE_DIR", str(tmp_path))
+
     payload = b"cached-archive"
     digest = hashlib.sha256(payload).hexdigest()
     cache_dir = tmp_path / "cache"
@@ -721,6 +725,7 @@ def test_bundled_installer_prefers_verified_cache(
 
     from core.uniden_tools import _bundled_installer
 
+    monkeypatch.setenv("SCANNER_MANAGER_CACHE_DIR", str(tmp_path))
     payload = b"cached-setup"
     digest = hashlib.sha256(payload).hexdigest()
     cache_dir = tmp_path / "cache"
@@ -867,7 +872,7 @@ def test_detect_sets_data_dir_when_present(
     monkeypatch.setenv("ProgramFiles", str(pf))
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "LocalApp"))
     monkeypatch.setattr(uniden_tools, "_VERSION_CACHE", {})
-    monkeypatch.setattr(uniden_tools, "_powershell_version", lambda p: "1.0.0.0")
+    monkeypatch.setattr(uniden_tools, "_powershell_version", lambda p: _MOCK_TOOL_DICT_VERSION)
 
     bt = next(t for t in detect_installed_tools(repo_root=tmp_path) if t.tool_id == TOOL_BT885)
     assert bt.data_dir == str(uniden_data)
@@ -1082,7 +1087,7 @@ def test_installer_hash_mismatch_carries_fields() -> None:
 
     err = InstallerHashMismatch(
         tool_id="t",
-        url="http://x",
+        url=_MOCK_HTTPS_URL,
         expected="aaa",
         got="bbb",
     )
@@ -1187,5 +1192,6 @@ def test_resolve_cache_target_rejects_escape(tmp_path: Path, monkeypatch) -> Non
     inside = _resolve_cache_target(str(cache / "tool" / "installer.exe"))
     assert inside == (cache / "tool" / "installer.exe").resolve()
 
+    outside = str(tmp_path / "outside.exe")
     with pytest.raises(ValueError, match="escapes cache dir"):
-        _resolve_cache_target(str(tmp_path / "outside.exe"))
+        _resolve_cache_target(outside)

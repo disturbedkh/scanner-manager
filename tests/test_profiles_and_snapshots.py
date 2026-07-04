@@ -191,8 +191,9 @@ def test_restore_snapshot_raises_for_missing_snapshot(tmp_path):
     _write(workspace / "s.hpd", "hi")
     import pytest
 
+    workspace_path = str(workspace)
     with pytest.raises(FileNotFoundError):
-        sdcard.restore_snapshot(str(workspace), "does-not-exist")
+        sdcard.restore_snapshot(workspace_path, "does-not-exist")
 
 
 def test_snapshot_disk_usage_sums_payloads(tmp_path):

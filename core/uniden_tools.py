@@ -31,6 +31,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.path_utils import PathTraversalError
+
 # ---------------------------------------------------------------------------
 # Dataclasses / constants
 # ---------------------------------------------------------------------------
@@ -194,10 +196,36 @@ class InstallerHashMismatch(ValueError):
         )
 
 
+def _allowed_hash_roots() -> List[Path]:
+    return [
+        default_cache_dir().resolve(),
+        Path(__file__).resolve().parent.parent,
+    ]
+
+
+def _resolve_hashable_path(path: Path) -> Path:
+    """Resolve ``path`` for hashing; reject paths outside installer cache or repo."""
+    resolved = path.expanduser().resolve(strict=False)
+    for root in _allowed_hash_roots():
+        try:
+            resolved.relative_to(root)
+            return resolved
+        except ValueError:
+            continue
+    if not path.is_absolute():
+        from core.path_utils import safe_resolve_path
+
+        return safe_resolve_path(_allowed_hash_roots()[1], path)
+    raise PathTraversalError(
+        f"Refusing to hash file outside allowed roots: {resolved}"
+    )
+
+
 def sha256_of_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
     """Stream-hash ``path`` and return its lowercase hex SHA-256 digest."""
+    resolved = _resolve_hashable_path(path)
     h = hashlib.sha256()
-    with path.open("rb") as f:
+    with resolved.open("rb") as f:
         for chunk in iter(lambda: f.read(chunk_size), b""):
             h.update(chunk)
     return h.hexdigest()

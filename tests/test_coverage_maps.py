@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
 import core.coverage_maps as coverage_maps
 
 
@@ -124,7 +126,7 @@ def test_pick_default_center_falls_back_to_dc():
 
 
 def test_cell_corner_offsets_span_the_grid():
-    nw, ne, se, sw = coverage_maps.cell_corner_offsets_mi(
+    nw, ne, se, _sw = coverage_maps.cell_corner_offsets_mi(
         center_lat=0.0,
         center_lon=0.0,
         r=0,
@@ -157,7 +159,7 @@ def test_iter_coverage_circles_handles_missing_geo():
 
     results = list(coverage_maps.iter_coverage_circles([_FakeSys()]))
     assert len(results) == 1
-    assert results[0][0] == 1.0
+    assert results[0][0] == pytest.approx(1.0)
     assert results[0][3] == "sys - good"
 
 
@@ -654,7 +656,7 @@ def test_cluster_tower_points_collapses_colocated_entries():
     assert len(clusters) == 2
     big = clusters[0]
     assert big.size == 3
-    assert big.max_range_mi == 25.0
+    assert big.max_range_mi == pytest.approx(25.0)
     systems = {m.system for m in big.members}
     assert systems == {
         "County Police",

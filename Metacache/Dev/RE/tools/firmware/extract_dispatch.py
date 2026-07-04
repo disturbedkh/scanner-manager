@@ -38,6 +38,27 @@ SRAM_BASE = 0x10000000
 SRAM_TO_FLASH = BASE - SRAM_BASE  # +0x04000000
 
 
+def _normalize_addr(addr: int, fw_size: int) -> int:
+    if SRAM_BASE <= addr < SRAM_BASE + fw_size:
+        return addr + SRAM_TO_FLASH
+    return addr
+
+
+def _in_fw(addr: int, fw_size: int) -> bool:
+    normalized = _normalize_addr(addr & ~1, fw_size)
+    return BASE <= normalized < BASE + fw_size
+
+
+def _fw_word(fw: bytes, addr: int, fw_size: int) -> int:
+    normalized = _normalize_addr(addr)
+    return struct.unpack_from("<I", fw, normalized - BASE)[0]
+
+
+def _fw_byte(fw: bytes, addr: int, fw_size: int) -> int:
+    normalized = _normalize_addr(addr)
+    return fw[normalized - BASE]
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     _c.add_firmware_arg(p)
@@ -60,21 +81,16 @@ def main() -> int:
     print(f"# Firmware: {fw_path.relative_to(_c.REPO_ROOT)}  ({size:,} bytes)")
 
     def normalize(addr: int) -> int:
-        if SRAM_BASE <= addr < SRAM_BASE + size:
-            return addr + SRAM_TO_FLASH
-        return addr
+        return _normalize_addr(addr, size)
 
     def in_fw(addr: int) -> bool:
-        a = normalize(addr & ~1)
-        return BASE <= a < BASE + size
+        return _in_fw(addr, size)
 
     def fw_word(addr: int) -> int:
-        a = normalize(addr)
-        return struct.unpack_from("<I", fw, a - BASE)[0]
+        return _fw_word(fw, addr, size)
 
     def fw_byte(addr: int) -> int:
-        a = normalize(addr)
-        return fw[a - BASE]
+        return _fw_byte(fw, addr, size)
 
     lp_start, lp_end = args.litpool_range
     print(f"=== Literal pool (0x{lp_start:08X}..0x{lp_end:08X}) ===")

@@ -24,5 +24,22 @@
       "installer_relpath_in_archive": "BCDx36HP_Sentinel_Version_3_01_01/setup.exe",
       "vendor_page": "https://info.uniden.com/twiki/bin/view/Unidenman4/BCDx36HPSentinel"
     }
-  }
+  },
+  "ftp_endpoints": {
+    "sentinel": {
+      "host": "ftp.homepatrol.com",
+      "path": "/BCDx36HP/",
+      "user": "homepatrolftp",
+      "password": "green7Corn",
+      "label": "Uniden Sentinel (BCDx36HP family)"
+    },
+    "bt885": {
+      "host": "ftp.uniden.com",
+      "path": "/BT885/",
+      "user": "BT885ftp2",
+      "password": "89jZ53Ba",
+      "label": "Uniden BT885 Update Manager"
+    }
+  },
+  "ftp_allowed_hosts": ["ftp.homepatrol.com", "ftp.uniden.com"]
 }

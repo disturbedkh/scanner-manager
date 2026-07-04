@@ -455,14 +455,15 @@ def test_profile_snapshots_list_and_selection(qtbot, tmp_path: Path, monkeypatch
     assert dlg._notes.toPlainText() == "note"
 
 
-def test_profile_snapshots_root_non_windows(monkeypatch):
+def test_profile_snapshots_root_non_windows(monkeypatch, tmp_path: Path):
     from gui.dialogs import profile_snapshots as ps
 
     monkeypatch.setattr(ps.sys, "platform", "darwin")
     assert "Application Support" in str(ps._snapshots_root())
 
     monkeypatch.setattr(ps.sys, "platform", "linux")
-    monkeypatch.setenv("XDG_CONFIG_HOME", "/tmp/xdg")
+    xdg_home = tmp_path / "xdg"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_home))
     assert ps._snapshots_root().as_posix().endswith("scanner-manager/snapshots")
 
 

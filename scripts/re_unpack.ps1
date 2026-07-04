@@ -72,7 +72,7 @@ function Unpack-Msi([string]$msi, [string]$dest) {
         Remove-Item -Recurse -Force $dest | Out-Null
     }
     New-Item -ItemType Directory -Path $dest | Out-Null
-    Write-Host "  msiexec /a $msi -> $dest"
+    Write-Output "  msiexec /a $msi -> $dest"
     # /qn = silent, TARGETDIR = admin-extract destination.
     $proc = Start-Process -FilePath "msiexec.exe" `
         -ArgumentList "/a", "`"$msi`"", "/qn", "TARGETDIR=`"$dest`"" `
@@ -96,7 +96,7 @@ function Dump-Assemblies([string]$dir, [string]$dest) {
                }
     foreach ($asm in $managed) {
         $outFile = Join-Path $dest ($asm.BaseName + ".cs")
-        Write-Host "  ilspycmd $($asm.Name) -> $($asm.BaseName).cs"
+        Write-Output "  ilspycmd $($asm.Name) -> $($asm.BaseName).cs"
         & ilspycmd $asm.FullName -o $dest 2>$null | Out-Null
     }
 }

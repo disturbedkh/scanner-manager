@@ -39,10 +39,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-function Write-Step    { param([string]$m) Write-Host "[*] $m" -ForegroundColor Cyan }
-function Write-OK      { param([string]$m) Write-Host "[+] $m" -ForegroundColor Green }
-function Write-Warn    { param([string]$m) Write-Host "[!] $m" -ForegroundColor Yellow }
-function Write-ErrFail { param([string]$m) Write-Host "[X] $m" -ForegroundColor Red; exit 1 }
+function Show-Step    { param([string]$m) Write-Host "[*] $m" -ForegroundColor Cyan }
+function Show-OK      { param([string]$m) Write-Host "[+] $m" -ForegroundColor Green }
+function Show-Warn    { param([string]$m) Write-Host "[!] $m" -ForegroundColor Yellow }
+function Show-ErrFail { param([string]$m) Write-Host "[X] $m" -ForegroundColor Red; exit 1 }
 
 # --- 0. Resolve repo + Ghidra ----------------------------------------------
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
@@ -61,31 +61,31 @@ if (-not $env:GHIDRA_HOME) {
     }
 }
 if (-not $env:GHIDRA_HOME) {
-    Write-ErrFail 'GHIDRA_HOME is unset and no Ghidra install found under C:\Tools.'
+    Show-ErrFail 'GHIDRA_HOME is unset and no Ghidra install found under C:\Tools.'
 }
 $headless = Join-Path $env:GHIDRA_HOME 'support\analyzeHeadless.bat'
 if (-not (Test-Path $headless)) {
-    Write-ErrFail "analyzeHeadless.bat not found at $headless"
+    Show-ErrFail "analyzeHeadless.bat not found at $headless"
 }
 
 $gprFile = Join-Path $ProjectDir "$ProjectName.gpr"
 if (-not (Test-Path $gprFile)) {
-    Write-ErrFail "Ghidra project not found at $gprFile. Run run_ghidra_setup.ps1 first."
+    Show-ErrFail "Ghidra project not found at $gprFile. Run run_ghidra_setup.ps1 first."
 }
 
 # --- 1. Prepare environment -------------------------------------------------
 if ($Targets) {
     $env:DECOMPILE_TARGETS = $Targets
-    Write-Step "DECOMPILE_TARGETS = $Targets"
+    Show-Step "DECOMPILE_TARGETS = $Targets"
 } else {
-    Write-Step 'DECOMPILE_TARGETS unset; DecompileFunctions.java will use its default Round-1+2 set.'
+    Show-Step 'DECOMPILE_TARGETS unset; DecompileFunctions.java will use its default Round-1+2 set.'
 }
 $env:DECOMPILE_OUTDIR = $OutputDir
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
 # --- 2. Build command line --------------------------------------------------
 $logFile = Join-Path $ProjectDir 'analyzeHeadless.log'
-$args = @(
+$ghidraArgs = @(
     "`"$ProjectDir`"",
     $ProjectName,
     '-scriptPath', "`"$scriptPath`"",
@@ -95,29 +95,29 @@ $args = @(
     '-postScript', 'DecompileFunctions.java',
     '-noanalysis'
 )
-$cmdLine = "& `"$headless`" $($args -join ' ')"
-Write-Step 'Invoking Ghidra (decompile-only)...'
+$cmdLine = "& `"$headless`" $($ghidraArgs -join ' ')"
+Show-Step 'Invoking Ghidra (decompile-only)...'
 Write-Host "  $cmdLine" -ForegroundColor DarkGray
 $startTs = Get-Date
 
-$proc = Start-Process -FilePath $headless -ArgumentList ($args -join ' ') `
+$proc = Start-Process -FilePath $headless -ArgumentList ($ghidraArgs -join ' ') `
     -NoNewWindow -PassThru -Wait -WorkingDirectory $repoRoot
 $elapsed = (Get-Date) - $startTs
 
 if ($proc.ExitCode -ne 0) {
-    Write-Warn "analyzeHeadless.bat exited with code $($proc.ExitCode)"
-    Write-Warn "See log: $logFile"
+    Show-Warn "analyzeHeadless.bat exited with code $($proc.ExitCode)"
+    Show-Warn "See log: $logFile"
 } else {
-    Write-OK ("Ghidra finished in {0:N0} seconds." -f $elapsed.TotalSeconds)
+    Show-OK ("Ghidra finished in {0:N0} seconds." -f $elapsed.TotalSeconds)
 }
 
 # --- 3. Report ---------------------------------------------------------------
 $jsons = Get-ChildItem -Path $OutputDir -Filter '*.json' -ErrorAction SilentlyContinue
 if ($jsons) {
-    Write-OK ("Per-function JSONs in {0}: {1}" -f $OutputDir, $jsons.Count)
+    Show-OK ("Per-function JSONs in {0}: {1}" -f $OutputDir, $jsons.Count)
     foreach ($j in $jsons | Sort-Object Name) {
         Write-Host ("    {0}  ({1:N0} bytes)" -f $j.Name, $j.Length) -ForegroundColor DarkGray
     }
 } else {
-    Write-Warn "No per-function JSONs produced. Inspect log: $logFile"
+    Show-Warn "No per-function JSONs produced. Inspect log: $logFile"
 }

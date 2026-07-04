@@ -230,5 +230,5 @@ def test_postflash_verify_fails_when_main_version_mismatches(tmp_path: Path):
 
 def test_postflash_verify_passes_when_no_expectations(tmp_path: Path):
     card = _build_card(tmp_path)
-    ok, msg = postflash_verify(card)
+    ok, _msg = postflash_verify(card)
     assert ok

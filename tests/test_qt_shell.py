@@ -404,7 +404,6 @@ def test_main_window_add_manage_and_firmware_menu(
 
     class _FakeAddDlg:
         accepted = QDialog.DialogCode.Accepted
-        Accepted = accepted  # Qt DialogCode alias for main_window comparison
 
         def __init__(self, dm, parent=None):
             self._dm = dm
@@ -416,19 +415,24 @@ def test_main_window_add_manage_and_firmware_menu(
             self._dm.add_device(self.created_device)
             return self.accepted
 
+    setattr(_FakeAddDlg, "Accepted", _FakeAddDlg.accepted)
+
     class _FakeManageDlg:
         class _Sig:
             def connect(self, _cb):
                 return None  # stub signal connector
 
-        devices_changed = _Sig()
-        devicesChanged = devices_changed  # Qt signal alias for main_window wiring
-
         def __init__(self, _dm, parent=None):
             """Test double; arguments unused."""
+            self.devices_changed = self._Sig()
 
         def exec(self):
             return 0
+
+        def __getattr__(self, name: str):
+            if name == "devicesChanged":
+                return self.devices_changed
+            raise AttributeError(name)
 
     monkeypatch.setattr("gui.main_window.AddDeviceDialog", _FakeAddDlg)
     monkeypatch.setattr("gui.main_window.ManageDevicesDialog", _FakeManageDlg)

@@ -26,8 +26,8 @@ def test_sanitize_session_headers() -> None:
     out = san.sanitize_session_text(_SAMPLE_SESSION, rel)
     assert "khutt" not in out.lower()
     assert "MINILAPTOP" not in out
-    assert "# Host     : <HOST>" in out
-    assert "# Output   : <repo>/Metacache/Dev/RE/sessions/sample.txt" in out
+    assert "# Host: <HOST>" in out
+    assert "# Output: <repo>/Metacache/Dev/RE/sessions/sample.txt" in out
 
 
 def test_sanitize_analysis_dump_repo_root() -> None:

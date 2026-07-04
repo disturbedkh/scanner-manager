@@ -122,23 +122,29 @@ def test_location_sim_bar_emits_on_toggle(qtbot, card_root: Path) -> None:
     assert states[-1].coords == (25.7617, -80.1918)
 
 
-def _visible_group_count(tree, file_item) -> int:
+def _count_visible_groups_in_system(tree, file_item, sys_item) -> int:
     from PySide6.QtCore import Qt
 
+    visible_groups = 0
+    for grp_row in range(sys_item.rowCount()):
+        grp_item = sys_item.child(grp_row, 0)
+        if grp_item is None:
+            continue
+        payload = grp_item.data(Qt.UserRole)
+        if not isinstance(payload, dict) or payload.get("kind") != "group":
+            continue
+        if not tree._view.isRowHidden(grp_row, sys_item.index()):
+            visible_groups += 1
+    return visible_groups
+
+
+def _visible_group_count(tree, file_item) -> int:
     visible_groups = 0
     for sys_row in range(file_item.rowCount()):
         sys_item = file_item.child(sys_row, 0)
         if sys_item is None or tree._view.isRowHidden(sys_row, file_item.index()):
             continue
-        for grp_row in range(sys_item.rowCount()):
-            grp_item = sys_item.child(grp_row, 0)
-            if grp_item is None:
-                continue
-            payload = grp_item.data(Qt.UserRole)
-            if not isinstance(payload, dict) or payload.get("kind") != "group":
-                continue
-            if not tree._view.isRowHidden(grp_row, sys_item.index()):
-                visible_groups += 1
+        visible_groups += _count_visible_groups_in_system(tree, file_item, sys_item)
     return visible_groups
 
 

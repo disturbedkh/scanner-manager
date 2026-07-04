@@ -13,6 +13,26 @@ from audio.encoder import (  # noqa: E402
 )
 
 
+def _make_sounddevice_fake(input_stream):
+    """Build a fake sounddevice module; InputStream mirrors the production API."""
+    fake = type("_FakeSD", (), {"input_stream": classmethod(input_stream), "last_stream": None})
+    setattr(fake, "InputStream", fake.input_stream)
+    return fake
+
+
+class _SdStreamNoop:
+    """Minimal InputStream double with no-op lifecycle hooks."""
+
+    def start(self):
+        pass  # sounddevice stub: no hardware in unit tests
+
+    def stop(self):
+        pass  # sounddevice stub: no hardware in unit tests
+
+    def close(self):
+        pass  # sounddevice stub: no hardware in unit tests
+
+
 def _sine_frame(seconds: float = 0.1, freq: float = 440.0, sample_rate: int = 48000) -> AudioFrame:
     n = int(sample_rate * seconds)
     t = np.linspace(0, seconds, n, endpoint=False)
@@ -216,8 +236,8 @@ def test_audio_frame_from_block_handles_conversion_failure():
             raise TypeError("cannot convert")
 
     frame = cap._audio_frame_from_block(_BadBlock(), np, 48000, 1)
-    assert frame.rms == 0.0
-    assert frame.peak == 0.0
+    assert frame.rms == pytest.approx(0.0)
+    assert frame.peak == pytest.approx(0.0)
     assert frame.pcm is not None
 
 
@@ -226,8 +246,8 @@ def test_audio_frame_from_block_empty_array():
 
     empty = np.array([], dtype=np.float32)
     frame = cap._audio_frame_from_block(empty, np, 48000, 1)
-    assert frame.rms == 0.0
-    assert frame.peak == 0.0
+    assert frame.rms == pytest.approx(0.0)
+    assert frame.peak == pytest.approx(0.0)
 
 
 def test_audio_capture_start_raises_without_sounddevice(monkeypatch):
@@ -242,12 +262,11 @@ def test_audio_capture_start_raises_without_sounddevice(monkeypatch):
 def test_audio_capture_start_raises_without_numpy(monkeypatch):
     from audio import capture as cap
 
-    class _FakeSD:
-        @classmethod
-        def InputStream(cls, **kwargs):  # noqa: ARG003
-            raise AssertionError("should not open stream without numpy")
+    def _input_stream_raises(_cls, **_kwargs):
+        raise AssertionError("should not open stream without numpy")
 
-    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    _FakeSD = _make_sounddevice_fake(_input_stream_raises)
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD)
     monkeypatch.setattr(cap, "_safe_import_numpy", lambda: None)
     ac = cap.AudioCapture()
     with pytest.raises(RuntimeError, match="numpy not installed"):
@@ -257,7 +276,7 @@ def test_audio_capture_start_raises_without_numpy(monkeypatch):
 def test_audio_capture_start_stop_with_mock_stream(monkeypatch):
     from audio import capture as cap
 
-    class _FakeStream:
+    class _FakeStream(_SdStreamNoop):
         def __init__(self, callback):
             self._callback = callback
             self.started = False
@@ -268,22 +287,16 @@ def test_audio_capture_start_stop_with_mock_stream(monkeypatch):
         def stop(self):
             self.started = False
 
-        def close(self):
-            pass
-
         def invoke(self, block):
             self._callback(block, len(block), None, None)
 
-    class _FakeSD:
-        last_stream = None
+    def _open_stream(cls, **kwargs):
+        stream = _FakeStream(kwargs["callback"])
+        cls.last_stream = stream
+        return stream
 
-        @classmethod
-        def InputStream(cls, **kwargs):
-            stream = _FakeStream(kwargs["callback"])
-            cls.last_stream = stream
-            return stream
-
-    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    _FakeSD = _make_sounddevice_fake(_open_stream)
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD)
     ac = cap.AudioCapture(sample_rate=48000, channels=1, block_size=4)
     assert not ac.is_running
     ac.start()
@@ -295,32 +308,20 @@ def test_audio_capture_start_stop_with_mock_stream(monkeypatch):
 def test_audio_capture_callback_receives_frame(monkeypatch):
     from audio import capture as cap
 
-    class _FakeStream:
+    class _FakeStream(_SdStreamNoop):
         def __init__(self, callback):
             self._callback = callback
-
-        def start(self):
-            pass
-
-        def stop(self):
-            pass
-
-        def close(self):
-            pass
 
         def invoke(self, block):
             self._callback(block, len(block), None, None)
 
-    class _FakeSD:
-        last_stream = None
+    def _open_stream(cls, **kwargs):
+        stream = _FakeStream(kwargs["callback"])
+        cls.last_stream = stream
+        return stream
 
-        @classmethod
-        def InputStream(cls, **kwargs):
-            stream = _FakeStream(kwargs["callback"])
-            cls.last_stream = stream
-            return stream
-
-    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    _FakeSD = _make_sounddevice_fake(_open_stream)
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD)
     received = []
     ac = cap.AudioCapture(sample_rate=48000, channels=1, block_size=4)
     ac.set_callback(received.append)
@@ -337,39 +338,31 @@ def test_audio_capture_callback_receives_frame(monkeypatch):
     ac.stop()
 
 
-def test_audio_capture_logs_stream_status(monkeypatch):
+def test_audio_capture_logs_stream_status(monkeypatch, caplog):
+    import logging
+
     from audio import capture as cap
 
-    class _FakeStream:
+    class _FakeStream(_SdStreamNoop):
         def __init__(self, callback):
             self._callback = callback
-
-        def start(self):
-            pass
-
-        def stop(self):
-            pass
-
-        def close(self):
-            pass
 
         def invoke(self, block, status):
             self._callback(block, len(block), None, status)
 
-    class _FakeSD:
-        last_stream = None
+    def _open_stream(cls, **kwargs):
+        stream = _FakeStream(kwargs["callback"])
+        cls.last_stream = stream
+        return stream
 
-        @classmethod
-        def InputStream(cls, **kwargs):
-            stream = _FakeStream(kwargs["callback"])
-            cls.last_stream = stream
-            return stream
-
-    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    _FakeSD = _make_sounddevice_fake(_open_stream)
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD)
     ac = cap.AudioCapture(sample_rate=48000, channels=1, block_size=2)
     ac.start()
     block = np.zeros((2, 1), dtype=np.float32)
-    _FakeSD.last_stream.invoke(block, "input overflow")
+    with caplog.at_level(logging.DEBUG, logger="audio.capture"):
+        _FakeSD.last_stream.invoke(block, "input overflow")
+    assert "input overflow" in caplog.text
     ac.stop()
 
 
@@ -378,35 +371,24 @@ def test_audio_capture_callback_exception_is_logged(monkeypatch, caplog):
 
     from audio import capture as cap
 
-    class _FakeStream:
+    class _FakeStream(_SdStreamNoop):
         def __init__(self, callback):
             self._callback = callback
-
-        def start(self):
-            pass
-
-        def stop(self):
-            pass
-
-        def close(self):
-            pass
 
         def invoke(self, block):
             self._callback(block, len(block), None, None)
 
-    class _FakeSD:
-        last_stream = None
+    def _open_stream(cls, **kwargs):
+        stream = _FakeStream(kwargs["callback"])
+        cls.last_stream = stream
+        return stream
 
-        @classmethod
-        def InputStream(cls, **kwargs):
-            stream = _FakeStream(kwargs["callback"])
-            cls.last_stream = stream
-            return stream
+    _FakeSD = _make_sounddevice_fake(_open_stream)
 
     def _boom(_frame):
         raise ValueError("subscriber failed")
 
-    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD)
     ac = cap.AudioCapture(sample_rate=48000, channels=1, block_size=2)
     ac.set_callback(_boom)
     ac.start()
@@ -420,11 +402,8 @@ def test_audio_capture_callback_exception_is_logged(monkeypatch, caplog):
 def test_audio_capture_stop_swallows_stream_errors(monkeypatch):
     from audio import capture as cap
 
-    class _BadStream:
+    class _BadStream(_SdStreamNoop):
         def __init__(self, callback):  # noqa: ARG002
-            pass
-
-        def start(self):
             pass
 
         def stop(self):
@@ -433,12 +412,11 @@ def test_audio_capture_stop_swallows_stream_errors(monkeypatch):
         def close(self):
             raise RuntimeError("already closed")
 
-    class _FakeSD:
-        @classmethod
-        def InputStream(cls, **kwargs):
-            return _BadStream(kwargs.get("callback"))
+    def _open_stream(_cls, **kwargs):
+        return _BadStream(kwargs.get("callback"))
 
-    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    _FakeSD = _make_sounddevice_fake(_open_stream)
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD)
     ac = cap.AudioCapture()
     ac.start()
     assert ac.is_running
@@ -458,32 +436,20 @@ def test_audio_capture_stop_when_not_running():
 def test_audio_capture_set_callback_none(monkeypatch):
     from audio import capture as cap
 
-    class _FakeStream:
+    class _FakeStream(_SdStreamNoop):
         def __init__(self, callback):
             self._callback = callback
-
-        def start(self):
-            pass
-
-        def stop(self):
-            pass
-
-        def close(self):
-            pass
 
         def invoke(self, block):
             self._callback(block, len(block), None, None)
 
-    class _FakeSD:
-        last_stream = None
+    def _open_stream(cls, **kwargs):
+        stream = _FakeStream(kwargs["callback"])
+        cls.last_stream = stream
+        return stream
 
-        @classmethod
-        def InputStream(cls, **kwargs):
-            stream = _FakeStream(kwargs["callback"])
-            cls.last_stream = stream
-            return stream
-
-    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    _FakeSD = _make_sounddevice_fake(_open_stream)
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD)
     ac = cap.AudioCapture(sample_rate=48000, channels=1, block_size=2)
     ac.set_callback(None)
     ac.start()
@@ -495,28 +461,14 @@ def test_audio_capture_set_callback_none(monkeypatch):
 def test_audio_capture_start_is_idempotent(monkeypatch):
     from audio import capture as cap
 
-    class _FakeStream:
-        def __init__(self, callback):  # noqa: ARG002
-            pass
-
-        def start(self):
-            pass
-
-        def stop(self):
-            pass
-
-        def close(self):
-            pass
-
     created = []
 
-    class _FakeSD:
-        @classmethod
-        def InputStream(cls, **kwargs):
-            created.append(kwargs)
-            return _FakeStream(kwargs.get("callback"))
+    def _open_stream(_cls, **kwargs):
+        created.append(kwargs)
+        return _SdStreamNoop()
 
-    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    _FakeSD = _make_sounddevice_fake(_open_stream)
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD)
     ac = cap.AudioCapture()
     ac.start()
     ac.start()
@@ -532,16 +484,16 @@ def test_lame_encoder_with_mock(monkeypatch):
 
     class _FakeEncoder:
         def set_bit_rate(self, _kbps):
-            pass
+            pass  # lameenc stub: bitrate not exercised in unit tests
 
         def set_in_sample_rate(self, _rate):
-            pass
+            pass  # lameenc stub: sample rate configured via constructor
 
         def set_channels(self, _ch):
-            pass
+            pass  # lameenc stub: channel count configured via constructor
 
         def set_quality(self, _q):
-            pass
+            pass  # lameenc stub: quality preset not asserted here
 
         def encode(self, data):
             return b"MP3" + data[:4]
@@ -572,13 +524,13 @@ def test_opus_encoder_with_mock(monkeypatch):
 
     class _FakeOpusEncoder:
         def set_application(self, _app):
-            pass
+            pass  # pyogg stub: application mode not asserted here
 
         def set_sampling_frequency(self, _rate):
-            pass
+            pass  # pyogg stub: sample rate configured via constructor
 
         def set_channels(self, _ch):
-            pass
+            pass  # pyogg stub: channel count configured via constructor
 
         def encode(self, data):
             return b"OPUS" + data[:2]

@@ -31,8 +31,8 @@ def test_entry_id_for_unknown_entry_type():
 
 
 def test_safe_iso_timestamp_sorts_bad_values_last():
-    assert _safe_iso_timestamp("") == 0.0
-    assert _safe_iso_timestamp("not-a-date") == 0.0
+    assert _safe_iso_timestamp("") == pytest.approx(0.0)
+    assert _safe_iso_timestamp("not-a-date") == pytest.approx(0.0)
     good = _safe_iso_timestamp("2024-01-01T00:00:00Z")
     assert good > 0.0
 

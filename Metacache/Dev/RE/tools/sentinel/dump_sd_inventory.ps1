@@ -47,7 +47,7 @@ if (-not $Drive) {
                 }
             }
         } catch {
-            # skip volumes we can't inspect
+            Write-Verbose "Skipping volume $($vol.DeviceID): $_"
         }
     }
     if ($candidates.Count -eq 0) {

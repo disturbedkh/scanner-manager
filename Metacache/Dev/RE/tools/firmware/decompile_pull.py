@@ -68,7 +68,7 @@ def normalize_target(t: str) -> str:
         s = s[4:]
         if not s.startswith("0x"):
             s = "0x" + s
-    elif s.startswith("0x") or s.startswith("0X"):
+    elif s.startswith(("0x", "0X")):
         s = "0x" + s[2:].lower()
     elif all(c in "0123456789abcdefABCDEF" for c in s) and len(s) >= 6:
         s = "0x" + s.lower()

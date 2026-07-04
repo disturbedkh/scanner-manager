@@ -349,15 +349,18 @@ def test_set_volume_writes_vol_command_and_returns_true_on_ok():
     assert fake.writes == [b"VOL,7\r"]
 
 
-def test_set_volume_rejects_out_of_range():
+@pytest.mark.parametrize("bad_volume", ["low", "high", "text"])
+def test_set_volume_rejects_out_of_range(bad_volume):
     driver = SerialMainDriver(FakeSerial())
     lo, hi = VOLUME_RANGE
+    if bad_volume == "low":
+        volume = lo - 1
+    elif bad_volume == "high":
+        volume = hi + 1
+    else:
+        volume = cast(Any, "LOUD")
     with pytest.raises(MainDriverError):
-        driver.set_volume(lo - 1)
-    with pytest.raises(MainDriverError):
-        driver.set_volume(hi + 1)
-    with pytest.raises(MainDriverError):
-        driver.set_volume(cast(Any, "LOUD"))
+        driver.set_volume(volume)
 
 
 def test_set_squelch_writes_sql_command_and_returns_true_on_ok():

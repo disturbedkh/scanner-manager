@@ -85,6 +85,16 @@ def drain_briefly(p: serial.Serial, ms: int = 200) -> None:
             time.sleep(0.005)
 
 
+def _classify_remainder_tag(resp: bytes, anchor: bytes) -> str:
+    if not resp:
+        return "TO "
+    if resp != anchor and not resp.startswith(b"ERR"):
+        return "HIT"
+    if resp.startswith(b"ERR"):
+        return "ERR"
+    return "fb "
+
+
 def main() -> int:
     port = sys.argv[1] if len(sys.argv) > 1 else "COM3"
     p = serial.Serial(port, 115200, timeout=0.05)
@@ -99,8 +109,7 @@ def main() -> int:
 
         for i, cmd in enumerate(REMAINDER, 1):
             resp = send_and_read(p, cmd)
-            different = resp and resp != anchor and not resp.startswith(b"ERR")
-            tag = "HIT" if different else ("ERR" if resp.startswith(b"ERR") else ("TO " if not resp else "fb "))
+            tag = _classify_remainder_tag(resp, anchor)
             line = f"[{i:3d}/{len(REMAINDER)}] {tag} {cmd:8s} {len(resp):4d}B | {show(resp)[:200]}"
             print(line, flush=True)
             log.write(line + "\n")
@@ -109,7 +118,7 @@ def main() -> int:
             if is_binary(resp):
                 drain_briefly(p, 200)
                 continue
-            if different or resp.startswith(b"ERR"):
+            if tag == "HIT" or resp.startswith(b"ERR"):
                 a2 = send_and_read(p, "MDL")
                 if a2.startswith(b"SDS100-SUB"):
                     anchor = a2

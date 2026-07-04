@@ -40,13 +40,13 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-function Write-Step    { param([string]$m) Write-Host "[*] $m" -ForegroundColor Cyan }
-function Write-OK      { param([string]$m) Write-Host "[+] $m" -ForegroundColor Green }
-function Write-Warn    { param([string]$m) Write-Host "[!] $m" -ForegroundColor Yellow }
-function Write-ErrFail { param([string]$m) Write-Host "[X] $m" -ForegroundColor Red; exit 1 }
+function Show-Step    { param([string]$m) Write-Host "[*] $m" -ForegroundColor Cyan }
+function Show-OK      { param([string]$m) Write-Host "[+] $m" -ForegroundColor Green }
+function Show-Warn    { param([string]$m) Write-Host "[!] $m" -ForegroundColor Yellow }
+function Show-ErrFail { param([string]$m) Write-Host "[X] $m" -ForegroundColor Red; exit 1 }
 
 # --- 1. Java pre-check ------------------------------------------------------
-Write-Step 'Verifying Java 17+ is installed and on PATH'
+Show-Step 'Verifying Java 17+ is installed and on PATH'
 $javaCmd = Get-Command java -ErrorAction SilentlyContinue
 if (-not $javaCmd) {
     Write-Host ''
@@ -62,7 +62,7 @@ $ErrorActionPreference = $oldEAP
 $javaVerRaw = $javaVerLines -join "`n"
 $verMatch = [regex]::Match($javaVerRaw, '"(?<v>\d+(?:\.\d+){0,3}[^"]*)"')
 if (-not $verMatch.Success) {
-    Write-ErrFail "Could not parse 'java -version' output: $javaVerRaw"
+    Show-ErrFail "Could not parse 'java -version' output: $javaVerRaw"
 }
 $verStr = $verMatch.Groups['v'].Value
 $major  = if ($verStr -match '^(\d+)') { [int]$Matches[1] } else { 0 }
@@ -72,7 +72,7 @@ if ($major -lt 17) {
     Write-Host '    winget install --id EclipseAdoptium.Temurin.21.JDK -e --source winget' -ForegroundColor White
     exit 1
 }
-Write-OK "Java $verStr (major $major) at $($javaCmd.Source)"
+Show-OK "Java $verStr (major $major) at $($javaCmd.Source)"
 
 # --- 2. Resolve install root ------------------------------------------------
 function Test-Writable {
@@ -93,16 +93,16 @@ function Test-Writable {
 $root = $InstallRoot
 if (-not (Test-Writable -Path $root)) {
     $fallback = Join-Path $env:LOCALAPPDATA 'Programs'
-    Write-Warn "Install root '$root' not writable. Falling back to '$fallback'."
+    Show-Warn "Install root '$root' not writable. Falling back to '$fallback'."
     if (-not (Test-Writable -Path $fallback)) {
-        Write-ErrFail "Neither '$root' nor '$fallback' is writable. Re-run as admin or specify -InstallRoot."
+        Show-ErrFail "Neither '$root' nor '$fallback' is writable. Re-run as admin or specify -InstallRoot."
     }
     $root = $fallback
 }
-Write-OK "Install root: $root"
+Show-OK "Install root: $root"
 
 # --- 3. Resolve Ghidra release ----------------------------------------------
-Write-Step 'Resolving target Ghidra release'
+Show-Step 'Resolving target Ghidra release'
 $apiBase = 'https://api.github.com/repos/NationalSecurityAgency/ghidra'
 $headers = @{ 'User-Agent' = 'scanner-manager-bootstrap'; 'Accept' = 'application/vnd.github+json' }
 try {
@@ -112,20 +112,20 @@ try {
         $rel = Invoke-RestMethod -Uri "$apiBase/releases/tags/Ghidra_${Version}_build" -Headers $headers -ErrorAction Stop
     }
 } catch {
-    Write-ErrFail "Failed to query GitHub Releases API: $_"
+    Show-ErrFail "Failed to query GitHub Releases API: $_"
 }
 
 $tagName = $rel.tag_name
 if ($tagName -match 'Ghidra_(?<v>[\d\.]+)') {
     $resolvedVer = $Matches['v']
 } else {
-    Write-ErrFail "Unexpected Ghidra release tag format: $tagName"
+    Show-ErrFail "Unexpected Ghidra release tag format: $tagName"
 }
-Write-OK "Target version: $resolvedVer (tag $tagName)"
+Show-OK "Target version: $resolvedVer (tag $tagName)"
 
 $zipAsset = $rel.assets | Where-Object { $_.name -match '^ghidra_.+_PUBLIC_\d+\.zip$' } | Select-Object -First 1
 if (-not $zipAsset) {
-    Write-ErrFail "Could not find a Ghidra .zip asset on release $tagName"
+    Show-ErrFail "Could not find a Ghidra .zip asset on release $tagName"
 }
 $shaAsset = $rel.assets | Where-Object { $_.name -eq ($zipAsset.name + '.sha256') } | Select-Object -First 1
 
@@ -135,25 +135,25 @@ $installPath    = Join-Path $root $installDirName
 $headless       = Join-Path $installPath 'support\analyzeHeadless.bat'
 
 if ((Test-Path $headless) -and -not $Force) {
-    Write-OK "Ghidra $resolvedVer already installed at $installPath - skipping download."
+    Show-OK "Ghidra $resolvedVer already installed at $installPath - skipping download."
 } else {
     if (Test-Path $installPath) {
         if ($Force) {
-            Write-Step "Force flag set - removing existing $installPath"
+            Show-Step "Force flag set - removing existing $installPath"
             Remove-Item -Recurse -Force -Path $installPath
         } else {
-            Write-Warn "Directory $installPath exists but is incomplete; re-extracting."
+            Show-Warn "Directory $installPath exists but is incomplete; re-extracting."
         }
     }
 
     # --- 5. Download ZIP ----------------------------------------------------
     $tmpZip = Join-Path $env:TEMP $zipAsset.name
-    Write-Step "Downloading $($zipAsset.name) ($([math]::Round($zipAsset.size / 1MB, 1)) MB) ..."
+    Show-Step "Downloading $($zipAsset.name) ($([math]::Round($zipAsset.size / 1MB, 1)) MB) ..."
     Invoke-WebRequest -Uri $zipAsset.browser_download_url -OutFile $tmpZip -UseBasicParsing
-    Write-OK "Downloaded to $tmpZip"
+    Show-OK "Downloaded to $tmpZip"
 
     # --- 6. SHA-256 verification --------------------------------------------
-    Write-Step 'Verifying SHA-256'
+    Show-Step 'Verifying SHA-256'
     $localHash = (Get-FileHash -Algorithm SHA256 -Path $tmpZip).Hash.ToLower()
     $expectedHash = ''
     if ($KnownGoodSha256) {
@@ -164,32 +164,32 @@ if ((Test-Path $headless) -and -not $Force) {
         $line = (Get-Content $tmpSha -TotalCount 1).Trim()
         $expectedHash = ($line -split '\s+')[0].ToLower()
     } else {
-        Write-Warn 'No published .sha256 sidecar and no -KnownGoodSha256 provided. Continuing without hash verification.'
+        Show-Warn 'No published .sha256 sidecar and no -KnownGoodSha256 provided. Continuing without hash verification.'
     }
     if ($expectedHash -and ($expectedHash -ne $localHash)) {
-        Write-ErrFail "SHA-256 mismatch! expected=$expectedHash got=$localHash. Refusing to extract."
+        Show-ErrFail "SHA-256 mismatch! expected=$expectedHash got=$localHash. Refusing to extract."
     }
-    if ($expectedHash) { Write-OK "SHA-256 OK ($localHash)" }
+    if ($expectedHash) { Show-OK "SHA-256 OK ($localHash)" }
 
     # --- 7. Extract ---------------------------------------------------------
-    Write-Step "Extracting to $root (may take 1-2 min)"
+    Show-Step "Extracting to $root (may take 1-2 min)"
     Expand-Archive -Path $tmpZip -DestinationPath $root -Force
     Remove-Item -Path $tmpZip -ErrorAction SilentlyContinue
 
     if (-not (Test-Path $headless)) {
-        Write-ErrFail "Extraction completed but $headless was not produced."
+        Show-ErrFail "Extraction completed but $headless was not produced."
     }
-    Write-OK "Installed at $installPath"
+    Show-OK "Installed at $installPath"
 }
 
 # --- 8. Smoke test ----------------------------------------------------------
-Write-Step 'Smoke-testing analyzeHeadless.bat'
+Show-Step 'Smoke-testing analyzeHeadless.bat'
 $smoke = & $headless 2>&1 | Select-Object -First 5 | Out-String
 if ($LASTEXITCODE -ne 0 -and -not $smoke.Contains('Headless')) {
-    Write-Warn "analyzeHeadless.bat printed:`n$smoke"
-    Write-Warn 'Smoke test inconclusive. Continuing anyway.'
+    Show-Warn "analyzeHeadless.bat printed:`n$smoke"
+    Show-Warn 'Smoke test inconclusive. Continuing anyway.'
 } else {
-    Write-OK 'analyzeHeadless.bat responded successfully.'
+    Show-OK 'analyzeHeadless.bat responded successfully.'
 }
 
 # --- 9. Persist environment hint --------------------------------------------
@@ -201,7 +201,7 @@ $envFile = Join-Path $PSScriptRoot '.ghidra_env.ps1'
 Write-Host "GHIDRA_HOME set to `$env:GHIDRA_HOME" -ForegroundColor Green
 "@ | Set-Content -Path $envFile -Encoding UTF8
 $env:GHIDRA_HOME = $installPath
-Write-OK "GHIDRA_HOME set to $installPath (also written to $envFile)"
+Show-OK "GHIDRA_HOME set to $installPath (also written to $envFile)"
 
 Write-Host ''
-Write-OK "Bootstrap complete. Next: run Metacache\Dev\RE\automation\fetch_lpc43xx_svd.ps1 if LPC43xx.svd is missing."
+Show-OK "Bootstrap complete. Next: run Metacache\Dev\RE\automation\fetch_lpc43xx_svd.ps1 if LPC43xx.svd is missing."

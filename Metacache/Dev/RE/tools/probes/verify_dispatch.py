@@ -141,10 +141,11 @@ def hex_preview(raw: bytes, n: int = 64) -> str:
 
 
 def load_candidates(path: Path) -> list[str]:
-    if not path.exists():
-        sys.exit(f"[X] candidates file not found: {path}\n"
+    safe_path = _c.safe_user_path(_c.RE_ROOT, path)
+    if not safe_path.exists():
+        sys.exit(f"[X] candidates file not found: {safe_path}\n"
                  f"    Run _analyze_ghidra_dump.py first.")
-    raw = path.read_text(encoding="utf-8").splitlines()
+    raw = safe_path.read_text(encoding="utf-8").splitlines()
     out: list[str] = []
     seen: set[str] = set()
     for line in raw:
@@ -251,7 +252,7 @@ def main() -> int:
     except _c.PortDetectionError as e:
         sys.exit(f"[X] {e}")
 
-    candidates = load_candidates(args.candidates)
+    candidates = load_candidates(_c.safe_user_path(_c.RE_ROOT, args.candidates))
     if args.limit > 0:
         candidates = candidates[: args.limit]
     if not candidates:

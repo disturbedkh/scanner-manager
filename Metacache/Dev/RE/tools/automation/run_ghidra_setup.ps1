@@ -43,10 +43,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-function Write-Step    { param([string]$m) Write-Host "[*] $m" -ForegroundColor Cyan }
-function Write-OK      { param([string]$m) Write-Host "[+] $m" -ForegroundColor Green }
-function Write-Warn    { param([string]$m) Write-Host "[!] $m" -ForegroundColor Yellow }
-function Write-ErrFail { param([string]$m) Write-Host "[X] $m" -ForegroundColor Red; exit 1 }
+function Show-Step    { param([string]$m) Write-Host "[*] $m" -ForegroundColor Cyan }
+function Show-OK      { param([string]$m) Write-Host "[+] $m" -ForegroundColor Green }
+function Show-Warn    { param([string]$m) Write-Host "[!] $m" -ForegroundColor Yellow }
+function Show-ErrFail { param([string]$m) Write-Host "[X] $m" -ForegroundColor Red; exit 1 }
 
 # --- 0. Resolve repo + Ghidra ----------------------------------------------
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
@@ -72,13 +72,13 @@ if (-not $env:GHIDRA_HOME) {
     }
 }
 if (-not $env:GHIDRA_HOME) {
-    Write-ErrFail 'GHIDRA_HOME is unset and no Ghidra install found under C:\Tools. Run bootstrap_ghidra.ps1 first.'
+    Show-ErrFail 'GHIDRA_HOME is unset and no Ghidra install found under C:\Tools. Run bootstrap_ghidra.ps1 first.'
 }
 $headless = Join-Path $env:GHIDRA_HOME 'support\analyzeHeadless.bat'
 if (-not (Test-Path $headless)) {
-    Write-ErrFail "analyzeHeadless.bat not found at $headless"
+    Show-ErrFail "analyzeHeadless.bat not found at $headless"
 }
-Write-OK "GHIDRA_HOME = $env:GHIDRA_HOME"
+Show-OK "GHIDRA_HOME = $env:GHIDRA_HOME"
 
 # --- 1. Pre-flight checks ---------------------------------------------------
 if (-not (Test-Path $FirmwarePath)) {
@@ -90,11 +90,11 @@ if (-not (Test-Path $FirmwarePath)) {
     exit 1
 }
 if (-not (Test-Path $svdPath)) {
-    Write-Warn "LPC43xx.svd not found at $svdPath - peripheral labels will be skipped."
-    Write-Warn 'Run Metacache\Dev\RE\automation\fetch_lpc43xx_svd.ps1 to fetch it.'
+    Show-Warn "LPC43xx.svd not found at $svdPath - peripheral labels will be skipped."
+    Show-Warn 'Run Metacache\Dev\RE\automation\fetch_lpc43xx_svd.ps1 to fetch it.'
 }
 if (-not (Test-Path (Join-Path $scriptPath 'SetupSubProject.java'))) {
-    Write-ErrFail "SetupSubProject.java not found in $scriptPath"
+    Show-ErrFail "SetupSubProject.java not found in $scriptPath"
 }
 
 if (-not (Test-Path $ProjectDir)) {
@@ -106,7 +106,7 @@ $gprFile = Join-Path $ProjectDir "$ProjectName.gpr"
 $repFile = Join-Path $ProjectDir "$ProjectName.rep"
 $lockFile = Join-Path $ProjectDir "$ProjectName.gpr.lock"
 if ($Force -and -not $DumpOnly) {
-    Write-Step 'Force flag set; removing existing Ghidra project'
+    Show-Step 'Force flag set; removing existing Ghidra project'
     foreach ($p in @($gprFile, $repFile, $lockFile)) {
         if (Test-Path $p) { Remove-Item -Recurse -Force -Path $p }
     }
@@ -117,7 +117,7 @@ if (Test-Path $svdPath) { $env:SVD_PATH = $svdPath }
 
 # --- 4. Build the Ghidra command line --------------------------------------
 $logFile = Join-Path $ProjectDir 'analyzeHeadless.log'
-$args = @(
+$ghidraArgs = @(
     "`"$ProjectDir`"",
     $ProjectName,
     '-scriptPath', "`"$scriptPath`"",
@@ -126,17 +126,17 @@ $args = @(
 )
 if ($DumpOnly) {
     if (-not (Test-Path $gprFile)) {
-        Write-ErrFail "DumpOnly mode requested but no project at $gprFile"
+        Show-ErrFail "DumpOnly mode requested but no project at $gprFile"
     }
-    Write-Step "Re-running DumpAnalysis only (project already imported)"
-    $args += @(
+    Show-Step "Re-running DumpAnalysis only (project already imported)"
+    $ghidraArgs += @(
         '-process',
         '-postScript', 'DumpAnalysis.java',
         '-noanalysis'
     )
 } else {
-    Write-Step "Importing $FirmwarePath at base 0x14000000 (this takes 10-15 minutes)"
-    $args += @(
+    Show-Step "Importing $FirmwarePath at base 0x14000000 (this takes 10-15 minutes)"
+    $ghidraArgs += @(
         '-import',     "`"$FirmwarePath`"",
         '-loader',     'BinaryLoader',
         '-loader-baseAddr', '0x14000000',
@@ -146,32 +146,32 @@ if ($DumpOnly) {
     )
 }
 
-$cmdLine = "& `"$headless`" $($args -join ' ')"
-Write-Step 'Invoking Ghidra...'
+$cmdLine = "& `"$headless`" $($ghidraArgs -join ' ')"
+Show-Step 'Invoking Ghidra...'
 Write-Host "  $cmdLine" -ForegroundColor DarkGray
 $startTs = Get-Date
 
 # Run via cmd.exe so analyzeHeadless.bat's output streams cleanly.
-$proc = Start-Process -FilePath $headless -ArgumentList ($args -join ' ') `
+$proc = Start-Process -FilePath $headless -ArgumentList ($ghidraArgs -join ' ') `
     -NoNewWindow -PassThru -Wait -WorkingDirectory $repoRoot
 $elapsed = (Get-Date) - $startTs
 
 if ($proc.ExitCode -ne 0) {
     Write-Host ''
-    Write-Warn "analyzeHeadless.bat exited with code $($proc.ExitCode)"
-    Write-Warn "See log: $logFile"
+    Show-Warn "analyzeHeadless.bat exited with code $($proc.ExitCode)"
+    Show-Warn "See log: $logFile"
 } else {
-    Write-OK ("Ghidra finished in {0:N0} seconds." -f $elapsed.TotalSeconds)
+    Show-OK ("Ghidra finished in {0:N0} seconds." -f $elapsed.TotalSeconds)
 }
 
 # --- 5. Verify the dump exists ---------------------------------------------
 if (Test-Path $dumpJson) {
     $size = (Get-Item $dumpJson).Length
-    Write-OK "analysis_dump.json produced: $dumpJson ($([math]::Round($size / 1MB, 2)) MB)"
+    Show-OK "analysis_dump.json produced: $dumpJson ($([math]::Round($size / 1MB, 2)) MB)"
 } else {
-    Write-Warn "Expected dump file missing: $dumpJson"
-    Write-Warn "Inspect log for errors: $logFile"
+    Show-Warn "Expected dump file missing: $dumpJson"
+    Show-Warn "Inspect log for errors: $logFile"
     exit 1
 }
 
-Write-OK 'Run complete. Next: Metacache\Dev\RE\_analyze_ghidra_dump.py'
+Show-OK 'Run complete. Next: Metacache\Dev\RE\_analyze_ghidra_dump.py'

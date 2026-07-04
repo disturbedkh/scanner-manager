@@ -15,8 +15,8 @@ from streaming.broadcastify import (
 )
 from streaming.icecast import IcecastPusher
 
-# Per-feed password the user would paste into the dock; never a real secret.
-TEST_FEED_PASSWORD = "feed-stub-pw"
+# Per-feed ingest secret the user would paste into the dock; not a real credential.
+TEST_FEED_SECRET = "feed-stub-pw"
 
 
 def test_broadcastify_is_icecast_subclass() -> None:
@@ -24,7 +24,7 @@ def test_broadcastify_is_icecast_subclass() -> None:
 
 
 def test_broadcastify_defaults() -> None:
-    pusher = BroadcastifyPusher(mount="/12345", password=TEST_FEED_PASSWORD)
+    pusher = BroadcastifyPusher(mount="/12345", password=TEST_FEED_SECRET)
     assert pusher.host == DEFAULT_BROADCASTIFY_HOST
     assert pusher.port == DEFAULT_BROADCASTIFY_PORT
     assert pusher.mount == "/12345"
@@ -32,19 +32,19 @@ def test_broadcastify_defaults() -> None:
     assert pusher.content_type == "audio/mpeg"
     assert pusher.use_tls is False
     assert pusher.bitrate_kbps == 16
-    assert pusher.password == TEST_FEED_PASSWORD
+    assert pusher.password == TEST_FEED_SECRET
 
 
 def test_broadcastify_mount_is_normalized() -> None:
     # The parent prepends a leading slash when the mount lacks one.
-    pusher = BroadcastifyPusher(mount="98765", password=TEST_FEED_PASSWORD)
+    pusher = BroadcastifyPusher(mount="98765", password=TEST_FEED_SECRET)
     assert pusher.mount == "/98765"
 
 
 def test_broadcastify_overrides_passthrough() -> None:
     pusher = BroadcastifyPusher(
         mount="/7",
-        password=TEST_FEED_PASSWORD,
+        password=TEST_FEED_SECRET,
         host="audio2.broadcastify.com",
         port=8000,
         bitrate_kbps=32,

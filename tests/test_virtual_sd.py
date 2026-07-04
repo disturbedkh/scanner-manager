@@ -16,6 +16,9 @@ import pytest
 from core.device_manager import Device
 from virtual_sd import StagedFile, StageKind, VirtualCard, VirtualCardError
 
+# Example staging URL for virtual-card tests (not a real endpoint).
+_TEST_STAGE_URL = "sftp://example.invalid/fw.bin"
+
 
 @pytest.fixture
 def tmp_card_root(tmp_path: Path) -> Path:
@@ -60,14 +63,14 @@ def test_stage_copies_file_and_records_manifest(
         relative_path="BCDx36HP/firmware/fw.bin",
         kind=StageKind.MAIN_FIRMWARE,
         source_label="fw.bin",
-        source_url="ftp://example/fw.bin",
+        source_url=_TEST_STAGE_URL,
         note="manual",
     )
     assert isinstance(row, StagedFile)
     assert row.kind == "main_firmware"
     assert row.size_bytes == 4096
     assert row.sha256 != ""
-    assert row.source_url == "ftp://example/fw.bin"
+    assert row.source_url == _TEST_STAGE_URL
     # File must be copied into the right place under pending/
     staged_path = card.pending_dir / "BCDx36HP" / "firmware" / "fw.bin"
     assert staged_path.exists()
@@ -92,9 +95,9 @@ def test_stage_rejects_backslash_paths(
 def test_stage_rejects_missing_source(tmp_card_root: Path) -> None:
     device = Device(id="d3", label="t", scanner_profile_id="uniden_sds100")
     card = VirtualCard.from_device(device, root_dir=tmp_card_root)
+    missing = Path("/nonexistent/file.bin")
     with pytest.raises(VirtualCardError):
-        card.stage(Path("/nonexistent/file.bin"),
-                   relative_path="x", kind=StageKind.OTHER)
+        card.stage(missing, relative_path="x", kind=StageKind.OTHER)
 
 
 def test_apply_to_physical_copies_files_and_clears_manifest(

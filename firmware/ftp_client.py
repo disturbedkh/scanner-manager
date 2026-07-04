@@ -4,18 +4,24 @@ Reverse-engineered endpoints; credentials and paths verified by
 static extraction from the publicly-shipped Sentinel + BT885 Update
 Manager installers (see ``Metacache/Dev/RE/docs/uniden_update_endpoints.md``).
 
-We only ever LIST + RETR. We do not write back to either server.
+Credentials are loaded from ``data/uniden_installers.json`` at runtime.
+We only ever LIST + RETR on vendor-allowlisted hosts.
 """
 
 from __future__ import annotations
 
 import ftplib
+import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, List, Optional
+from pathlib import Path
+from typing import Callable, FrozenSet, List, Optional
 
 logger = logging.getLogger(__name__)
+
+_MANIFEST_PATH = Path(__file__).resolve().parent.parent / "data" / "uniden_installers.json"
+_FTP_ALLOWED_HOSTS: FrozenSet[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -27,21 +33,34 @@ class FtpEndpoint:
     label: str
 
 
-SENTINEL_FTP = FtpEndpoint(
-    host="ftp.homepatrol.com",
-    path="/BCDx36HP/",
-    user="homepatrolftp",
-    password="green7Corn",  # NOSONAR - vendor-published read-only FTP credential
-    label="Uniden Sentinel (BCDx36HP family)",
-)
+def _load_manifest() -> dict:
+    with _MANIFEST_PATH.open(encoding="utf-8") as f:
+        return json.load(f)
 
-BT885_FTP = FtpEndpoint(
-    host="ftp.uniden.com",
-    path="/BT885/",
-    user="BT885ftp2",
-    password="89jZ53Ba",  # NOSONAR - vendor-published read-only FTP credential
-    label="Uniden BT885 Update Manager",
-)
+
+def _endpoint_from_manifest(manifest: dict, key: str) -> FtpEndpoint:
+    raw = manifest["ftp_endpoints"][key]
+    return FtpEndpoint(
+        host=raw["host"],
+        path=raw["path"],
+        user=raw["user"],
+        password=raw["password"],
+        label=raw["label"],
+    )
+
+
+def _build_endpoints() -> tuple[FtpEndpoint, FtpEndpoint, FrozenSet[str]]:
+    manifest = _load_manifest()
+    allowed = frozenset(str(h).lower() for h in manifest.get("ftp_allowed_hosts", []))
+    sentinel = _endpoint_from_manifest(manifest, "sentinel")
+    bt885 = _endpoint_from_manifest(manifest, "bt885")
+    for ep in (sentinel, bt885):
+        if ep.host.lower() not in allowed:
+            raise ValueError(f"FTP host not allowlisted: {ep.host}")
+    return sentinel, bt885, allowed
+
+
+SENTINEL_FTP, BT885_FTP, _FTP_ALLOWED_HOSTS = _build_endpoints()
 
 
 @dataclass
@@ -54,13 +73,7 @@ class FtpEntry:
 
 
 class UnidenFtpClient:
-    """Stateless thin wrapper around ``ftplib.FTP``.
-
-    Each call opens a new connection - cheap on Uniden's servers
-    (Sentinel itself does the same). The ``timeout`` defaults are
-    generous so spotty connections don't false-fail; the GUI can
-    surface the underlying ftplib error if anything goes wrong.
-    """
+    """Stateless thin wrapper around ``ftplib.FTP``."""
 
     def __init__(
         self,
@@ -68,6 +81,8 @@ class UnidenFtpClient:
         list_timeout: float = 30.0,
         download_timeout: float = 240.0,
     ) -> None:
+        if endpoint.host.lower() not in _FTP_ALLOWED_HOSTS:
+            raise ValueError(f"Refusing FTP connection to non-allowlisted host: {endpoint.host}")
         self._endpoint = endpoint
         self._list_timeout = list_timeout
         self._download_timeout = download_timeout
@@ -76,17 +91,9 @@ class UnidenFtpClient:
     def endpoint(self) -> FtpEndpoint:
         return self._endpoint
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     def listing(self) -> List[FtpEntry]:
-        """Return the directory listing at ``endpoint.path``.
-
-        Each entry has the filename + size + modified timestamp
-        (parsed from MDTM, format ``YYYYMMDDHHMMSS``).
-        """
-        with ftplib.FTP(self._endpoint.host, timeout=self._list_timeout) as ftp:  # NOSONAR - Uniden firmware CDN is FTP-only
+        """Return the directory listing at ``endpoint.path``."""
+        with self._open_ftp(self._list_timeout) as ftp:
             ftp.login(self._endpoint.user, self._endpoint.password)
             ftp.cwd(self._endpoint.path)
             names = ftp.nlst()
@@ -115,12 +122,8 @@ class UnidenFtpClient:
         progress_cb: Optional[Callable[[int, int], None]] = None,
         chunk_size: int = 8192,
     ) -> int:
-        """Stream ``filename`` from the endpoint to ``dst_path``.
-
-        ``progress_cb`` (if provided) receives ``(bytes_so_far, total_bytes)``
-        on every chunk. Returns the total number of bytes written.
-        """
-        with ftplib.FTP(self._endpoint.host, timeout=self._download_timeout) as ftp:  # NOSONAR - Uniden firmware CDN is FTP-only
+        """Stream ``filename`` from the endpoint to ``dst_path``."""
+        with self._open_ftp(self._download_timeout) as ftp:
             ftp.login(self._endpoint.user, self._endpoint.password)
             ftp.cwd(self._endpoint.path)
             try:
@@ -141,13 +144,12 @@ class UnidenFtpClient:
                 ftp.retrbinary(f"RETR {filename}", write_chunk, blocksize=chunk_size)
             return written
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
+    def _open_ftp(self, timeout: float) -> ftplib.FTP:
+        """Open FTP to the configured vendor host (Uniden CDN is FTP-only)."""
+        return ftplib.FTP(self._endpoint.host, timeout=timeout)
 
     @staticmethod
     def _parse_mdtm(text: str) -> Optional[datetime]:
-        """Parse FTP MDTM ``YYYYMMDDHHMMSS[.fraction]``."""
         if not text:
             return None
         text = text.split(".", 1)[0]

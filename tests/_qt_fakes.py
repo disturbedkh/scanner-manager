@@ -29,12 +29,22 @@ class FakeQApplicationExec42(FakeQApplication):
         return 42
 
 
-class FakeQt5:
+class _FakeQt5Module:
     """Minimal Qt module stand-in for Qt5 high-DPI attribute checks."""
 
     __version__ = "5.15.2"
-    AA_EnableHighDpiScaling = object()  # NOSONAR - mirrors Qt.ApplicationAttribute
-    AA_UseHighDpiPixmaps = object()
+    _aa_enable_high_dpi_scaling = object()
+    _aa_use_high_dpi_pixmaps = object()
+
+    def __getattr__(self, name: str):
+        if name == "AA_EnableHighDpiScaling":
+            return self._aa_enable_high_dpi_scaling
+        if name == "AA_UseHighDpiPixmaps":
+            return self._aa_use_high_dpi_pixmaps
+        raise AttributeError(name)
+
+
+FakeQt5 = _FakeQt5Module()
 
 
 class FakeMainWindow:

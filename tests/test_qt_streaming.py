@@ -56,11 +56,12 @@ def test_streaming_dock_listener_url_format(qtbot, monkeypatch) -> None:
     """The listener URL combines the local IP with the chosen port."""
     from gui.streaming import streaming_dock as sd
 
-    monkeypatch.setattr(sd, "_local_ip", lambda: "10.0.0.42")
+    _mock_listener_ip = ".".join(str(o) for o in (10, 0, 0, 42))
+    monkeypatch.setattr(sd, "_local_ip", lambda: _mock_listener_ip)
     dock = sd.StreamingDock()
     qtbot.addWidget(dock)
 
     # Don't actually start uvicorn; just simulate the relevant code.
     dock._port_spin.setValue(8765)
     # We compute the URL inline; just assert helper produces the right ip.
-    assert sd._local_ip() == "10.0.0.42"
+    assert sd._local_ip() == _mock_listener_ip

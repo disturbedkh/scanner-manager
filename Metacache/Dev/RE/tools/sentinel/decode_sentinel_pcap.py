@@ -74,6 +74,24 @@ class ScsiOp:
     payload: bytes = field(default=b"", repr=False)
 
 
+def _populate_rdwr_fields(
+    op: ScsiOp,
+    scsi: dict,
+    usbms: dict,
+    opcode_norm: str,
+) -> None:
+    op.lba = _int_field(scsi, [
+        "scsi_sbc.rdwr10.lba", "scsi_sbc.read10.lba", "scsi_sbc.write10.lba",
+    ])
+    op.blocks = _int_field(scsi, [
+        "scsi_sbc.rdwr10.xferlen", "scsi_sbc.read10.xferlen", "scsi_sbc.write10.xferlen",
+    ])
+    op.bytes_len = _int_field(usbms, ["usbms.dCBWDataTransferLength"]) or op.blocks * SECTOR
+    if not op.blocks and op.bytes_len:
+        op.blocks = op.bytes_len // SECTOR
+    op.direction = "READ" if opcode_norm == "0x28" else "WRITE"
+
+
 def parse_pcap(pcap: Path, tshark: Path) -> list[ScsiOp]:
     """Run tshark in JSON mode and pull SCSI ops with payloads."""
     print(f"[*] tshark -> JSON for {pcap.name}...")
@@ -134,17 +152,7 @@ def parse_pcap(pcap: Path, tshark: Path) -> list[ScsiOp]:
 
         # Common LBA / xferlen fields used for both READ_10 and WRITE_10
         if opcode_norm in ("0x28", "0x2a"):
-            op.lba = _int_field(scsi, [
-                "scsi_sbc.rdwr10.lba", "scsi_sbc.read10.lba", "scsi_sbc.write10.lba",
-            ])
-            op.blocks = _int_field(scsi, [
-                "scsi_sbc.rdwr10.xferlen", "scsi_sbc.read10.xferlen", "scsi_sbc.write10.xferlen",
-            ])
-            # Authoritative byte count from CBW (usbms layer)
-            op.bytes_len = _int_field(usbms, ["usbms.dCBWDataTransferLength"]) or op.blocks * SECTOR
-            if not op.blocks and op.bytes_len:
-                op.blocks = op.bytes_len // SECTOR
-            op.direction = "READ" if opcode_norm == "0x28" else "WRITE"
+            _populate_rdwr_fields(op, scsi, usbms, opcode_norm)
 
         ops.append(op)
 
@@ -432,11 +440,11 @@ def _walk_fat32(image: bytes, part_lba: int, ops: list[ScsiOp]) -> list[dict]:
                 cc = file_clus
                 while cc >= 2 and cc < 0x0FFFFFF8 and cc < len(fat):
                     lba = lba_for_cluster(cc)
-                    for i in range(spc):
+                    for sec_idx in range(spc):
                         total_secs += 1
-                        if (lba + i) in touched_write:
+                        if (lba + sec_idx) in touched_write:
                             touched_w += 1
-                        if (lba + i) in touched_read:
+                        if (lba + sec_idx) in touched_read:
                             touched_r += 1
                     cc = fat[cc]
                     if cc == 0:  # bad chain

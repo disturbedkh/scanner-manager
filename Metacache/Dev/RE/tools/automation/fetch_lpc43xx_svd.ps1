@@ -22,10 +22,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-function Write-Step    { param([string]$m) Write-Host "[*] $m" -ForegroundColor Cyan }
-function Write-OK      { param([string]$m) Write-Host "[+] $m" -ForegroundColor Green }
-function Write-Warn    { param([string]$m) Write-Host "[!] $m" -ForegroundColor Yellow }
-function Write-ErrFail { param([string]$m) Write-Host "[X] $m" -ForegroundColor Red; exit 1 }
+function Show-Step    { param([string]$m) Write-Host "[*] $m" -ForegroundColor Cyan }
+function Show-OK      { param([string]$m) Write-Host "[+] $m" -ForegroundColor Green }
+function Show-Warn    { param([string]$m) Write-Host "[!] $m" -ForegroundColor Yellow }
+function Show-ErrFail { param([string]$m) Write-Host "[X] $m" -ForegroundColor Red; exit 1 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
 $firmwareDir = Join-Path $repoRoot 'Metacache\Dev\RE\firmware'
@@ -51,7 +51,7 @@ function Test-SvdValid {
 
 if ((Test-SvdValid -Path $svdPath) -and -not $Force) {
     $size = (Get-Item $svdPath).Length
-    Write-OK "LPC43xx.svd already present and valid ($size bytes) at $svdPath"
+    Show-OK "LPC43xx.svd already present and valid ($size bytes) at $svdPath"
     exit 0
 }
 
@@ -66,21 +66,21 @@ $tmp = Join-Path $env:TEMP "LPC43xx_$([guid]::NewGuid()).svd"
 $success = $false
 
 foreach ($url in $urls) {
-    Write-Step "Trying $url"
+    Show-Step "Trying $url"
     try {
         Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -ErrorAction Stop
         if (Test-SvdValid -Path $tmp) {
             Move-Item -Path $tmp -Destination $svdPath -Force
             $success = $true
             $size = (Get-Item $svdPath).Length
-            Write-OK "LPC43xx.svd downloaded and validated ($size bytes) -> $svdPath"
+            Show-OK "LPC43xx.svd downloaded and validated ($size bytes) -> $svdPath"
             break
         } else {
-            Write-Warn "Downloaded file failed validation (size or XML)."
+            Show-Warn "Downloaded file failed validation (size or XML)."
             Remove-Item -Path $tmp -ErrorAction SilentlyContinue
         }
     } catch {
-        Write-Warn "Failed: $_"
+        Show-Warn "Failed: $_"
         Remove-Item -Path $tmp -ErrorAction SilentlyContinue
     }
 }

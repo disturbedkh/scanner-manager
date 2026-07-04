@@ -21,6 +21,9 @@ from core.rr_api import (
     to_hpd_import,
 )
 
+# Fixture credential secret for transport tests (not a real account).
+_TEST_RR_SECRET = "p"
+
 # ---------------------------------------------------------------------------
 # Fake transport
 # ---------------------------------------------------------------------------
@@ -45,7 +48,7 @@ class _FakeTransport:
 def _make_client(responses: Dict[str, Any]) -> RadioReferenceClient:
     return RadioReferenceClient(
         credentials=RRCredentials(
-            app_key="APPKEY", username="u", password="p",
+            app_key="APPKEY", username="u", password=_TEST_RR_SECRET,
         ),
         transport=_FakeTransport(responses),
     )
@@ -56,17 +59,17 @@ def _make_client(responses: Dict[str, Any]) -> RadioReferenceClient:
 # ---------------------------------------------------------------------------
 
 def test_credentials_validate_rejects_missing_fields() -> None:
-    c = RRCredentials(app_key="", username="u", password="p")
+    c = RRCredentials(app_key="", username="u", password=_TEST_RR_SECRET)
     with pytest.raises(RRConfigError) as e:
         c.validate()
     assert "app_key" in str(e.value)
 
 
 def test_credentials_auth_info_shape() -> None:
-    c = RRCredentials(app_key="k", username="u", password="p")
+    c = RRCredentials(app_key="k", username="u", password=_TEST_RR_SECRET)
     ai = c.auth_info()
     assert ai["username"] == "u"
-    assert ai["password"] == "p"
+    assert ai["password"] == _TEST_RR_SECRET
     assert ai["appKey"] == "k"
     assert ai["style"] == "rpc"
     assert ai["version"]

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from legacy_tk.scanner_manager import (
     CityRecord,
     CustomLocationsStore,
@@ -130,7 +132,7 @@ def test_firmware_zip_table_parser_reads_state_prefix(tmp_path: Path):
     )
     p = tmp_path / "ZipTable_V1_00_00.dat"
     p.write_bytes(table)
-    state_map, coord_map = FirmwareZipTable._parse_zip_file(p)
+    state_map, _coord_map = FirmwareZipTable._parse_zip_file(p)
     assert state_map["32605"] == "FL"
     assert state_map["99501"] == "AK"
 
@@ -279,7 +281,7 @@ def test_haversine_and_system_coverage(tmp_path: Path):
     hpd = HpdFile()
     hpd.load(str(hpd_path))
     gville, miami = hpd.systems
-    covered_gville, delta_gville = system_covers_point(gville, 29.67, -82.39)
+    covered_gville, _delta_gville = system_covers_point(gville, 29.67, -82.39)
     covered_miami, delta_miami = system_covers_point(miami, 29.67, -82.39)
     assert covered_gville is True
     assert covered_miami is False
@@ -887,6 +889,36 @@ def test_rr_refresh_purges_existing_encrypted():
     assert action_same == "same"
 
 
+def _apply_trs_import(hpd, stub, system, selection):
+    existing_names = {g.name.strip().lower(): g for g in system.groups}
+    system_tgids = stub._existing_system_tgids(system)
+    added = 0
+    skipped = 0
+    created = 0
+    default_lat, default_lon, default_range = stub._infer_tgroup_geo_defaults(system)
+    for cat_name, talkgroups in selection:
+        if not talkgroups:
+            continue
+        key = cat_name.strip().lower()
+        group = existing_names.get(key)
+        if group is None:
+            group = hpd.add_tgroup(
+                system, cat_name.strip(),
+                lat=default_lat, lon=default_lon, range_miles=default_range,
+            )
+            created += 1
+            existing_names[key] = group
+        for tg in talkgroups:
+            tgid_val = int(tg["tgid"])
+            if tgid_val in system_tgids:
+                skipped += 1
+                continue
+            hpd.add_tgid(group, tg["name"], tgid_val, tg.get("mode", "ALL"), tg.get("suggested_service_type") or 1)
+            system_tgids.add(tgid_val)
+            added += 1
+    return created, added, skipped
+
+
 def test_trs_apply_import_skips_duplicates_and_inherits_geo(tmp_path: Path):
     hpd_path = tmp_path / "trs.hpd"
     hpd_path.write_text(
@@ -916,7 +948,7 @@ def test_trs_apply_import_skips_duplicates_and_inherits_geo(tmp_path: Path):
             self.status = msg
 
         def _populate_tree(self):
-            pass
+            pass  # app stub: tree refresh not needed for import test
 
     stub = _AppStub(hpd)
     app_cls = __import__("legacy_tk.scanner_manager", fromlist=["ScannerManagerApp"]).ScannerManagerApp
@@ -929,35 +961,6 @@ def test_trs_apply_import_skips_duplicates_and_inherits_geo(tmp_path: Path):
     stub._existing_system_tgids = types.MethodType(
         app_cls._existing_system_tgids, stub
     )
-
-    def apply_import(selection):
-        existing_names = {g.name.strip().lower(): g for g in system.groups}
-        system_tgids = stub._existing_system_tgids(system)
-        added = 0
-        skipped = 0
-        created = 0
-        default_lat, default_lon, default_range = stub._infer_tgroup_geo_defaults(system)
-        for cat_name, talkgroups in selection:
-            if not talkgroups:
-                continue
-            key = cat_name.strip().lower()
-            group = existing_names.get(key)
-            if group is None:
-                group = hpd.add_tgroup(
-                    system, cat_name.strip(),
-                    lat=default_lat, lon=default_lon, range_miles=default_range,
-                )
-                created += 1
-                existing_names[key] = group
-            for tg in talkgroups:
-                tgid_val = int(tg["tgid"])
-                if tgid_val in system_tgids:
-                    skipped += 1
-                    continue
-                hpd.add_tgid(group, tg["name"], tgid_val, tg.get("mode", "ALL"), tg.get("suggested_service_type") or 1)
-                system_tgids.add(tgid_val)
-                added += 1
-        return created, added, skipped
 
     selection = [
         (
@@ -974,15 +977,15 @@ def test_trs_apply_import_skips_duplicates_and_inherits_geo(tmp_path: Path):
             ],
         ),
     ]
-    created, added, skipped = apply_import(selection)
+    created, added, skipped = _apply_trs_import(hpd, stub, system, selection)
     assert created == 1
     assert added == 2
     assert skipped == 1
 
     new_cat = next(g for g in system.groups if g.name == "New Category")
-    assert new_cat.lat == 29.65857
-    assert new_cat.lon == -82.33944
-    assert new_cat.range_miles == 24.0
+    assert new_cat.lat == pytest.approx(29.65857)
+    assert new_cat.lon == pytest.approx(-82.33944)
+    assert new_cat.range_miles == pytest.approx(24.0)
 
 
 def test_hpd_add_tgroup_and_tgid(tmp_path: Path):
@@ -1074,8 +1077,8 @@ def test_hpd_edit_and_delete_group(tmp_path: Path):
     gamma, delta = system.groups[0], system.groups[1]
     hpd.edit_group(gamma, name="Gamma Renamed", lat=30.0, lon=-82.0, range_miles=12.5)
     assert gamma.name == "Gamma Renamed"
-    assert gamma.lat == 30.0
-    assert gamma.range_miles == 12.5
+    assert gamma.lat == pytest.approx(30.0)
+    assert gamma.range_miles == pytest.approx(12.5)
 
     records_before = len(hpd.records)
     hpd.delete_group(delta)
@@ -1164,7 +1167,7 @@ def test_audit_mode_issue_with_rr_prefers_rr_data(tmp_path: Path):
     }
     result = audit_mode_issue_with_rr(oaks, rr_ref)
     assert result is not None
-    issue, suggested, source = result
+    _issue, suggested, source = result
     assert suggested == "FM"
     assert source == "rr"
 

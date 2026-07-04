@@ -29,6 +29,9 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from legacy_tk.scanner_manager import FirmwareCityTable, FirmwareZipTable  # noqa: E402
 
+sys.path.insert(0, str(REPO_ROOT / "Metacache" / "Dev" / "RE" / "tools"))
+import _common as _c  # noqa: E402
+
 
 def sha256_of(path: Path) -> str:
     h = hashlib.sha256()
@@ -102,8 +105,8 @@ def run_zip_parser(card_root: Path) -> Dict[str, object]:
         "coord_count": len(zt.zip_to_coords),
         "extras_count": len(zt.zip_extras),
         "flag_byte_distribution": dict(Counter(zt.zip_flag_bytes.values())),
-        "sample_zips": sorted(list(zt.zip_to_state_abbrev.items()))[:5],
-        "sample_coords": dict(sorted(list(zt.zip_to_coords.items()))[:3]),
+        "sample_zips": sorted(zt.zip_to_state_abbrev.items())[:5],
+        "sample_coords": dict(sorted(zt.zip_to_coords.items())[:3]),
     }
 
 
@@ -138,8 +141,8 @@ def main(argv: List[str]) -> int:
     )
     args = p.parse_args(argv)
 
-    bt = Path(args.bt)
-    sds = Path(args.sds)
+    bt = _c.validate_drive_root(args.bt)
+    sds = _c.validate_drive_root(args.sds)
 
     print("=" * 70)
     print(f"BT885  card root:  {bt}")

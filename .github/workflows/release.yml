@@ -13,9 +13,6 @@ on:
         required: true
         type: string
 
-permissions:
-  contents: write
-
 env:
   SCANNER_MANAGER_BUILD_TYPE: Release
 
@@ -23,6 +20,8 @@ jobs:
   build:
     name: Build ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -65,9 +64,10 @@ jobs:
 
       - name: Set release version
         shell: bash
+        env:
+          RELEASE_REF: ${{ inputs.ref }}
         run: |
-          VERSION="${{ inputs.ref }}"
-          VERSION="${VERSION#v}"
+          VERSION="${RELEASE_REF#v}"
           echo "SCANNER_MANAGER_VERSION=${VERSION}" >> "${GITHUB_ENV}"
 
       - name: Build release artifacts
@@ -94,6 +94,8 @@ jobs:
     name: Publish GitHub Release (manual mirror)
     needs: [build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Check out
@@ -134,10 +136,12 @@ jobs:
 
       - name: Extract release notes
         id: notes
+        env:
+          RELEASE_REF: ${{ inputs.ref }}
         run: |
           python - <<'PY'
           import os, re
-          tag = "${{ inputs.ref }}"
+          tag = os.environ["RELEASE_REF"]
           version = tag.lstrip("v")
           body = "See CHANGELOG.md for details.\n"
           try:
@@ -160,7 +164,7 @@ jobs:
           PY
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@7b4da11513bf3f43f9999e90eabced41ab8bb048
         with:
           tag_name: ${{ inputs.ref }}
           name: "Scanner Manager ${{ steps.notes.outputs.version }}"

@@ -762,8 +762,8 @@ def test_waterfall_widget_percentile_fallback_levels(qtbot, monkeypatch) -> None
     monkeypatch.setattr(widgets.np, "percentile", _boom)
     widget.add_frame(WaterfallFrame(samples=samples))
     lo, hi = widget._image_item.getLevels()
-    assert lo == 0.0
-    assert hi == 90.0
+    assert lo == pytest.approx(0.0)
+    assert hi == pytest.approx(90.0)
 
 
 def test_iq_waterfall_widget_no_pyqtgraph_shows_install_label(qtbot, monkeypatch) -> None:
@@ -877,7 +877,7 @@ def test_iq_waterfall_percentile_equal_bounds_uses_offset(qtbot, monkeypatch) ->
     monkeypatch.setattr(widgets.np, "percentile", _flat_percentile)
     widget.add_frame(frame)
     lo, hi = widget._image_item.getLevels()
-    assert hi == lo + 1.0
+    assert hi == pytest.approx(lo + 1.0)
 
 
 def test_iq_waterfall_percentile_fallback_levels(qtbot, monkeypatch) -> None:
@@ -900,8 +900,8 @@ def test_iq_waterfall_percentile_fallback_levels(qtbot, monkeypatch) -> None:
     monkeypatch.setattr(widgets.np, "percentile", _boom)
     widget.add_frame(IqFrame(i_samples=i, q_samples=q, source="d"))
     lo, hi = widget._image_item.getLevels()
-    assert lo == -60.0
-    assert hi == 0.0
+    assert lo == pytest.approx(-60.0)
+    assert hi == pytest.approx(0.0)
 
 
 def test_iq_waterfall_reset_peak_hold_clears_trace(qtbot) -> None:

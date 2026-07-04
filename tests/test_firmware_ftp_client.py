@@ -207,7 +207,7 @@ def test_download_writes_payload_and_calls_progress(patch_ftplib, tmp_path: Path
     assert dst.read_bytes() == payload
     assert written == len(payload)
     assert len(progress_calls) >= 1
-    final_written, final_total = progress_calls[-1]
+    final_written, _final_total = progress_calls[-1]
     assert final_written == len(payload)
 
 

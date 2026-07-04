@@ -110,8 +110,11 @@ def test_protected_endpoint_requires_token(bridge):
     assert code == 401
 
 
+_TEST_BAD_AUTH = "not-the-real-token"
+
+
 def test_protected_endpoint_rejects_wrong_token(bridge):
-    code, _ = _get(bridge["port"], "/app/state", token="not-the-real-token")
+    code, _ = _get(bridge["port"], "/app/state", token=_TEST_BAD_AUTH)
     assert code == 401
 
 
