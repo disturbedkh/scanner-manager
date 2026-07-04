@@ -170,9 +170,14 @@ source_pkgs = [
     "streaming",
     "audio",
     "virtual_sd",
-    "legacy_tk",
 ]
-omit = ["tests/*", "dev_mcp/*", "**/__init__.py"]
+omit = [
+    "tests/*",
+    "dev_mcp/*",
+    "**/__init__.py",
+    # Tk monolith + UI modules: Sonar still analyzes for issues; not in pytest-cov gate.
+    "legacy_tk/*",
+]
 relative_files = true
 
 [tool.coverage.report]

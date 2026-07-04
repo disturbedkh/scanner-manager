@@ -38,6 +38,23 @@ Quick status:
 
 Linux/macOS: use `./scripts/sonar_truststore.sh` then `./scripts/sonar_scan.sh`.
 
+## SonarCloud analysis mode
+
+**Automatic Analysis must stay disabled** for `disturbedkh_scanner-manager`. Autoscan ignores repo [`sonar-project.properties`](../../sonar-project.properties) (`sonar.python.version`, `sonar.exclusions`, `coverage.xml`) and triggers Python-version / file-encoding warnings on the full GitHub tree.
+
+- Admin: [Analysis Method](https://sonarcloud.io/project/administration/analysis_method?id=disturbedkh_scanner-manager)
+- Authoritative upload: GitHub Actions `coverage` → `sonarcloud` jobs in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml), or local [`scripts/sonar_scan_cloud.ps1`](../../scripts/sonar_scan_cloud.ps1)
+
+Verify after a green CI scan:
+
+```powershell
+Remove-Item Env:SONAR_HOST_URL, Env:SONARQUBE_CLI_SERVER -ErrorAction SilentlyContinue
+sonar api GET "/api/ce/activity?component=disturbedkh_scanner-manager&ps=1&type=REPORT"
+sonar api GET "/api/ce/task?id=<taskId>&additionalFields=warnings,scannerContext"
+```
+
+Expect `warningCount: 0`, no `sonar.autoscan.enabled=true`, and `sonar.python.version=3.12` in scanner context.
+
 ## Baseline (2026-07-04, Final 3 — 3→0 OPEN target)
 
 | Metric | VPS (`scanner-manager`) | SonarCloud (`disturbedkh_scanner-manager`) |
@@ -47,7 +64,7 @@ Linux/macOS: use `./scripts/sonar_truststore.sh` then `./scripts/sonar_scan.sh`.
 | OPEN issues (`main`) | TBD after GitLab push | **3 → 0 target** (export: `.sonar/issues_checklist_r7.json`; MCP verified 3 OPEN pre-push 2026-07-04) |
 | Coverage (`main`) | **91.9%** (prior product-only upload) | **≥ 88%** via GitHub Actions `coverage.xml` upload (Linux xvfb; `libgl1` fix unblocks apt) |
 | Quality gate | TBD full-scope | **ERROR** pre-push (`new_code_smells_severity=20`, `new_vulnerabilities_severity=10`); **OK target** after S3776 fix + UI Accept |
-| CI floor | GitLab `--cov-fail-under=88` | GitHub `sonarcloud` job + `check_quality_gate.ps1 -Cloud -MaxOpenIssues 0` |
+| CI floor | GitLab `--cov-fail-under=88` | GitHub `coverage` + `sonarcloud` jobs; `check_quality_gate.ps1 -Cloud -MaxOpenIssues 0` |
 
 Final 3 highlights (Workers A–C):
 
@@ -65,7 +82,7 @@ Final 3 highlights (Workers A–C):
 | OPEN issues (`main`) | TBD after GitLab push | **10 → 0 target** (export: `.sonar/issues_checklist_r6.json`; MCP verified 10 OPEN pre-push 2026-07-04) |
 | Coverage (`main`) | **91.9%** (prior product-only upload) | **≥ 88%** via GitHub Actions `coverage.xml` upload (Linux xvfb) |
 | Quality gate | TBD full-scope | **ERROR** pre-push (`new_security_rating=5`, `new_reliability_rating=3`); **OK target** after re-scan |
-| CI floor | GitLab `--cov-fail-under=88` | GitHub `sonarcloud` job + `check_quality_gate.ps1 -Cloud -MaxOpenIssues 0` |
+| CI floor | GitLab `--cov-fail-under=88` | GitHub `coverage` + `sonarcloud` jobs; `check_quality_gate.ps1 -Cloud -MaxOpenIssues 0` |
 
 Round 6 highlights (Phases 0–4 local, not yet pushed):
 
@@ -163,6 +180,8 @@ The `sonarqube` job in [`.gitlab-ci.yml`](../../.gitlab-ci.yml) uses the same wi
 2. `.\scripts\sonar_scan_cloud.ps1`
 3. Add tests under `tests/` (keep `test_bt885_parity.py` green)
 4. Re-scan until MCP OPEN = 0
+
+**pytest-cov scope:** [`pyproject.toml`](../../pyproject.toml) measures product packages (`core`, `gui`, …). `legacy_tk/*` is omitted from the 88% gate (Tk monolith); Sonar still analyzes `legacy_tk/` for issues via `sonar.sources`. GitHub CI runs `pytest -m qt` then full coverage (mirrors GitLab `test:qt` + `test:coverage`).
 
 ## Troubleshooting
 

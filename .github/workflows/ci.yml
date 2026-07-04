@@ -64,20 +64,15 @@ jobs:
           python -c "import gui.app; import core.metastore, core.uniden_tools; print('import ok')"
           python -c "import legacy_tk.scanner_manager; print('legacy tk ok')"
 
-  sonarcloud:
-    name: SonarCloud (main)
+  coverage:
+    name: Coverage (main)
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     env:
       QT_QPA_PLATFORM: offscreen
-    permissions:
-      contents: read
-      pull-requests: read
     steps:
       - name: Check out
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -95,8 +90,37 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb python3-tk libegl1 libgl1 libglib2.0-0
 
+      - name: Run Qt tests (headless)
+        run: xvfb-run -a pytest -m qt -q
+
       - name: Run tests with coverage
         run: xvfb-run -a pytest -m "not requires_serial and not slow" --cov --cov-report=xml:coverage.xml --cov-fail-under=88 -q
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          retention-days: 7
+
+  sonarcloud:
+    name: SonarCloud (main)
+    needs: coverage
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-xml
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@e44258b109568baa0df60ed515909fc6c72cba92 # v2

@@ -598,7 +598,10 @@ def test_install_global_excepthook_writes_crash_log(
 ) -> None:
     from gui.app import _install_global_excepthook
 
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    if sys.platform == "win32":
+        monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    else:
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
     _install_global_excepthook(None)
     sys.excepthook(ValueError, ValueError("test"), None)
     crash_dir = tmp_path / "scanner-manager" / "crash"

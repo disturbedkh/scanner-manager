@@ -438,14 +438,22 @@ def test_firmware_dock_on_progress(qtbot):
 
 
 def test_firmware_dock_open_cache(qtbot, monkeypatch, sds_profile, device, tmp_path):
+    import subprocess
+
     dock = FirmwareDock()
     qtbot.addWidget(dock)
     dock._cache = FirmwareCache(root=tmp_path / "cache")
     dock.set_active_device(device, sds_profile)
-    opened = []
-    monkeypatch.setattr(os, "startfile", lambda p: opened.append(p))
-    qtbot.mouseClick(dock._open_cache_btn, Qt.MouseButton.LeftButton)
-    assert opened
+    if sys.platform == "win32":
+        opened = []
+        monkeypatch.setattr(os, "startfile", lambda p: opened.append(p))
+        qtbot.mouseClick(dock._open_cache_btn, Qt.MouseButton.LeftButton)
+        assert opened
+    else:
+        launched = []
+        monkeypatch.setattr(subprocess, "Popen", lambda args: launched.append(args))
+        qtbot.mouseClick(dock._open_cache_btn, Qt.MouseButton.LeftButton)
+        assert launched
 
 
 def test_firmware_dock_device_without_sd_path(qtbot, sds_profile):
@@ -1444,6 +1452,8 @@ def test_firmware_dock_open_cache_darwin(qtbot, monkeypatch, sds_profile, device
 
 
 def test_firmware_dock_open_cache_failure(qtbot, monkeypatch, sds_profile, device, tmp_path):
+    import subprocess
+
     from PySide6.QtWidgets import QMessageBox
 
     dock = FirmwareDock()
@@ -1451,10 +1461,13 @@ def test_firmware_dock_open_cache_failure(qtbot, monkeypatch, sds_profile, devic
     dock._cache = FirmwareCache(root=tmp_path / "cache")
     dock.set_active_device(device, sds_profile)
 
-    def _boom(_path):
+    def _boom(*_args, **_kwargs):
         raise OSError("cannot open folder")
 
-    monkeypatch.setattr(os, "startfile", _boom)
+    if sys.platform == "win32":
+        monkeypatch.setattr(os, "startfile", _boom)
+    else:
+        monkeypatch.setattr(subprocess, "Popen", _boom)
     warnings = []
     monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: warnings.append(a))
     dock._on_open_cache()
