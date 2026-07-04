@@ -22,8 +22,9 @@ def test_safe_resolve_path_accepts_relative_under_base(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_safe_resolve_path_rejects_traversal(tmp_path: Path) -> None:
+    traversal = Path("../outside.txt")
     with pytest.raises(PathTraversalError):
-        safe_resolve_path(tmp_path, Path("..") / "outside.txt")
+        safe_resolve_path(tmp_path, traversal)
 
 
 @pytest.mark.unit
@@ -47,5 +48,6 @@ def test_ftp_credentials_loaded_from_manifest_not_source() -> None:
 def test_uniden_tools_sha256_rejects_escape() -> None:
     from core.uniden_tools import sha256_of_file
 
+    bad_path = Path("../../outside.bin")
     with pytest.raises(PathTraversalError):
-        sha256_of_file(Path("../../outside.bin"))
+        sha256_of_file(bad_path)

@@ -50,13 +50,103 @@ def _in_fw(addr: int, fw_size: int) -> bool:
 
 
 def _fw_word(fw: bytes, addr: int, fw_size: int) -> int:
-    normalized = _normalize_addr(addr)
+    normalized = _normalize_addr(addr, fw_size)
     return struct.unpack_from("<I", fw, normalized - BASE)[0]
 
 
 def _fw_byte(fw: bytes, addr: int, fw_size: int) -> int:
-    normalized = _normalize_addr(addr)
+    normalized = _normalize_addr(addr, fw_size)
     return fw[normalized - BASE]
+
+
+def _dump_literal_pool(
+    fw_word,
+    *,
+    lp_start: int,
+    lp_end: int,
+    size: int,
+) -> None:
+    print(f"=== Literal pool (0x{lp_start:08X}..0x{lp_end:08X}) ===")
+    for addr in range(lp_start, lp_end, 4):
+        if BASE <= addr < BASE + size:
+            print(f"  *0x{addr:08X} = 0x{fw_word(addr):08X}")
+
+
+def _dispatch_entry_note(handler: int, h_norm: int, fw_size: int) -> str:
+    if BASE <= h_norm < BASE + fw_size:
+        return f"fn @ 0x{h_norm:08X}"
+    return f"out-of-fw (0x{handler:08X})"
+
+
+def _char_repr(b0: int) -> str:
+    return repr(chr(b0)) if 0x20 <= b0 < 0x7F else f"\\x{b0:02X}"
+
+
+def _scan_dispatch_entries(
+    *,
+    table_base: int,
+    max_entries: int,
+    fw_size: int,
+    in_fw,
+    fw_byte,
+    fw_word,
+    normalize,
+) -> tuple[list, list]:
+    print(f"  {'idx':>3}  {'addr':<10}  {'byte':<5}  {'char':<6}  {'handler':<10}  notes")
+    entries: list = []
+    for i in range(max_entries):
+        entry_addr = table_base + i * 8
+        if not in_fw(entry_addr):
+            break
+        b0 = fw_byte(entry_addr)
+        handler = fw_word(entry_addr + 4)
+        char_repr = _char_repr(b0)
+        h_norm = normalize(handler & ~1)
+        note = _dispatch_entry_note(handler, h_norm, fw_size)
+        entries.append((i, entry_addr, b0, char_repr, handler, note))
+        print(f"  {i:>3}  0x{entry_addr:08X}  0x{b0:02X}   {char_repr:<6}  0x{handler:08X}  {note}")
+    return entries, _valid_dispatch_entries(entries, fw_size, normalize)
+
+
+def _valid_dispatch_entries(entries: list, fw_size: int, normalize) -> list:
+    valid: list = []
+    print("\n=== Likely-real entries (handler is Thumb in firmware, byte is printable ASCII) ===")
+    for i, _ea, b, ch, h, _note in entries:
+        h_norm = normalize(h & ~1)
+        if not (BASE <= h_norm < BASE + fw_size):
+            continue
+        if (h & 1) != 1:
+            continue
+        if not (0x20 <= b < 0x7F):
+            continue
+        valid.append((i, b, ch, h_norm))
+        print(f"  [{i:>2}] '{ch}' (0x{b:02X}) -> FUN_{h_norm:08x}")
+    print(f"  Total: {len(valid)} valid entries")
+    return valid
+
+
+def _write_dispatch_report(
+    *,
+    out: Path,
+    fw_path: Path,
+    table_base: int,
+    table_ptr_addr: int,
+    entries: list,
+    valid: list,
+) -> None:
+    _c.ensure_dir(out.parent)
+    lines = ["# SUB-port dispatch table (extracted)", ""]
+    lines.append(f"- Firmware: `{fw_path.relative_to(_c.REPO_ROOT)}`")
+    lines.append(f"- Table base: 0x{table_base:08X}")
+    lines.append(f"- Pointer literal: *0x{table_ptr_addr:08X}")
+    lines.append(f"- Total entries scanned: {len(entries)}")
+    lines.append(f"- Valid entries: {len(valid)}")
+    lines.append("")
+    lines.append("| idx | byte | char | handler addr |")
+    lines.append("|---:|---:|---|---|")
+    for i, b, ch, h in valid:
+        lines.append(f"| {i} | 0x{b:02X} | `{ch}` | `FUN_{h:08x}` |")
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def main() -> int:
@@ -93,10 +183,7 @@ def main() -> int:
         return _fw_byte(fw, addr, size)
 
     lp_start, lp_end = args.litpool_range
-    print(f"=== Literal pool (0x{lp_start:08X}..0x{lp_end:08X}) ===")
-    for addr in range(lp_start, lp_end, 4):
-        if BASE <= addr < BASE + size:
-            print(f"  *0x{addr:08X} = 0x{fw_word(addr):08X}")
+    _dump_literal_pool(fw_word, lp_start=lp_start, lp_end=lp_end, size=size)
 
     table_ptr_addr: int = args.table_ptr
     table_base = fw_word(table_ptr_addr)
@@ -106,51 +193,25 @@ def main() -> int:
         return 1
     print(f"  Table base (flash equivalent): 0x{normalize(table_base):08X}")
 
-    print(f"  {'idx':>3}  {'addr':<10}  {'byte':<5}  {'char':<6}  {'handler':<10}  notes")
-    entries: list = []
-    for i in range(args.max_entries):
-        entry_addr = table_base + i * 8
-        if not in_fw(entry_addr):
-            break
-        b0 = fw_byte(entry_addr)
-        handler = fw_word(entry_addr + 4)
-        char_repr = repr(chr(b0)) if 0x20 <= b0 < 0x7F else f"\\x{b0:02X}"
-        h_norm = normalize(handler & ~1)
-        if BASE <= h_norm < BASE + size:
-            note = f"fn @ 0x{h_norm:08X}"
-        else:
-            note = f"out-of-fw (0x{handler:08X})"
-        entries.append((i, entry_addr, b0, char_repr, handler, note))
-        print(f"  {i:>3}  0x{entry_addr:08X}  0x{b0:02X}   {char_repr:<6}  0x{handler:08X}  {note}")
-
-    print("\n=== Likely-real entries (handler is Thumb in firmware, byte is printable ASCII) ===")
-    valid: list = []
-    for i, _ea, b, ch, h, _note in entries:
-        h_norm = normalize(h & ~1)
-        if not (BASE <= h_norm < BASE + size):
-            continue
-        if (h & 1) != 1:
-            continue
-        if not (0x20 <= b < 0x7F):
-            continue
-        valid.append((i, b, ch, h_norm))
-        print(f"  [{i:>2}] '{ch}' (0x{b:02X}) -> FUN_{h_norm:08x}")
-    print(f"  Total: {len(valid)} valid entries")
+    entries, valid = _scan_dispatch_entries(
+        table_base=table_base,
+        max_entries=args.max_entries,
+        fw_size=size,
+        in_fw=in_fw,
+        fw_byte=fw_byte,
+        fw_word=fw_word,
+        normalize=normalize,
+    )
 
     out = _c.SESSIONS_DIR / "dispatch_table_raw.md"
-    _c.ensure_dir(out.parent)
-    lines = ["# SUB-port dispatch table (extracted)", ""]
-    lines.append(f"- Firmware: `{fw_path.relative_to(_c.REPO_ROOT)}`")
-    lines.append(f"- Table base: 0x{table_base:08X}")
-    lines.append(f"- Pointer literal: *0x{table_ptr_addr:08X}")
-    lines.append(f"- Total entries scanned: {len(entries)}")
-    lines.append(f"- Valid entries: {len(valid)}")
-    lines.append("")
-    lines.append("| idx | byte | char | handler addr |")
-    lines.append("|---:|---:|---|---|")
-    for i, b, ch, h in valid:
-        lines.append(f"| {i} | 0x{b:02X} | `{ch}` | `FUN_{h:08x}` |")
-    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _write_dispatch_report(
+        out=out,
+        fw_path=fw_path,
+        table_base=table_base,
+        table_ptr_addr=table_ptr_addr,
+        entries=entries,
+        valid=valid,
+    )
     print(f"\n[+] Saved table to {out.relative_to(_c.REPO_ROOT)}")
     return 0
 

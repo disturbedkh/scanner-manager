@@ -17,7 +17,8 @@ param(
     [string]$Tag = "v0.11.1",
     [string]$GitLabRemote = "gitlab",
     [string]$GitHubRemote = "origin",
-    [switch]$Force
+    [switch]$Force,
+    [switch]$SkipCloudGate
 )
 
 $ErrorActionPreference = "Stop"
@@ -61,6 +62,18 @@ $githubUrl = Resolve-RemoteUrl -Remote $GitHubRemote
 Write-Host "GitLab source : $gitlabUrl" -ForegroundColor Cyan
 Write-Host "GitHub target : $githubUrl" -ForegroundColor Cyan
 Write-Host "Release tag   : $Tag" -ForegroundColor Cyan
+
+if (-not $SkipCloudGate) {
+    Write-Host ""
+    Write-Host "Checking SonarCloud gate (OPEN must be 0)..." -ForegroundColor Cyan
+    try {
+        & "$RepoRoot\scripts\check_quality_gate.ps1" -Cloud -MaxOpenIssues 0
+    } catch {
+        Write-Host "SonarCloud gate check failed: $_" -ForegroundColor Yellow
+        Write-Host "Use -SkipCloudGate to bypass (emergency publish only)." -ForegroundColor Yellow
+        throw
+    }
+}
 
 if (-not $Force) {
     Write-Host ""

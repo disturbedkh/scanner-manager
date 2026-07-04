@@ -140,80 +140,86 @@ def byte_diff_summary(a: bytes, b: bytes) -> tuple[int, int, list[tuple[int, int
     return changed, len(runs), runs[:20]
 
 
+def _append_image_report(out: list[str], label: str, path: Path) -> None:
+    if not path.exists():
+        out.append(f"## {label}: MISSING ({path})")
+        return
+    data = path.read_bytes()
+    chunks_ent, full_ent = entropy_profile(path)
+    out.append(f"## {label}")
+    out.append("")
+    out.append(f"- File: `{path.name}`")
+    out.append(f"- Size: **{len(data):,}** bytes")
+    out.append(f"- Whole-file Shannon entropy: **{full_ent:.4f}** bits/byte (max 8)")
+    high = sum(1 for e in chunks_ent if e >= 7.5)
+    mid = sum(1 for e in chunks_ent if 4.0 <= e < 7.5)
+    low = sum(1 for e in chunks_ent if e < 4.0)
+    out.append(f"- 4 KiB chunk entropy: {high} high(>=7.5), {mid} mid, {low} low(<4) "
+               f"of {len(chunks_ent)} total")
+    out.append("")
+    out.append("### First 64 bytes")
+    out.append("```")
+    out.extend(hex_dump(data[:64]))
+    out.append("```")
+    out.append("")
+    out.append("### Last 64 bytes")
+    out.append("```")
+    out.extend(hex_dump(data[-64:], base=len(data) - 64))
+    out.append("```")
+    out.append("")
+    out.append("### Magic-byte signature hits (first 32)")
+    sigs = signature_scan(data)[:32]
+    if not sigs:
+        out.append("- (none)")
+    else:
+        out.append("```")
+        for off, label_s in sigs[:32]:
+            out.append(f"  0x{off:08x}  {label_s}")
+        out.append("```")
+    out.append("")
+
+
+def _append_version_diff(out: list[str], a_label: str, b_label: str) -> None:
+    a_path = IMAGES.get(a_label)
+    b_path = IMAGES.get(b_label)
+    if not a_path or not b_path or not a_path.exists() or not b_path.exists():
+        return
+    a = a_path.read_bytes()
+    b = b_path.read_bytes()
+    out.append(f"## Byte-level diff: {a_label} -> {b_label}")
+    out.append("")
+    if len(a) != len(b):
+        out.append(f"- Different sizes: {len(a):,} -> {len(b):,} bytes "
+                   f"(delta {len(b) - len(a):+,})")
+        out.append("- Cannot do byte-aligned diff directly. Skipping.")
+        return
+    changed, runs, top = byte_diff_summary(a, b)
+    pct = 100.0 * changed / len(a)
+    out.append(f"- Same size: {len(a):,} bytes")
+    out.append(f"- Bytes changed: **{changed:,}** "
+               f"({pct:.2f}% of file)")
+    out.append(f"- Number of changed runs: **{runs}**")
+    out.append("- Top 20 longest changed runs (offset, length):")
+    out.append("")
+    out.append("| Offset | Length | Pct of file |")
+    out.append("| --- | --- | --- |")
+    for off, length in top:
+        out.append(f"| `0x{off:08x}` | {length:,} | {100.0 * length / len(a):.2f}% |")
+    out.append("")
+
+
 def report() -> None:
     out = ["# Firmware structural analysis", ""]
 
     for label, path in IMAGES.items():
-        if not path.exists():
-            out.append(f"## {label}: MISSING ({path})")
-            continue
-        data = path.read_bytes()
-        chunks_ent, full_ent = entropy_profile(path)
-        out.append(f"## {label}")
-        out.append("")
-        out.append(f"- File: `{path.name}`")
-        out.append(f"- Size: **{len(data):,}** bytes")
-        out.append(f"- Whole-file Shannon entropy: **{full_ent:.4f}** bits/byte (max 8)")
-        # entropy buckets
-        high = sum(1 for e in chunks_ent if e >= 7.5)
-        mid = sum(1 for e in chunks_ent if 4.0 <= e < 7.5)
-        low = sum(1 for e in chunks_ent if e < 4.0)
-        out.append(f"- 4 KiB chunk entropy: {high} high(>=7.5), {mid} mid, {low} low(<4) "
-                   f"of {len(chunks_ent)} total")
-        out.append("")
-        out.append("### First 64 bytes")
-        out.append("```")
-        out.extend(hex_dump(data[:64]))
-        out.append("```")
-        out.append("")
-        out.append("### Last 64 bytes")
-        out.append("```")
-        out.extend(hex_dump(data[-64:], base=len(data) - 64))
-        out.append("```")
-        out.append("")
-        out.append("### Magic-byte signature hits (first 32)")
-        sigs = signature_scan(data)[:32]
-        if not sigs:
-            out.append("- (none)")
-        else:
-            out.append("```")
-            for off, label_s in sigs[:32]:
-                out.append(f"  0x{off:08x}  {label_s}")
-            out.append("```")
-        out.append("")
+        _append_image_report(out, label, path)
 
-    # Byte diffs - all consecutive version pairs within each family.
     pairs: list[tuple[str, str]] = []
     for fam in ("main_", "sub_"):
         members = sorted(label for label in IMAGES if label.startswith(fam))
         pairs.extend(zip(members, members[1:]))
     for a_label, b_label in pairs:
-        a_path = IMAGES.get(a_label)
-        b_path = IMAGES.get(b_label)
-        if not a_path or not b_path or not a_path.exists() or not b_path.exists():
-            continue
-        a = a_path.read_bytes()
-        b = b_path.read_bytes()
-        out.append(f"## Byte-level diff: {a_label} -> {b_label}")
-        out.append("")
-        if len(a) != len(b):
-            out.append(f"- Different sizes: {len(a):,} -> {len(b):,} bytes "
-                       f"(delta {len(b) - len(a):+,})")
-            out.append("- Cannot do byte-aligned diff directly. Skipping.")
-            continue
-        changed, runs, top = byte_diff_summary(a, b)
-        pct = 100.0 * changed / len(a)
-        out.append(f"- Same size: {len(a):,} bytes")
-        out.append(f"- Bytes changed: **{changed:,}** "
-                   f"({pct:.2f}% of file)")
-        out.append(f"- Number of changed runs: **{runs}**")
-        out.append("- Top 20 longest changed runs (offset, length):")
-        out.append("")
-        out.append("| Offset | Length | Pct of file |")
-        out.append("| --- | --- | --- |")
-        for off, length in top:
-            out.append(f"| `0x{off:08x}` | {length:,} | {100.0 * length / len(a):.2f}% |")
-        out.append("")
+        _append_version_diff(out, a_label, b_label)
 
     rep_path = OUT_DIR / "firmware_structure_report.md"
     rep_path.write_text("\n".join(out) + "\n", encoding="utf-8")

@@ -38,16 +38,16 @@ Quick status:
 
 Linux/macOS: use `./scripts/sonar_truststore.sh` then `./scripts/sonar_scan.sh`.
 
-## Baseline (2026-07-04, full-scope policy)
+## Baseline (2026-07-04, Round 2 remediation in progress)
 
 | Metric | VPS (`scanner-manager`) | SonarCloud (`disturbedkh_scanner-manager`) |
 | --- | --- | --- |
 | Host | `https://217.216.48.172:18443` | `https://sonarcloud.io` |
-| Scope | Full tree (no legacy/Metacache/scripts exclusions) | Same after GitHub `main` push |
-| Last analysis (`main`) | **2026-07-03** (pre-rescope product-only: 0 OPEN) | **321 OPEN** (pre-fix baseline export) |
-| Coverage (`main`) | **91.9%** (product-only scope) | TBD until CI upload with `coverage.xml` |
-| Quality gate | **OK** (product-only) | **ERROR** until OPEN = 0 |
-| CI upload | GitLab `sonarqube` job | GitHub Actions `sonarcloud` job (blocking) |
+| Scope | Full tree (no legacy/Metacache/scripts exclusions) | Same — `sonar-project.properties` aligned |
+| OPEN issues (`main`) | TBD after full-scope upload | **160 → target 0** (export: `.sonar/issues_checklist_r2.json`) |
+| Coverage (`main`) | **91.9%** (prior product-only upload) | TBD until GitHub Actions upload with `coverage.xml` |
+| Quality gate | TBD full-scope | **ERROR** until OPEN = 0 |
+| CI floor | GitLab `--cov-fail-under=88` | GitHub `sonarcloud` job (blocking on `main` push) |
 
 Local developer loop:
 

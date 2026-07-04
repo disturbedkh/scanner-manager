@@ -59,4 +59,5 @@ htmlcov/
 .sonar/truststore.jks
 .sonar/sonarqube-vps.cer
 .sonar/cloud_issues_baseline.json
+.sonar/issues_checklist_r2.json
 sonarqube-vps.cer

@@ -46,6 +46,36 @@ def show(buf: bytes) -> str:
     return "".join(out)
 
 
+def _collect_response(port: serial.Serial, *, deadline_s: float = 1.5, quiet_after_cr: float = 0.10) -> tuple[bytes, float]:
+    t0 = time.monotonic()
+    deadline = t0 + deadline_s
+    buf = bytearray()
+    last_byte_t = t0
+    saw_cr = False
+    while time.monotonic() < deadline:
+        chunk = port.read(4096)
+        if chunk:
+            buf.extend(chunk)
+            last_byte_t = time.monotonic()
+            if b"\r" in chunk or b"\n" in chunk:
+                saw_cr = True
+        elif saw_cr and (time.monotonic() - last_byte_t) > quiet_after_cr:
+            break
+        else:
+            time.sleep(0.005)
+    return bytes(buf), (time.monotonic() - t0) * 1000.0
+
+
+def _probe_command(port: serial.Serial, cmd: str, doc: str) -> None:
+    port.reset_input_buffer()
+    port.write((cmd + "\r").encode("ascii"))
+    response, elapsed_ms = _collect_response(port)
+    print(
+        f">>> {cmd:8s} ({doc})\n"
+        f"    {len(response):4d}B in {elapsed_ms:6.1f} ms  | {show(response)}"
+    )
+
+
 def main() -> None:
     try:
         port = serial.Serial(PORT, BAUD, timeout=0.05)
@@ -55,30 +85,7 @@ def main() -> None:
     print(f"# Opened {PORT} @ {BAUD} 8N1")
     try:
         for cmd, doc in PROBES:
-            port.reset_input_buffer()
-            port.write((cmd + "\r").encode("ascii"))
-            t0 = time.monotonic()
-            deadline = t0 + 1.5
-            quiet_after_cr = 0.10
-            buf = bytearray()
-            last_byte_t = t0
-            saw_cr = False
-            while time.monotonic() < deadline:
-                chunk = port.read(4096)
-                if chunk:
-                    buf.extend(chunk)
-                    last_byte_t = time.monotonic()
-                    if b"\r" in chunk or b"\n" in chunk:
-                        saw_cr = True
-                else:
-                    if saw_cr and (time.monotonic() - last_byte_t) > quiet_after_cr:
-                        break
-                    time.sleep(0.005)
-            elapsed_ms = (time.monotonic() - t0) * 1000.0
-            print(
-                f">>> {cmd:8s} ({doc})\n"
-                f"    {len(buf):4d}B in {elapsed_ms:6.1f} ms  | {show(bytes(buf))}"
-            )
+            _probe_command(port, cmd, doc)
     finally:
         port.close()
 

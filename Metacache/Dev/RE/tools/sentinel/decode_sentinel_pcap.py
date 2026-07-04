@@ -261,25 +261,26 @@ def write_jsonl(ops: list[ScsiOp], out_path: Path) -> None:
     print(f"[+] wrote {out_path.relative_to(ROOT)}")
 
 
-def reconstruct_disk(ops: list[ScsiOp], out_path: Path) -> tuple[int, int]:
-    """Build a sparse disk image where each touched LBA has its data.
+def _apply_op_sectors(sectors: dict[int, bytes], op: ScsiOp, *, overwrite: bool) -> None:
+    if not op.payload:
+        return
+    for i in range(op.blocks):
+        sec = op.payload[i * SECTOR:(i + 1) * SECTOR]
+        if len(sec) != SECTOR:
+            continue
+        lba = op.lba + i
+        if overwrite or lba not in sectors:
+            sectors[lba] = sec
 
-    Sectors not touched are zero-filled. Returns (max_lba, byte_size).
-    The ON-DISK content for any LBA is the LAST WRITTEN value; reads
-    don't overwrite reads (we keep the first read seen for each LBA).
-    """
+
+def reconstruct_disk(ops: list[ScsiOp], out_path: Path) -> tuple[int, int]:
+    """Build a sparse disk image where each touched LBA has its data."""
     sectors: dict[int, bytes] = {}
     for op in ops:
-        if op.direction == "WRITE" and op.payload:
-            for i in range(op.blocks):
-                sec = op.payload[i * SECTOR:(i + 1) * SECTOR]
-                if len(sec) == SECTOR:
-                    sectors[op.lba + i] = sec  # writes overwrite
-        elif op.direction == "READ" and op.payload:
-            for i in range(op.blocks):
-                sec = op.payload[i * SECTOR:(i + 1) * SECTOR]
-                if len(sec) == SECTOR and (op.lba + i) not in sectors:
-                    sectors[op.lba + i] = sec  # reads don't overwrite writes
+        if op.direction == "WRITE":
+            _apply_op_sectors(sectors, op, overwrite=True)
+        elif op.direction == "READ":
+            _apply_op_sectors(sectors, op, overwrite=False)
 
     if not sectors:
         out_path.write_bytes(b"")
@@ -334,6 +335,126 @@ def _parse_mbr_then_fat32(image: bytes, ops: list[ScsiOp]) -> list[dict]:
     return files
 
 
+def _touched_lba_sets(ops: list[ScsiOp]) -> tuple[set[int], set[int]]:
+    touched_write: set[int] = set()
+    touched_read: set[int] = set()
+    for op in ops:
+        target = touched_write if op.direction == "WRITE" else touched_read
+        if op.direction not in ("WRITE", "READ"):
+            continue
+        for i in range(op.blocks):
+            target.add(op.lba + i)
+    return touched_write, touched_read
+
+
+def _load_fat_table(image: bytes, fat_start_lba: int, fat_size_32: int) -> list[int]:
+    fat_off = fat_start_lba * SECTOR
+    fat_bytes = image[fat_off:fat_off + fat_size_32 * SECTOR]
+    fat: list[int] = []
+    for i in range(0, len(fat_bytes), 4):
+        if i + 4 > len(fat_bytes):
+            break
+        fat.append(struct.unpack_from("<I", fat_bytes, i)[0] & 0x0FFFFFFF)
+    return fat
+
+
+def _read_cluster_bytes(
+    cluster: int,
+    fat: list[int],
+    image: bytes,
+    lba_for_cluster,
+    spc: int,
+) -> bytes:
+    chunks: list[bytes] = []
+    c = cluster
+    while c >= 2 and c < 0x0FFFFFF8 and c < len(fat):
+        lba = lba_for_cluster(c)
+        chunks.append(image[lba * SECTOR:(lba + spc) * SECTOR])
+        c = fat[c]
+    return b"".join(chunks)
+
+
+def _count_cluster_touches(
+    file_clus: int,
+    fat: list[int],
+    spc: int,
+    lba_for_cluster,
+    touched_write: set[int],
+    touched_read: set[int],
+) -> tuple[int, int, int]:
+    touched_w = 0
+    touched_r = 0
+    total_secs = 0
+    cc = file_clus
+    while cc >= 2 and cc < 0x0FFFFFF8 and cc < len(fat):
+        lba = lba_for_cluster(cc)
+        for sec_idx in range(spc):
+            total_secs += 1
+            if (lba + sec_idx) in touched_write:
+                touched_w += 1
+            if (lba + sec_idx) in touched_read:
+                touched_r += 1
+        cc = fat[cc]
+        if cc == 0:
+            break
+    return touched_w, touched_r, total_secs
+
+
+def _decode_lfn_chars(ent: bytes) -> str:
+    chars = ent[1:11] + ent[14:26] + ent[28:32]
+    try:
+        return chars.decode("utf-16-le").rstrip("\uffff").rstrip("\0")
+    except UnicodeDecodeError:
+        return ""
+
+
+def _process_dir_entry(
+    ent: bytes,
+    *,
+    path: str,
+    long_name: str,
+    fat: list[int],
+    spc: int,
+    lba_for_cluster,
+    touched_write: set[int],
+    touched_read: set[int],
+    files: list[dict],
+    walk_dir,
+) -> tuple[str, str]:
+    if len(ent) < 32 or ent[0] == 0x00:
+        return "break", long_name
+    if ent[0] == 0xE5:
+        return "clear", ""
+    attr = ent[11]
+    if attr == 0x0F:
+        return "continue", _decode_lfn_chars(ent) + long_name
+    short_name = ent[0:8].decode("ascii", errors="replace").strip()
+    short_ext = ent[8:11].decode("ascii", errors="replace").strip()
+    sname = short_name + ("." + short_ext if short_ext else "")
+    file_clus = (struct.unpack_from("<H", ent, 20)[0] << 16) | struct.unpack_from("<H", ent, 26)[0]
+    file_size = struct.unpack_from("<I", ent, 28)[0]
+    display = long_name or sname
+    if display in (".", "..") or not display:
+        return "next", ""
+    full_path = f"{path}/{display}"
+    if attr & 0x10:
+        walk_dir(file_clus, full_path)
+        return "next", ""
+    touched_w, touched_r, total_secs = _count_cluster_touches(
+        file_clus, fat, spc, lba_for_cluster, touched_write, touched_read,
+    )
+    if touched_w or touched_r:
+        files.append({
+            "path": full_path,
+            "size": file_size,
+            "first_cluster": file_clus,
+            "total_sectors": total_secs,
+            "read_sectors": touched_r,
+            "write_sectors": touched_w,
+        })
+    return "next", ""
+
+
 def _walk_fat32(image: bytes, part_lba: int, ops: list[ScsiOp]) -> list[dict]:
     bpb = image[part_lba * SECTOR:part_lba * SECTOR + 512]
     if len(bpb) < 512:
@@ -355,109 +476,36 @@ def _walk_fat32(image: bytes, part_lba: int, ops: list[ScsiOp]) -> list[dict]:
     data_start_lba = fat_start_lba + n_fats * fat_size_32
     spc = sec_per_clus
 
-    # Build set of touched LBAs (writes + reads)
-    touched_write: set[int] = set()
-    touched_read: set[int] = set()
-    for op in ops:
-        if op.direction == "WRITE":
-            for i in range(op.blocks):
-                touched_write.add(op.lba + i)
-        elif op.direction == "READ":
-            for i in range(op.blocks):
-                touched_read.add(op.lba + i)
+    touched_write, touched_read = _touched_lba_sets(ops)
 
     def lba_for_cluster(c: int) -> int:
         return data_start_lba + (c - 2) * spc
 
-    # Parse FAT
-    fat_off = fat_start_lba * SECTOR
-    fat_bytes = image[fat_off:fat_off + fat_size_32 * SECTOR]
-    fat = []
-    for i in range(0, len(fat_bytes), 4):
-        if i + 4 > len(fat_bytes):
-            break
-        fat.append(struct.unpack_from("<I", fat_bytes, i)[0] & 0x0FFFFFFF)
-
-    # Recursively walk directory entries from root_clus
+    fat = _load_fat_table(image, fat_start_lba, fat_size_32)
     files: list[dict] = []
-    visited = set()
+    visited: set[int] = set()
 
     def walk_dir(cluster: int, path: str) -> None:
         if cluster in visited or cluster < 2 or cluster >= len(fat):
             return
         visited.add(cluster)
-        entries = []
-        c = cluster
-        while c >= 2 and c < 0x0FFFFFF8 and c < len(fat):
-            lba = lba_for_cluster(c)
-            cdata = image[lba * SECTOR:(lba + spc) * SECTOR]
-            entries.append(cdata)
-            c = fat[c]
-        full = b"".join(entries)
-        # 32-byte directory entries
+        full = _read_cluster_bytes(cluster, fat, image, lba_for_cluster, spc)
         long_name = ""
         for i in range(0, len(full), 32):
-            ent = full[i:i + 32]
-            if len(ent) < 32:
+            action, long_name = _process_dir_entry(
+                full[i:i + 32],
+                path=path,
+                long_name=long_name,
+                fat=fat,
+                spc=spc,
+                lba_for_cluster=lba_for_cluster,
+                touched_write=touched_write,
+                touched_read=touched_read,
+                files=files,
+                walk_dir=walk_dir,
+            )
+            if action == "break":
                 break
-            if ent[0] == 0x00:
-                break
-            if ent[0] == 0xE5:
-                long_name = ""
-                continue
-            attr = ent[11]
-            if attr == 0x0F:
-                # LFN entry
-                chars = ent[1:11] + ent[14:26] + ent[28:32]
-                try:
-                    name_part = chars.decode("utf-16-le").rstrip("\uffff").rstrip("\0")
-                except UnicodeDecodeError:
-                    name_part = ""
-                long_name = name_part + long_name
-                continue
-            # Regular entry
-            short_name = ent[0:8].decode("ascii", errors="replace").strip()
-            short_ext = ent[8:11].decode("ascii", errors="replace").strip()
-            sname = short_name + ("." + short_ext if short_ext else "")
-            file_clus_hi = struct.unpack_from("<H", ent, 20)[0]
-            file_clus_lo = struct.unpack_from("<H", ent, 26)[0]
-            file_clus = (file_clus_hi << 16) | file_clus_lo
-            file_size = struct.unpack_from("<I", ent, 28)[0]
-            display = long_name if long_name else sname
-            long_name = ""
-            if display in (".", "..") or not display:
-                continue
-            full_path = f"{path}/{display}"
-            is_dir = bool(attr & 0x10)
-
-            if is_dir:
-                walk_dir(file_clus, full_path)
-            else:
-                # Count read/write touched sectors among this file's clusters
-                touched_w = 0
-                touched_r = 0
-                total_secs = 0
-                cc = file_clus
-                while cc >= 2 and cc < 0x0FFFFFF8 and cc < len(fat):
-                    lba = lba_for_cluster(cc)
-                    for sec_idx in range(spc):
-                        total_secs += 1
-                        if (lba + sec_idx) in touched_write:
-                            touched_w += 1
-                        if (lba + sec_idx) in touched_read:
-                            touched_r += 1
-                    cc = fat[cc]
-                    if cc == 0:  # bad chain
-                        break
-                if touched_w or touched_r:
-                    files.append({
-                        "path": full_path,
-                        "size": file_size,
-                        "first_cluster": file_clus,
-                        "total_sectors": total_secs,
-                        "read_sectors": touched_r,
-                        "write_sectors": touched_w,
-                    })
 
     walk_dir(root_clus, "")
     return files

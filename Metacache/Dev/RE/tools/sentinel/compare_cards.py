@@ -24,13 +24,14 @@ from collections import Counter
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+_TOOLS_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_TOOLS_DIR))
+import _common as _c  # noqa: E402
+
+REPO_ROOT = _c.REPO_ROOT
 sys.path.insert(0, str(REPO_ROOT))
 
 from legacy_tk.scanner_manager import FirmwareCityTable, FirmwareZipTable  # noqa: E402
-
-sys.path.insert(0, str(REPO_ROOT / "Metacache" / "Dev" / "RE" / "tools"))
-import _common as _c  # noqa: E402
 
 
 def sha256_of(path: Path) -> str:
@@ -130,6 +131,94 @@ def run_city_parser(card_root: Path) -> Dict[str, object]:
     }
 
 
+def _print_card_only(label: str, files: dict[str, int], only: set[str]) -> None:
+    print(f"\n## Files present on {label} only")
+    for f in sorted(only):
+        print(f"  {f}  ({files[f]:>10} B)")
+    if not only:
+        print("  (none)")
+
+
+def _print_common_sizes(bt_files: dict[str, int], sds_files: dict[str, int]) -> None:
+    print("\n## Files on both - bytes equal?")
+    common = sorted(set(bt_files) & set(sds_files))
+    for f in common:
+        if bt_files[f] == sds_files[f]:
+            print(f"  EQUAL SIZE   {bt_files[f]:>10} B   {f}")
+        else:
+            print(
+                f"  DIFFER SIZE  bt={bt_files[f]:>10} B  sds={sds_files[f]:>10} B   {f}"
+            )
+
+
+def _print_firmware_hashes(bt: Path, sds: Path) -> None:
+    print("\n## SHA-256 for binary firmware tables on both cards")
+    for sub in ("BCDx36HP/firmware/CityTable_V1_00_00.dat",
+                "BCDx36HP/firmware/ZipTable_V1_00_00.dat"):
+        bt_path = bt / Path(sub)
+        sds_path = sds / Path(sub)
+        if not (bt_path.exists() and sds_path.exists()):
+            continue
+        bt_h = sha256_of(bt_path)
+        sds_h = sha256_of(sds_path)
+        print(f"  {sub}")
+        print(f"    BT885   {bt_h}")
+        print(f"    SDS100  {sds_h}")
+        print(f"    {'IDENTICAL' if bt_h == sds_h else 'DIFFER'}")
+
+
+def _print_parser_comparison(bt: Path, sds: Path) -> None:
+    print("\n## Live FirmwareZipTable parser - both cards")
+    bt_zip = run_zip_parser(bt)
+    sds_zip = run_zip_parser(sds)
+    print(f"  BT885 :  {bt_zip}")
+    print(f"  SDS100:  {sds_zip}")
+    if bt_zip.get("present") and sds_zip.get("present"):
+        print(
+            f"  -> record_size match: {bt_zip['record_size'] == sds_zip['record_size']}, "
+            f"zip_count match: {bt_zip['zip_count'] == sds_zip['zip_count']}"
+        )
+
+    print("\n## Live FirmwareCityTable parser - both cards")
+    bt_city = run_city_parser(bt)
+    sds_city = run_city_parser(sds)
+    print(f"  BT885 :  record_size={bt_city.get('record_size')} "
+          f"records={bt_city.get('record_count')} "
+          f"states={len(bt_city.get('states') or [])}")
+    print(f"  SDS100:  record_size={sds_city.get('record_size')} "
+          f"records={sds_city.get('record_count')} "
+          f"states={len(sds_city.get('states') or [])}")
+    if bt_city.get("ok") and sds_city.get("ok"):
+        print(
+            f"  -> record_count match: {bt_city['record_count'] == sds_city['record_count']}, "
+            f"state set match: {bt_city['states'] == sds_city['states']}"
+        )
+
+
+def _print_hpd_sample(bt: Path, sds: Path, sample_hpd: str) -> None:
+    print("\n## hpdb.cfg head (3 lines from each card)")
+    for label, path in (
+        ("BT885 ", bt / "BCDx36HP" / "HPDB" / "hpdb.cfg"),
+        ("SDS100", sds / "BCDx36HP" / "HPDB" / "hpdb.cfg"),
+    ):
+        print(f"  {label}: {path}")
+        for ln in hpd_header_lines(path, 3):
+            print(f"    {ln!r}")
+
+    print(f"\n## State HPD record-type tally (both cards): {sample_hpd}")
+    for label, path in (
+        ("BT885 ", bt / "BCDx36HP" / "HPDB" / sample_hpd),
+        ("SDS100", sds / "BCDx36HP" / "HPDB" / sample_hpd),
+    ):
+        size = path.stat().st_size if path.exists() else "missing"
+        print(f"  {label}: {path}  ({size} B)")
+        if not path.exists():
+            continue
+        tally = head_record_type_tally(path)
+        for token, count in sorted(tally.items(), key=lambda kv: -kv[1])[:15]:
+            print(f"    {count:>6}  {token}")
+
+
 def main(argv: List[str]) -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--bt", required=True, help="BT885 card root (e.g. E:\\)")
@@ -155,89 +244,12 @@ def main(argv: List[str]) -> int:
     print(f"BT885  files: {len(bt_files)}")
     print(f"SDS100 files: {len(sds_files)}")
 
-    print("\n## Files present on BT885 only")
-    only_bt = sorted(set(bt_files) - set(sds_files))
-    for f in only_bt:
-        print(f"  {f}  ({bt_files[f]:>10} B)")
-    if not only_bt:
-        print("  (none)")
-
-    print("\n## Files present on SDS100 only")
-    only_sds = sorted(set(sds_files) - set(bt_files))
-    for f in only_sds:
-        print(f"  {f}  ({sds_files[f]:>10} B)")
-    if not only_sds:
-        print("  (none)")
-
-    print("\n## Files on both - bytes equal?")
-    common = sorted(set(bt_files) & set(sds_files))
-    for f in common:
-        if bt_files[f] == sds_files[f]:
-            print(f"  EQUAL SIZE   {bt_files[f]:>10} B   {f}")
-        else:
-            print(
-                f"  DIFFER SIZE  bt={bt_files[f]:>10} B  sds={sds_files[f]:>10} B   {f}"
-            )
-
-    print("\n## SHA-256 for binary firmware tables on both cards")
-    for sub in ("BCDx36HP/firmware/CityTable_V1_00_00.dat",
-                "BCDx36HP/firmware/ZipTable_V1_00_00.dat"):
-        bt_path = bt / Path(sub)
-        sds_path = sds / Path(sub)
-        if bt_path.exists() and sds_path.exists():
-            bt_h = sha256_of(bt_path)
-            sds_h = sha256_of(sds_path)
-            print(f"  {sub}")
-            print(f"    BT885   {bt_h}")
-            print(f"    SDS100  {sds_h}")
-            print(f"    {'IDENTICAL' if bt_h == sds_h else 'DIFFER'}")
-
-    print("\n## Live FirmwareZipTable parser - both cards")
-    bt_zip = run_zip_parser(bt)
-    sds_zip = run_zip_parser(sds)
-    print(f"  BT885 :  {bt_zip}")
-    print(f"  SDS100:  {sds_zip}")
-    if bt_zip.get("present") and sds_zip.get("present"):
-        same_count = bt_zip["zip_count"] == sds_zip["zip_count"]
-        same_recsize = bt_zip["record_size"] == sds_zip["record_size"]
-        print(
-            f"  -> record_size match: {same_recsize}, "
-            f"zip_count match: {same_count}"
-        )
-
-    print("\n## Live FirmwareCityTable parser - both cards")
-    bt_city = run_city_parser(bt)
-    sds_city = run_city_parser(sds)
-    print(f"  BT885 :  record_size={bt_city.get('record_size')} "
-          f"records={bt_city.get('record_count')} "
-          f"states={len(bt_city.get('states') or [])}")
-    print(f"  SDS100:  record_size={sds_city.get('record_size')} "
-          f"records={sds_city.get('record_count')} "
-          f"states={len(sds_city.get('states') or [])}")
-    if bt_city.get("ok") and sds_city.get("ok"):
-        same_recs = bt_city["record_count"] == sds_city["record_count"]
-        same_states = bt_city["states"] == sds_city["states"]
-        print(f"  -> record_count match: {same_recs}, state set match: {same_states}")
-
-    print("\n## hpdb.cfg head (3 lines from each card)")
-    for label, path in (
-        ("BT885 ", bt / "BCDx36HP" / "HPDB" / "hpdb.cfg"),
-        ("SDS100", sds / "BCDx36HP" / "HPDB" / "hpdb.cfg"),
-    ):
-        print(f"  {label}: {path}")
-        for ln in hpd_header_lines(path, 3):
-            print(f"    {ln!r}")
-
-    print(f"\n## State HPD record-type tally (both cards): {args.sample_hpd}")
-    for label, path in (
-        ("BT885 ", bt / "BCDx36HP" / "HPDB" / args.sample_hpd),
-        ("SDS100", sds / "BCDx36HP" / "HPDB" / args.sample_hpd),
-    ):
-        print(f"  {label}: {path}  ({path.stat().st_size if path.exists() else 'missing'} B)")
-        if path.exists():
-            tally = head_record_type_tally(path)
-            for token, count in sorted(tally.items(), key=lambda kv: -kv[1])[:15]:
-                print(f"    {count:>6}  {token}")
+    _print_card_only("BT885 only", bt_files, set(bt_files) - set(sds_files))
+    _print_card_only("SDS100 only", sds_files, set(sds_files) - set(bt_files))
+    _print_common_sizes(bt_files, sds_files)
+    _print_firmware_hashes(bt, sds)
+    _print_parser_comparison(bt, sds)
+    _print_hpd_sample(bt, sds, args.sample_hpd)
 
     return 0
 

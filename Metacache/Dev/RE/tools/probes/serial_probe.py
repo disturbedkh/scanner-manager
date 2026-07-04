@@ -59,6 +59,9 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import _common as _c  # noqa: E402
+
 try:
     import serial
     import serial.tools.list_ports
@@ -351,6 +354,23 @@ def _safe_decode(buf: bytes) -> str:
     return "".join(out)
 
 
+def _drain_quiet_window(
+    port: serial.Serial,
+    response: bytearray,
+    *,
+    quiet_after_cr_s: float,
+    deadline: float,
+) -> None:
+    quiet_until = time.perf_counter() + quiet_after_cr_s
+    while time.perf_counter() < quiet_until and time.perf_counter() < deadline:
+        n2 = port.in_waiting
+        if n2:
+            response.extend(port.read(n2))
+            quiet_until = time.perf_counter() + quiet_after_cr_s
+        else:
+            time.sleep(0.005)
+
+
 def _send_and_read(
     port: serial.Serial,
     command: str,
@@ -381,16 +401,7 @@ def _send_and_read(
             response.extend(chunk)
             saw_terminator = saw_terminator or response.endswith(b"\r") or response.endswith(b"\n")
             if saw_terminator:
-                # Quiet window: keep slurping bytes until the line goes
-                # silent for quiet_after_cr_s. Resets on every new byte.
-                quiet_until = time.perf_counter() + quiet_after_cr_s
-                while time.perf_counter() < quiet_until and time.perf_counter() < deadline:
-                    n2 = port.in_waiting
-                    if n2:
-                        response.extend(port.read(n2))
-                        quiet_until = time.perf_counter() + quiet_after_cr_s
-                    else:
-                        time.sleep(0.005)
+                _drain_quiet_window(port, response, quiet_after_cr_s=quiet_after_cr_s, deadline=deadline)
                 break
         else:
             time.sleep(0.005)
@@ -532,10 +543,7 @@ def run_diff_mode(port: serial.Serial, command: str, log) -> None:
         prev = response
 
 
-def _byte_diff(a: bytes, b: bytes, max_lines: int = 32) -> list[str]:
-    """Return up to max_lines '@offset: 0xAA -> 0xBB (chars)' rows."""
-    out: list[str] = []
-    n = min(len(a), len(b))
+def _append_byte_diffs(out: list[str], a: bytes, b: bytes, n: int, max_lines: int) -> None:
     for i in range(n):
         if a[i] != b[i]:
             ca = chr(a[i]) if 32 <= a[i] < 127 else "."
@@ -543,13 +551,54 @@ def _byte_diff(a: bytes, b: bytes, max_lines: int = 32) -> list[str]:
             out.append(f"@{i:04d}: 0x{a[i]:02X} {ca!r} -> 0x{b[i]:02X} {cb!r}")
             if len(out) >= max_lines:
                 out.append(f"... (more diffs suppressed; first {max_lines} only)")
-                return out
+                return
+
+
+def _byte_diff(a: bytes, b: bytes, max_lines: int = 32) -> list[str]:
+    """Return up to max_lines '@offset: 0xAA -> 0xBB (chars)' rows."""
+    out: list[str] = []
+    n = min(len(a), len(b))
+    _append_byte_diffs(out, a, b, n, max_lines)
+    if len(out) >= max_lines:
+        return out
     if len(a) != len(b):
-        out.append(f"length: {len(a)} -> {len(b)} bytes "
-                   f"(tail = {(b[n:n+32] if len(b) > n else a[n:n+32])!r})")
+        tail = b[n:n + 32] if len(b) > n else a[n:n + 32]
+        out.append(f"length: {len(a)} -> {len(b)} bytes (tail = {tail!r})")
     if not out:
         out.append("(no byte-level differences)")
     return out
+
+
+def _resolve_output_path(args) -> Path:
+    if args.out:
+        return Path(args.out)
+    _c.SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    ts = _dt.datetime.now().strftime("%Y%m%dT%H%M%S")
+    return _c.SESSIONS_DIR / f"sds100_serial_{ts}.txt"
+
+
+def _log_session_header(log, args, out_path: Path, port_name: str, baud: int) -> None:
+    log("# SDS100 passive serial probe")
+    log(f"# When     : {_dt.datetime.now().isoformat(timespec='seconds')}")
+    log(f"# Host     : {os.environ.get('COMPUTERNAME', '?')}")
+    log(f"# Port     : {port_name}  (baud={baud}, 8N1)")
+    log(f"# Output   : {out_path}")
+    log(f"# Probe ID : {_dt.datetime.now().strftime('%Y%m%dT%H%M%S')}")
+    log(f"# Mode     : {args.mode}")
+    if args.mode == "poll":
+        log(f"#   poll-cmd      : {args.poll_cmd!r}")
+        log(f"#   poll-interval : {args.poll_interval}s")
+        log(f"#   poll-duration : {args.poll_duration}s")
+    elif args.mode == "diff":
+        log(f"#   diff-cmd : {args.diff_cmd!r}")
+    log("#")
+    log(f"# Forbidden (never sent): {sorted(FORBIDDEN_FOR_READ_ONLY)}")
+    log(f"# Whitelist size        : {len(QUERIES)}")
+    log("#")
+    log("# Available ports at start:")
+    for line in describe_ports().splitlines():
+        log(f"# {line}")
+    log("")
 
 
 def main() -> int:
@@ -592,14 +641,7 @@ def main() -> int:
         )
         return 3
 
-    repo_root = Path(__file__).resolve().parent.parent.parent.parent  # Metacache/Dev/RE/.. -> repo root
-    if args.out:
-        out_path = Path(args.out)
-    else:
-        sessions_dir = repo_root / "AI" / "Dev" / "RE" / "sessions"
-        sessions_dir.mkdir(parents=True, exist_ok=True)
-        ts = _dt.datetime.now().strftime("%Y%m%dT%H%M%S")
-        out_path = sessions_dir / f"sds100_serial_{ts}.txt"
+    out_path = _resolve_output_path(args)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     log_file = out_path.open("w", encoding="utf-8", newline="\n")
@@ -609,27 +651,7 @@ def main() -> int:
         log_file.write(msg + "\n")
         log_file.flush()
 
-    log("# SDS100 passive serial probe")
-    log(f"# When     : {_dt.datetime.now().isoformat(timespec='seconds')}")
-    log(f"# Host     : {os.environ.get('COMPUTERNAME', '?')}")
-    log(f"# Port     : {port_name}  (baud={args.baud}, 8N1)")
-    log(f"# Output   : {out_path}")
-    log(f"# Probe ID : {_dt.datetime.now().strftime('%Y%m%dT%H%M%S')}")
-    log(f"# Mode     : {args.mode}")
-    if args.mode == "poll":
-        log(f"#   poll-cmd      : {args.poll_cmd!r}")
-        log(f"#   poll-interval : {args.poll_interval}s")
-        log(f"#   poll-duration : {args.poll_duration}s")
-    elif args.mode == "diff":
-        log(f"#   diff-cmd : {args.diff_cmd!r}")
-    log("#")
-    log(f"# Forbidden (never sent): {sorted(FORBIDDEN_FOR_READ_ONLY)}")
-    log(f"# Whitelist size        : {len(QUERIES)}")
-    log("#")
-    log("# Available ports at start:")
-    for line in describe_ports().splitlines():
-        log(f"# {line}")
-    log("")
+    _log_session_header(log, args, out_path, port_name, args.baud)
 
     try:
         ser = serial.Serial(

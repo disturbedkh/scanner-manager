@@ -21,7 +21,6 @@ import urllib.request
 import uuid
 import webbrowser
 from contextlib import nullcontext
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -55,6 +54,85 @@ from core.metastore import (
     session_snapshot_path,
     system_id_for,
     write_session_snapshot,
+)
+from legacy_tk.coverage_ui import CoverageHeatmapDialog, CoverageMapDialog
+from legacy_tk.geo_tables import (
+    CityRecord,
+    CustomLocationsStore,
+    FirmwareCityTable,
+    FirmwareZipTable,
+    ScannerCityIndex,
+    ZipCountyLookup,
+    discover_alert_files,
+    resolve_city_offline,
+)
+from legacy_tk.import_dialogs import (
+    ConventionalImportSelectionDialog,
+    TrunkedImportSelectionDialog,
+)
+from legacy_tk.literals import (
+    _LIT_ALL_FILES,
+    _LIT_AUTO_FROM_ZIP,
+    _LIT_BULK_REMAP,
+    _LIT_BUTTON_1,
+    _LIT_COMBOBOX_SELECTED,
+    _LIT_COVERAGE_HEATMAP,
+    _LIT_COVERAGE_MAP,
+    _LIT_EXE_GLOB,
+    _LIT_FETCH_ERROR,
+    _LIT_FREQ_MHZ_COLON,
+    _LIT_LOAD_HPD_FIRST,
+    _LIT_MODE_COLON,
+    _LIT_NAME_COLON,
+    _LIT_NO_FREQS_ON_PAGE,
+    _LIT_NO_FREQUENCIES,
+    _LIT_PROFILE_NOT_FOUND,
+    _LIT_RESTORE_SESSION,
+    _LIT_RESTORE_SNAPSHOT,
+    _LIT_REVERT_TO_POINT,
+    _LIT_RR_GROUP,
+    _LIT_SELECT_TOOL_FIRST,
+    _LIT_SWAP_PROFILE,
+    _LIT_TREE_HEADINGS,
+    _LIT_TREEVIEW_SELECT,
+)
+from legacy_tk.rr_parsing import (  # noqa: F401 — re-exported for tests / gui
+    RR_SERVICE_MAP,
+    _parse_rr_category_aid,
+    _parse_rr_conventional_ctid,
+    _parse_rr_fcc_callsign,
+    _parse_rr_trs_sid,
+    _rr_trs_mode_to_hpd,
+    classify_rr_tg_import_action,
+    diff_cfreq_with_rr,
+    diff_tgid_with_rr,
+    fetch_radioreference_data,
+    is_rr_mode_encrypted,
+)
+from legacy_tk.sd_paths import filesystem_space_root, resolve_existing_folder, validated_sd_folder
+from legacy_tk.sm_helpers import (
+    apply_sync_conflict_decision,
+    audit_mode_issue_with_rr,
+    audit_mode_issues,
+    BAND_MODE_RULES,
+    changes_detail,
+    default_state_combo_index,
+    entry_identity_display,
+    entry_matches_bulk_filter,
+    entry_passes_button_filter,
+    find_hpdb_config,
+    flatten_rr_cfreq_rows,
+    flatten_rr_tg_rows,
+    format_vsd_section,
+    group_coverage_tree_tag,
+    group_tree_label,
+    local_cfreq_by_hz,
+    local_tgid_by_id,
+    resolve_script_dir,
+    rr_diff_mode,
+    suggest_mode_for_freq,
+    sync_result_summary,
+    system_tree_label,
 )
 from scanner_profiles import (
     DEFAULT_PROFILE_ID,
@@ -288,14 +366,11 @@ SERVICE_TYPE_HELP_TEXT = (
 
 # HPD data model, parser, and geo helpers (canonical implementation in core.hpd)
 from core.hpd import (
-    EARTH_RADIUS_MILES,
     EntryCustomization,
     FreqEntry,
     GroupNode,
     HpdConfig,
     HpdFile,
-    HpdRecord,
-    SiteNode,
     SystemNode,
     haversine_miles,
     nearest_distance_miles,
@@ -303,751 +378,6 @@ from core.hpd import (
     system_covers_point,
     system_has_geo,
 )
-
-
-class ZipCountyLookup:
-    """
-    Zip-to-county mapping loader.
-
-    Supports a user-supplied `zip_county_map.json` next to the app with schema:
-    {
-      "by_zip": {
-        "33101": [
-          {"state_id": 12, "county_id": 86, "county_name": "Miami-Dade"}
-        ]
-      }
-    }
-    """
-
-    def __init__(
-        self,
-        script_dir: Path,
-        *,
-        bundled_dir: Optional[Path] = None,
-    ):
-        self.by_zip: Dict[str, List[Dict[str, Any]]] = {}
-        self.script_dir = script_dir
-        self.bundled_dir = bundled_dir or script_dir
-        self._load(script_dir, self.bundled_dir)
-
-    def _load(self, script_dir: Path, bundled_dir: Path):
-        # Preference order: a user-provided override in the app dir,
-        # then the bundled sample. The bundled dir may differ from the
-        # app dir when running as a PyInstaller frozen EXE.
-        candidates = [
-            script_dir / "zip_county_map.json",
-            script_dir / "data" / "zip_county_map_sample.json",
-            bundled_dir / "data" / "zip_county_map_sample.json",
-        ]
-        for candidate in candidates:
-            if not candidate.exists():
-                continue
-            try:
-                with candidate.open("r", encoding="utf-8") as f:
-                    payload = json.load(f)
-            except Exception:
-                continue
-            by_zip = payload.get("by_zip", {})
-            if isinstance(by_zip, dict):
-                self.by_zip = {
-                    self.normalize_zip(zip_code): entries
-                    for zip_code, entries in by_zip.items()
-                    if isinstance(entries, list)
-                }
-                return
-
-    @staticmethod
-    def normalize_zip(zip_code: str) -> str:
-        digits = "".join(ch for ch in zip_code if ch.isdigit())
-        if len(digits) >= 5:
-            return digits[:5]
-        return digits
-
-    def lookup(self, zip_code: str, state_id: Optional[int] = None) -> List[Dict[str, Any]]:
-        z = self.normalize_zip(zip_code)
-        rows = self.by_zip.get(z, [])
-        if state_id is None:
-            return rows
-        return [row for row in rows if row.get("state_id") == state_id]
-
-    def resolve(
-        self, zip_code: str, config: HpdConfig, preferred_state_id: Optional[int] = None
-    ) -> Optional[Dict[str, Any]]:
-        z = self.normalize_zip(zip_code)
-        if len(z) != 5:
-            return None
-
-        local_matches = self.by_zip.get(z, [])
-        if preferred_state_id is not None:
-            local_matches = [
-                row for row in local_matches if row.get("state_id") in (None, preferred_state_id)
-            ]
-        if local_matches:
-            resolved = self._resolve_match(local_matches[0], config, preferred_state_id)
-            if resolved:
-                resolved["source"] = "local"
-                return resolved
-
-        resolved = self._resolve_via_nominatim(z, config, preferred_state_id)
-        if resolved:
-            resolved["source"] = "online"
-            self._persist_mapping(z, resolved)
-            return resolved
-        return None
-
-    def _resolve_match(
-        self,
-        match: Dict[str, Any],
-        config: HpdConfig,
-        preferred_state_id: Optional[int] = None,
-    ) -> Optional[Dict[str, Any]]:
-        state_id = match.get("state_id")
-        if not isinstance(state_id, int):
-            state_id = self._state_id_from_name_or_abbrev(
-                config, match.get("state_name"), match.get("state_abbrev")
-            )
-        if not isinstance(state_id, int):
-            state_id = preferred_state_id
-        if not isinstance(state_id, int):
-            return None
-
-        county_id = match.get("county_id")
-        county_name = match.get("county_name")
-
-        if not isinstance(county_id, int) and isinstance(county_name, str):
-            county_id = self._county_id_from_name(config, state_id, county_name)
-
-        if not isinstance(county_name, str) and isinstance(county_id, int):
-            county_name = next(
-                (name for cid, name in config.get_counties_for_state(state_id) if cid == county_id),
-                "",
-            )
-
-        if not isinstance(county_id, int):
-            return None
-
-        return {
-            "state_id": state_id,
-            "county_id": county_id,
-            "county_name": county_name or "",
-        }
-
-    def _resolve_via_nominatim(
-        self,
-        zip_code: str,
-        config: HpdConfig,
-        preferred_state_id: Optional[int] = None,
-    ) -> Optional[Dict[str, Any]]:
-        params = urllib.parse.urlencode(
-            {
-                "postalcode": zip_code,
-                "country": "us",
-                "format": "jsonv2",
-                "addressdetails": 1,
-                "limit": 1,
-            }
-        )
-        url = f"https://nominatim.openstreetmap.org/search?{params}"
-        req = urllib.request.Request(
-            url,
-            headers={
-                "User-Agent": "scanner-manager/0.1 (zip-lookup)",
-                "Accept": "application/json",
-            },
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                payload = json.loads(resp.read().decode("utf-8"))
-        except Exception:
-            return None
-
-        if not isinstance(payload, list) or not payload:
-            return None
-
-        address = payload[0].get("address", {})
-        if not isinstance(address, dict):
-            return None
-
-        state_name = address.get("state")
-        state_abbrev = address.get("ISO3166-2-lvl4", "")
-        if isinstance(state_abbrev, str) and "-" in state_abbrev:
-            state_abbrev = state_abbrev.split("-", 1)[1]
-        county_name = address.get("county", "")
-
-        state_id = self._state_id_from_name_or_abbrev(config, state_name, state_abbrev)
-        if state_id is None:
-            state_id = preferred_state_id
-        if state_id is None:
-            return None
-
-        county_id = self._county_id_from_name(config, state_id, county_name or "")
-        if county_id is None:
-            return None
-
-        return {
-            "state_id": state_id,
-            "county_id": county_id,
-            "county_name": county_name or "",
-            "state_name": state_name or "",
-            "state_abbrev": state_abbrev or "",
-        }
-
-    def _persist_mapping(self, zip_code: str, resolved: Dict[str, Any]):
-        self.by_zip[zip_code] = [
-            {
-                "state_id": resolved["state_id"],
-                "county_id": resolved["county_id"],
-                "county_name": resolved.get("county_name", ""),
-            }
-        ]
-        target = self.script_dir / "zip_county_map.json"
-        data = {"by_zip": self.by_zip}
-        try:
-            with target.open("w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-        except Exception:
-            pass
-
-    @staticmethod
-    def _normalize_name(name: str) -> str:
-        clean = " ".join((name or "").strip().lower().split())
-        clean = clean.replace(" county", "")
-        return clean
-
-    def _county_id_from_name(self, config: HpdConfig, state_id: int, county_name: str) -> Optional[int]:
-        target = self._normalize_name(county_name)
-        if not target:
-            return None
-        for county_id, name in config.get_counties_for_state(state_id):
-            if self._normalize_name(name) == target:
-                return county_id
-        return None
-
-    def _state_id_from_name_or_abbrev(
-        self, config: HpdConfig, state_name: Any, state_abbrev: Any
-    ) -> Optional[int]:
-        target_name = self._normalize_name(state_name) if isinstance(state_name, str) else ""
-        target_abbrev = state_abbrev.strip().upper() if isinstance(state_abbrev, str) else ""
-        for sid, (name, abbrev) in config.states.items():
-            if target_abbrev and abbrev.upper() == target_abbrev:
-                return sid
-            if target_name and self._normalize_name(name) == target_name:
-                return sid
-        return None
-
-
-class FirmwareZipTable:
-    """Parses scanner firmware ZipTable and maps ZIP -> (state abbrev, lat, lon).
-
-    In addition to the state/coord maps, ``zip_flag_bytes`` captures the
-    byte between the ASCII key and the coordinate block (usually the
-    ASCII NUL string terminator, but some firmware revisions stash a
-    region/sub-division flag there) and ``zip_extras`` captures any
-    bytes trailing the lat/lon pair for record sizes larger than 16.
-    These are surfaced so downstream tools (CityManager, diagnostics,
-    future re-writers) can preserve unknown bytes verbatim instead of
-    silently dropping them.
-    """
-
-    START_MARKER = b"START_ZIP_TABLE\x00"
-    END_MARKER = b"END_ZIP_TABLE\x00"
-    COORD_SCALE = 600000.0
-    LAT_OFFSET = 90.0
-    LON_OFFSET = 360.0
-
-    def __init__(self):
-        self.zip_to_state_abbrev: Dict[str, str] = {}
-        self.zip_to_coords: Dict[str, Tuple[float, float]] = {}
-        self.zip_flag_bytes: Dict[str, int] = {}
-        self.zip_extras: Dict[str, bytes] = {}
-        self.record_size: Optional[int] = None
-        self.source_path: Optional[Path] = None
-
-    def load_from_sd(self, sd_root: str) -> bool:
-        firmware_dir = Path(sd_root) / "firmware"
-        if not firmware_dir.exists():
-            return False
-        candidates = sorted(firmware_dir.glob("ZipTable*.dat"))
-        if not candidates:
-            return False
-        table_path = candidates[0]
-        parsed = self._parse_zip_file_full(table_path)
-        if not parsed["state_map"]:
-            return False
-        self.zip_to_state_abbrev = parsed["state_map"]
-        self.zip_to_coords = parsed["coord_map"]
-        self.zip_flag_bytes = parsed["flag_bytes"]
-        self.zip_extras = parsed["extras"]
-        self.record_size = parsed["record_size"]
-        self.source_path = table_path
-        return True
-
-    def state_abbrev_for_zip(self, zip_code: str) -> Optional[str]:
-        z = "".join(ch for ch in zip_code if ch.isdigit())[:5]
-        if len(z) != 5:
-            return None
-        return self.zip_to_state_abbrev.get(z)
-
-    def coords_for_zip(self, zip_code: str) -> Optional[Tuple[float, float]]:
-        z = "".join(ch for ch in zip_code if ch.isdigit())[:5]
-        if len(z) != 5:
-            return None
-        return self.zip_to_coords.get(z)
-
-    @classmethod
-    def _parse_zip_file(cls, path: Path) -> Tuple[Dict[str, str], Dict[str, Tuple[float, float]]]:
-        parsed = cls._parse_zip_file_full(path)
-        return parsed["state_map"], parsed["coord_map"]
-
-    @classmethod
-    def _parse_zip_file_full(cls, path: Path) -> Dict[str, object]:
-        empty = {
-            "state_map": {},
-            "coord_map": {},
-            "flag_bytes": {},
-            "extras": {},
-            "record_size": None,
-        }
-        try:
-            data = path.read_bytes()
-        except Exception:
-            return dict(empty)
-        start = data.find(cls.START_MARKER)
-        end = data.find(cls.END_MARKER)
-        if start < 0 or end < 0 or end <= start:
-            return dict(empty)
-        payload = data[start + len(cls.START_MARKER): end]
-        record_size = cls._detect_record_size(payload)
-        if record_size is None:
-            return dict(empty)
-        import struct
-        state_map: Dict[str, str] = {}
-        coord_map: Dict[str, Tuple[float, float]] = {}
-        flag_bytes: Dict[str, int] = {}
-        extras: Dict[str, bytes] = {}
-        for i in range(0, len(payload) - record_size + 1, record_size):
-            rec = payload[i: i + record_size]
-            key = rec[:7].decode("ascii", errors="ignore")
-            if not re.fullmatch(r"[A-Z]{2}\d{5}", key):
-                continue
-            zip_code = key[2:]
-            state_map[zip_code] = key[:2]
-            if len(rec) >= 8:
-                flag_bytes[zip_code] = rec[7]
-            if len(rec) >= 16:
-                try:
-                    lat_raw = struct.unpack(">I", rec[8:12])[0]
-                    lon_raw = struct.unpack(">I", rec[12:16])[0]
-                    lat = lat_raw / cls.COORD_SCALE - cls.LAT_OFFSET
-                    lon = lon_raw / cls.COORD_SCALE - cls.LON_OFFSET
-                    if -90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0:
-                        coord_map[zip_code] = (lat, lon)
-                except Exception:
-                    pass
-            if record_size > 16:
-                tail = bytes(rec[16:])
-                if any(b != 0 for b in tail):
-                    extras[zip_code] = tail
-        return {
-            "state_map": state_map,
-            "coord_map": coord_map,
-            "flag_bytes": flag_bytes,
-            "extras": extras,
-            "record_size": record_size,
-        }
-
-    @staticmethod
-    def _detect_record_size(payload: bytes) -> Optional[int]:
-        best_size = None
-        best_hits = -1
-        best_checked = 0
-        for size in (16, 12, 20, 24):
-            hits = 0
-            checked = 0
-            for i in range(0, min(len(payload), size * 200), size):
-                rec = payload[i: i + size]
-                if len(rec) < 8:
-                    continue
-                checked += 1
-                key = rec[:7].decode("ascii", errors="ignore")
-                if re.fullmatch(r"[A-Z]{2}\d{5}", key):
-                    hits += 1
-            if checked and hits > best_hits:
-                best_hits = hits
-                best_size = size
-                best_checked = checked
-        if best_size is None:
-            return None
-        min_hits = 1 if best_checked <= 10 else 10
-        if best_hits < min_hits:
-            return None
-        return best_size
-
-
-@dataclass
-class CityRecord:
-    state_abbrev: str
-    city_id: int
-    lat: float
-    lon: float
-    extras: bytes = b""
-
-
-class FirmwareCityTable:
-    """Parses scanner firmware CityTable (coordinates + state + internal city id).
-
-    The minimum known record is 12 bytes (2B state / 2B city_id / 4B lat
-    / 4B lon). If the detected record size is bigger we surface the
-    trailing bytes on :class:`CityRecord` as ``extras`` so they're not
-    silently dropped by the re-writer.
-    """
-
-    START_MARKER = b"START_CITY_TABLE\x00"
-    END_MARKER = b"END_CITY_TABLE\x00"
-    RECORD_SIZE = 12
-    COORD_SCALE = 600000.0
-    LAT_OFFSET = 90.0
-    LON_OFFSET = 360.0
-
-    def __init__(self):
-        self.records: List[CityRecord] = []
-        self.by_state: Dict[str, List[CityRecord]] = {}
-        self.record_size: int = self.RECORD_SIZE
-        self.source_path: Optional[Path] = None
-
-    def load_from_sd(self, sd_root: str) -> bool:
-        firmware_dir = Path(sd_root) / "firmware"
-        if not firmware_dir.exists():
-            return False
-        candidates = sorted(firmware_dir.glob("CityTable*.dat"))
-        if not candidates:
-            return False
-        table_path = candidates[0]
-        records, rec_size = self._parse_file_with_size(table_path)
-        if not records:
-            return False
-        self.records = records
-        self.record_size = rec_size
-        self.by_state = {}
-        for rec in records:
-            self.by_state.setdefault(rec.state_abbrev, []).append(rec)
-        self.source_path = table_path
-        return True
-
-    def is_loaded(self) -> bool:
-        return bool(self.records)
-
-    @classmethod
-    def _parse_file(cls, path: Path) -> List[CityRecord]:
-        records, _ = cls._parse_file_with_size(path)
-        return records
-
-    @classmethod
-    def _detect_city_record_size(cls, payload: bytes) -> int:
-        """Return 12 unless a larger fixed size scores strictly better.
-
-        Newer firmware may pad records with additional bytes; we never
-        guess below 12 (the known minimum) and we only switch to a
-        larger size if it produces more valid records without dropping
-        any that 12-byte parsing would find.
-        """
-        best_size = cls.RECORD_SIZE
-        best_hits = cls._count_valid_city_records(payload, best_size)
-        for size in (16, 20, 24):
-            if len(payload) < size * 10:
-                continue
-            hits = cls._count_valid_city_records(payload, size)
-            # Require a clear improvement so we don't drop records by
-            # over-fitting to an arbitrary alignment.
-            if hits > best_hits * 1.1 and hits > 0:
-                best_size = size
-                best_hits = hits
-        return best_size
-
-    @classmethod
-    def _count_valid_city_records(cls, payload: bytes, size: int) -> int:
-        import struct
-        hits = 0
-        for i in range(0, len(payload) - size + 1, size):
-            rec = payload[i: i + size]
-            if len(rec) < 12:
-                continue
-            state_bytes = rec[:2]
-            state_abbrev = state_bytes.decode("ascii", errors="ignore")
-            if not re.fullmatch(r"[A-Z]{2}", state_abbrev):
-                continue
-            try:
-                lat_raw = struct.unpack(">I", rec[4:8])[0]
-                lon_raw = struct.unpack(">I", rec[8:12])[0]
-            except Exception:
-                continue
-            lat = lat_raw / cls.COORD_SCALE - cls.LAT_OFFSET
-            lon = lon_raw / cls.COORD_SCALE - cls.LON_OFFSET
-            if -90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0:
-                hits += 1
-        return hits
-
-    @classmethod
-    def _parse_file_with_size(cls, path: Path) -> Tuple[List[CityRecord], int]:
-        try:
-            data = path.read_bytes()
-        except Exception:
-            return [], cls.RECORD_SIZE
-        start = data.find(cls.START_MARKER)
-        end = data.find(cls.END_MARKER)
-        if start < 0 or end < 0 or end <= start:
-            return [], cls.RECORD_SIZE
-        payload = data[start + len(cls.START_MARKER): end]
-        record_size = cls._detect_city_record_size(payload)
-        import struct
-        records: List[CityRecord] = []
-        for i in range(0, len(payload) - record_size + 1, record_size):
-            rec = payload[i: i + record_size]
-            state_bytes = rec[:2]
-            try:
-                state_abbrev = state_bytes.decode("ascii", errors="ignore")
-            except Exception:
-                continue
-            if not re.fullmatch(r"[A-Z]{2}", state_abbrev):
-                continue
-            try:
-                city_id = struct.unpack(">H", rec[2:4])[0]
-                lat_raw = struct.unpack(">I", rec[4:8])[0]
-                lon_raw = struct.unpack(">I", rec[8:12])[0]
-            except Exception:
-                continue
-            lat = lat_raw / cls.COORD_SCALE - cls.LAT_OFFSET
-            lon = lon_raw / cls.COORD_SCALE - cls.LON_OFFSET
-            if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
-                continue
-            extras = bytes(rec[12:]) if record_size > 12 else b""
-            records.append(
-                CityRecord(
-                    state_abbrev=state_abbrev,
-                    city_id=city_id,
-                    lat=lat,
-                    lon=lon,
-                    extras=extras,
-                )
-            )
-        return records, record_size
-
-    def export_patched(
-        self,
-        target_path: Path,
-        extra_records: List[CityRecord],
-        make_backup: bool = True,
-    ) -> Path:
-        """Write CityTable with original + extra records. Returns written path."""
-        if not self.source_path:
-            raise RuntimeError("Original CityTable not loaded; cannot export.")
-        source = self.source_path.read_bytes()
-        start = source.find(self.START_MARKER)
-        end = source.find(self.END_MARKER)
-        if start < 0 or end < 0 or end <= start:
-            raise RuntimeError("Source CityTable markers missing; refusing to write.")
-        header = source[: start + len(self.START_MARKER)]
-        footer = source[end:]
-        import struct
-        body = bytearray(source[start + len(self.START_MARKER): end])
-        rec_size = getattr(self, "record_size", None) or self.RECORD_SIZE
-        tail_pad = max(0, rec_size - 12)
-        for rec in extra_records:
-            if len(rec.state_abbrev) != 2:
-                continue
-            lat_raw = int(round((rec.lat + self.LAT_OFFSET) * self.COORD_SCALE))
-            lon_raw = int(round((rec.lon + self.LON_OFFSET) * self.COORD_SCALE))
-            lat_raw = max(0, min(lat_raw, 0xFFFFFFFF))
-            lon_raw = max(0, min(lon_raw, 0xFFFFFFFF))
-            body.extend(rec.state_abbrev.encode("ascii"))
-            body.extend(struct.pack(">H", rec.city_id & 0xFFFF))
-            body.extend(struct.pack(">I", lat_raw))
-            body.extend(struct.pack(">I", lon_raw))
-            if tail_pad:
-                tail = rec.extras or b""
-                if len(tail) < tail_pad:
-                    tail = tail + b"\x00" * (tail_pad - len(tail))
-                else:
-                    tail = tail[:tail_pad]
-                body.extend(tail)
-        if target_path == self.source_path and make_backup:
-            # Single-snapshot pattern (same as HPD's .session.bak). One
-            # overwrite per session keeps recovery possible without
-            # accumulating timestamped copies on every save.
-            write_session_snapshot(str(self.source_path))
-        with target_path.open("wb") as f:
-            f.write(header)
-            f.write(body)
-            f.write(footer)
-        return target_path
-
-
-class ScannerCityIndex:
-    """Name-to-coordinate index derived from HPD C-Group names per state."""
-
-    CITY_TOKEN_RE = re.compile(r"^([A-Za-z][A-Za-z .'-]{0,60})$")
-
-    def __init__(self):
-        self.by_state_name: Dict[Tuple[int, str], Tuple[float, float]] = {}
-
-    def build(self, hpd: "HpdFile", state_id: Optional[int]):
-        if state_id is None:
-            return
-        for system in hpd.systems:
-            for group in system.groups:
-                if group.lat is None or group.lon is None:
-                    continue
-                name = group.name or ""
-                for token in self._extract_city_tokens(name):
-                    key = (state_id, self._norm(token))
-                    if key not in self.by_state_name:
-                        self.by_state_name[key] = (group.lat, group.lon)
-
-    def lookup(self, state_id: int, city_name: str) -> Optional[Tuple[float, float]]:
-        return self.by_state_name.get((state_id, self._norm(city_name)))
-
-    @classmethod
-    def _extract_city_tokens(cls, group_name: str) -> List[str]:
-        if not group_name:
-            return []
-        parts = [p.strip() for p in re.split(r"\s*[-:]\s*", group_name) if p.strip()]
-        candidates: List[str] = []
-        for part in parts:
-            cleaned = re.sub(r"\([^)]*\)", "", part).strip()
-            cleaned = re.sub(r"\b(County|Parish|Borough)\b", "", cleaned, flags=re.IGNORECASE).strip()
-            if cleaned and cls.CITY_TOKEN_RE.match(cleaned):
-                candidates.append(cleaned)
-        return candidates
-
-    @staticmethod
-    def _norm(text: str) -> str:
-        return " ".join((text or "").strip().lower().split())
-
-
-class CustomLocationsStore:
-    """Local JSON of user-added custom locations (name + state + coordinates)."""
-
-    FILENAME = "custom_locations.json"
-
-    def __init__(self, script_dir: Path):
-        self.script_dir = script_dir
-        self.locations: List[Dict[str, Any]] = []
-        self.load()
-
-    @property
-    def path(self) -> Path:
-        return self.script_dir / self.FILENAME
-
-    def load(self):
-        self.locations = []
-        if not self.path.exists():
-            return
-        try:
-            with self.path.open("r", encoding="utf-8") as f:
-                payload = json.load(f)
-        except Exception:
-            return
-        if isinstance(payload, dict):
-            items = payload.get("locations", [])
-        elif isinstance(payload, list):
-            items = payload
-        else:
-            items = []
-        if isinstance(items, list):
-            cleaned: List[Dict[str, Any]] = []
-            for item in items:
-                if not isinstance(item, dict):
-                    continue
-                try:
-                    name = str(item.get("name", "")).strip()
-                    state_id = int(item.get("state_id"))
-                    lat = float(item.get("lat"))
-                    lon = float(item.get("lon"))
-                except Exception:
-                    continue
-                if not name:
-                    continue
-                cleaned.append({"name": name, "state_id": state_id, "lat": lat, "lon": lon})
-            self.locations = cleaned
-
-    def save(self):
-        data = {"locations": self.locations}
-        with self.path.open("w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-
-    def add(self, name: str, state_id: int, lat: float, lon: float):
-        self.locations.append(
-            {"name": name.strip(), "state_id": state_id, "lat": lat, "lon": lon}
-        )
-        self.save()
-
-    def remove(self, name: str, state_id: int):
-        key = name.strip().lower()
-        self.locations = [
-            loc for loc in self.locations
-            if not (loc["state_id"] == state_id and loc["name"].lower() == key)
-        ]
-        self.save()
-
-    def lookup(self, state_id: int, name: str) -> Optional[Tuple[float, float]]:
-        key = name.strip().lower()
-        for loc in self.locations:
-            if loc["state_id"] == state_id and loc["name"].lower() == key:
-                return (loc["lat"], loc["lon"])
-        return None
-
-
-def discover_alert_files(alert_root: Path) -> List[Path]:
-    """Return every file under the ``alert/`` folder, recursively, skipping
-    hidden entries. Flat list; folder grouping happens at render time.
-    """
-    files: List[Path] = []
-    if not alert_root.exists():
-        return files
-    for p in sorted(alert_root.rglob("*")):
-        if p.is_file() and not p.name.startswith("."):
-            files.append(p)
-    return files
-
-
-def resolve_city_offline(
-    name: str,
-    config: HpdConfig,
-    custom: CustomLocationsStore,
-    firmware_city: FirmwareCityTable,
-    city_index: ScannerCityIndex,
-    state_id: Optional[int] = None,
-    state_abbrev: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
-    cleaned = name.strip()
-    if not cleaned:
-        return None
-    abbrev_upper = (state_abbrev or "").strip().upper() or None
-    resolved_state_id = state_id
-    if resolved_state_id is None and abbrev_upper:
-        for sid, (_, abbrev) in config.states.items():
-            if abbrev.upper() == abbrev_upper:
-                resolved_state_id = sid
-                break
-    if resolved_state_id is not None:
-        result = custom.lookup(resolved_state_id, cleaned)
-        if result is not None:
-            return {
-                "state_id": resolved_state_id,
-                "lat": result[0],
-                "lon": result[1],
-                "source": "custom",
-            }
-        result = city_index.lookup(resolved_state_id, cleaned)
-        if result is not None:
-            return {
-                "state_id": resolved_state_id,
-                "lat": result[0],
-                "lon": result[1],
-                "source": "hpd",
-            }
-    return None
-
 
 # ---------------------------------------------------------------------------
 # Utility
@@ -1163,802 +493,8 @@ def prune_backups_detailed(source_path: str, max_backups: int) -> Dict[str, Any]
     return info
 
 
-BAND_MODE_RULES: List[Tuple[float, float, str, Set[str]]] = [
-    (25_000_000, 54_000_000, "FM", {"FM", "NFM"}),
-    (108_000_000, 137_000_000, "AM", {"AM"}),
-    (137_000_000, 174_000_000, "NFM", {"FM", "NFM"}),
-    (216_000_000, 225_000_000, "NFM", {"FM", "NFM"}),
-    (406_000_000, 420_000_000, "NFM", {"FM", "NFM"}),
-    (450_000_000, 470_000_000, "NFM", {"FM", "NFM"}),
-    (470_000_000, 512_000_000, "NFM", {"FM", "NFM"}),
-    (758_000_000, 824_000_000, "NFM", {"FM", "NFM"}),
-    (849_000_000, 869_000_000, "NFM", {"FM", "NFM"}),
-    (894_000_000, 960_000_000, "NFM", {"FM", "NFM"}),
-]
+# Band/mode audit + bulk filter helpers live in legacy_tk.sm_helpers (re-exported above).
 
-
-def suggest_mode_for_freq(freq_hz: int) -> Optional[str]:
-    for lo, hi, suggested, _ in BAND_MODE_RULES:
-        if lo <= freq_hz <= hi:
-            return suggested
-    return None
-
-
-def audit_mode_issues(
-    entry: "FreqEntry",
-) -> Optional[Tuple[str, str]]:
-    """Return (issue, suggested_mode) tuple when the entry has a mode/band problem."""
-    if entry.entry_type != "C-Freq":
-        return None
-    rec = entry.record
-    try:
-        freq_hz = int(rec.get_field(5, "0"))
-    except ValueError:
-        return None
-    if freq_hz <= 0:
-        return None
-    mode = rec.get_field(6, "").upper()
-    suggested = suggest_mode_for_freq(freq_hz)
-    if suggested is None:
-        return None
-    if mode == "AUTO":
-        return ("AUTO mode where explicit mode is preferred", suggested)
-    allowed = next(
-        (allowed for lo, hi, _, allowed in BAND_MODE_RULES if lo <= freq_hz <= hi),
-        set(),
-    )
-    if mode and allowed and mode not in allowed:
-        return (f"Mode '{mode}' invalid for {freq_hz / 1_000_000:.4f} MHz", suggested)
-    return None
-
-
-def audit_mode_issue_with_rr(
-    entry: "FreqEntry",
-    rr_ref: Dict[int, Dict[str, Any]],
-) -> Optional[Tuple[str, str, str]]:
-    """If entry frequency matches RR reference data, return (issue, suggested, source).
-    Source is "rr" when RR data contradicts the entry, "band" when band rules apply.
-    Returns None when nothing to flag."""
-    if entry.entry_type != "C-Freq":
-        return None
-    rec = entry.record
-    try:
-        freq_hz = int(rec.get_field(5, "0"))
-    except ValueError:
-        return None
-    if freq_hz <= 0:
-        return None
-    mode = rec.get_field(6, "").upper()
-    rr = rr_ref.get(freq_hz)
-    if rr is not None:
-        rr_mode = (rr.get("mode") or "").upper()
-        if rr_mode and rr_mode != mode and rr_mode in {"FM", "NFM", "AM", "AUTO"}:
-            rr_desc = rr.get("name") or f"{freq_hz / 1_000_000:.4f} MHz"
-            return (
-                f"RR lists mode '{rr_mode}' for {rr_desc}; HPD has '{mode or 'blank'}'",
-                rr_mode,
-                "rr",
-            )
-        if rr_mode and rr_mode == mode:
-            return None
-    band_issue = audit_mode_issues(entry)
-    if band_issue is not None:
-        issue, suggested = band_issue
-        return (issue, suggested, "band")
-    return None
-
-
-def diff_cfreq_with_rr(
-    entry_name: str,
-    entry_mode: str,
-    entry_tone: str,
-    entry_service_type: int,
-    rr_name: str,
-    rr_mode: str,
-    rr_tone: str,
-    rr_service_type: Optional[int],
-) -> Dict[str, Tuple[Any, Any]]:
-    """Detect meaningful differences between existing C-Freq and RR data.
-
-    - name: update if RR differs (non-empty)
-    - mode: update if differs; prefer RR value
-    - tone: update if RR provides a different non-empty tone
-    - service_type: update if RR suggests a different integer type
-    """
-    changes: Dict[str, Tuple[Any, Any]] = {}
-    if rr_name and rr_name.strip() and rr_name.strip() != (entry_name or "").strip():
-        changes["name"] = (entry_name, rr_name.strip())
-    rr_mode_norm = (rr_mode or "").strip().upper()
-    existing_mode_norm = (entry_mode or "").strip().upper()
-    if rr_mode_norm and rr_mode_norm != existing_mode_norm:
-        changes["mode"] = (entry_mode, rr_mode_norm)
-    rr_tone_norm = (rr_tone or "").strip()
-    existing_tone_norm = (entry_tone or "").strip()
-    if rr_tone_norm and rr_tone_norm != existing_tone_norm:
-        changes["tone"] = (entry_tone, rr_tone_norm)
-    if isinstance(rr_service_type, int) and rr_service_type > 0:
-        if rr_service_type != entry_service_type:
-            changes["service_type"] = (entry_service_type, rr_service_type)
-    return changes
-
-
-def diff_tgid_with_rr(
-    entry_name: str,
-    entry_mode: str,
-    entry_service_type: int,
-    rr_name: str,
-    rr_mode: str,
-    rr_service_type: Optional[int],
-) -> Dict[str, Tuple[Any, Any]]:
-    """Return map of field -> (old, new) for fields that should be updated from RR.
-
-    Rules:
-    - name: update if RR name differs (non-empty)
-    - mode: update if existing is 'ALL' (generic) and RR is specific (D/T/DE/ANALOG), or if concrete modes mismatch
-    - service_type: update if RR suggests a different concrete value
-    """
-    changes: Dict[str, Tuple[Any, Any]] = {}
-    if rr_name and rr_name.strip() and rr_name.strip() != (entry_name or "").strip():
-        changes["name"] = (entry_name, rr_name.strip())
-    if rr_mode:
-        rr_raw = rr_mode.strip()
-        rr_n = _normalize_tgid_mode_for_diff(rr_raw)
-        ex_n = _normalize_tgid_mode_for_diff(entry_mode)
-        if not ex_n:
-            ex_n = "ALL"
-        if rr_n and rr_n != ex_n:
-            concrete = frozenset({"DIGITAL", "ANALOG"})
-            # Always write the canonical HPD token (DIGITAL/ANALOG/ALL), not
-            # the RR short code, so the scanner parses it correctly.
-            new_value = rr_n if rr_n in concrete or rr_n == "ALL" else rr_raw
-            if ex_n == "ALL" and rr_n in concrete:
-                changes["mode"] = (entry_mode, new_value)
-            elif ex_n in concrete and rr_n in concrete:
-                changes["mode"] = (entry_mode, new_value)
-    if isinstance(rr_service_type, int) and rr_service_type > 0:
-        if rr_service_type != entry_service_type:
-            changes["service_type"] = (entry_service_type, rr_service_type)
-    return changes
-
-
-def entry_matches_bulk_filter(
-    entry: "FreqEntry",
-    entry_types: Set[str],
-    service_types: Optional[Set[int]],
-    county_id: Optional[int],
-    system_id: Optional[str],
-) -> bool:
-    """Generic predicate for bulk operations."""
-    if entry_types and entry.entry_type not in entry_types:
-        return False
-    if service_types is not None and entry.service_type not in service_types:
-        return False
-    if system_id is not None and entry.system_id != system_id:
-        return False
-    if county_id is not None:
-        system_county = None
-        if entry.system_id:
-            system_county = entry.system_id if entry.system_type == "Conventional" else None
-        if system_county != str(county_id):
-            return False
-    return True
-
-
-def entry_passes_button_filter(
-    service_type: int,
-    active_button_types: Set[int],
-    include_others: bool,
-) -> bool:
-    """Return True if an entry with this service type should appear with the given button filters."""
-    if service_type in active_button_types:
-        return True
-    if (
-        service_type in ACTIVE_PROFILE.scannable_service_types()
-        and service_type not in active_button_types
-    ):
-        return False
-    return bool(include_others)
-
-
-# ---------------------------------------------------------------------------
-# RadioReference URL parsing
-# ---------------------------------------------------------------------------
-
-RR_SERVICE_MAP = {
-    "police": 2,
-    "law enforcement": 2,
-    "sheriff": 2,
-    "fire": 3,
-    "ems": 4,
-    "emergency medical": 4,
-    "public works": 14,
-    "highway": 14,
-    "transportation": 14,
-    "property management": 14,
-    "security": 14,
-    "industrial": 14,
-    "business": 14,
-}
-
-
-def fetch_radioreference_data(url: str) -> Optional[Dict[str, Any]]:
-    if not re.match(r"^https?://(www\.)?radioreference\.com/", url):
-        raise ValueError("URL must be a radioreference.com link.")
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": "scanner-manager/0.1 (+python urllib)",
-            "Accept": "text/html",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=12) as resp:
-        html = resp.read().decode("utf-8", errors="replace")
-    lower_url = url.lower()
-    parsed: Optional[Dict[str, Any]] = None
-    if "/fcc/callsign/" in lower_url:
-        parsed = _parse_rr_fcc_callsign(html)
-        if parsed is not None:
-            parsed["kind"] = "fcc_callsign"
-            # Enrich with the callsign from the URL itself, which survives
-            # even when the page body doesn't repeat it verbatim.
-            cs_match = re.search(r"/fcc/callsign/([A-Za-z0-9]+)", url)
-            if cs_match:
-                parsed["fcc_callsign"] = cs_match.group(1).upper()
-                for freq in parsed.get("frequencies") or []:
-                    freq.setdefault("fcc_callsign", cs_match.group(1).upper())
-                    if parsed.get("licensee"):
-                        freq.setdefault("licensee", parsed["licensee"])
-    elif "/db/aid/" in lower_url or "/db/cid/" in lower_url:
-        parsed = _parse_rr_category_aid(html)
-        if parsed is not None:
-            parsed["kind"] = "category"
-    elif "/db/ctid/" in lower_url or "/db/browse/" in lower_url:
-        parsed = _parse_rr_conventional_ctid(html)
-        if parsed is not None:
-            parsed["kind"] = "conventional_multi"
-    elif "/db/sid/" in lower_url or "/db/tid/" in lower_url:
-        parsed = _parse_rr_trs_sid(html)
-        if parsed is not None:
-            parsed["kind"] = "trs"
-    if parsed is not None:
-        parsed.setdefault("source_url", url)
-    return parsed
-
-
-def _strip_tags(html: str) -> str:
-    return re.sub(r"<[^>]+>", "", html)
-
-
-def _collapse_ws(text: str) -> str:
-    return " ".join(text.replace("&nbsp;", " ").split())
-
-
-def _parse_rr_fcc_callsign(html: str) -> Optional[Dict[str, Any]]:
-    licensee = _extract_labeled_value(html, "Licensee")
-    radio_service = _extract_labeled_value(html, "Radio Service")
-    notes = _extract_labeled_value(html, "Notes")
-    county = _extract_labeled_value(html, "County")
-    state = _extract_labeled_value(html, "State")
-
-    frequencies: List[Dict[str, Any]] = []
-    classes_wanted = {"FB", "FB2", "FB8", "FXO", "MO"}
-    classes_secondary = {"FX1"}
-    seen: Set[Tuple[str, str]] = set()
-    for row_match in re.finditer(r"<tr[^>]*>(.*?)</tr>", html, re.DOTALL | re.IGNORECASE):
-        row = row_match.group(1)
-        cells = [
-            _collapse_ws(_strip_tags(cell))
-            for cell in re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", row, re.DOTALL | re.IGNORECASE)
-        ]
-        if len(cells) < 5:
-            continue
-        freq_match = re.search(r"^(\d{2,4}\.\d+)$", cells[1].replace(",", "")) if len(cells) > 1 else None
-        if not freq_match:
-            continue
-        try:
-            mhz = float(freq_match.group(1))
-        except ValueError:
-            continue
-        if not (25.0 <= mhz <= 1300.0):
-            continue
-        emission = cells[2] if len(cells) > 2 else ""
-        fclass = cells[3] if len(cells) > 3 else ""
-        lat = cells[6] if len(cells) > 6 else ""
-        lon = cells[7] if len(cells) > 7 else ""
-        city = cells[8] if len(cells) > 8 else ""
-        key = (freq_match.group(1), fclass)
-        if key in seen:
-            continue
-        seen.add(key)
-        frequencies.append(
-            {
-                "mhz": mhz,
-                "emission": emission,
-                "class": fclass,
-                "lat": lat,
-                "lon": lon,
-                "city": city,
-                "mode": _emission_to_mode(emission),
-                "tone": "",
-                "name": licensee or "",
-            }
-        )
-
-    if frequencies:
-        def priority(item: Dict[str, Any]) -> Tuple[int, float]:
-            fclass = item.get("class", "")
-            tier = 0 if fclass in classes_wanted else (1 if fclass in classes_secondary else 2)
-            return (tier, item.get("mhz", 0.0))
-
-        frequencies.sort(key=priority)
-
-    suggested = _guess_service_type(f"{radio_service} {notes} {licensee}")
-
-    # Propagate licensee onto every row so downstream imports get the cross-ref.
-    for freq in frequencies:
-        if licensee:
-            freq["licensee"] = licensee
-        if county:
-            freq["county"] = county
-
-    return {
-        "name": licensee or "",
-        "licensee": licensee or "",
-        "frequencies": frequencies,
-        "county": county,
-        "state": state,
-        "suggested_service_type": suggested,
-    }
-
-
-def _emission_to_mode(emission: str) -> str:
-    if not emission:
-        return "NFM"
-    digital_hints = ("F1D", "F1E", "D7W", "GXE", "G1D")
-    if any(hint in emission for hint in digital_hints):
-        return "NFM"
-    if "F3E" in emission or "F2E" in emission:
-        if emission.startswith("20K") or emission.startswith("25K"):
-            return "FM"
-        return "NFM"
-    return "NFM"
-
-
-def _guess_service_type(text: str) -> Optional[int]:
-    if not text:
-        return None
-    lowered = text.lower()
-    for keyword, service_id in RR_SERVICE_MAP.items():
-        if keyword in lowered:
-            return service_id
-    return None
-
-
-def _extract_cfreq_rows_from_html(html_segment: str) -> List[Dict[str, Any]]:
-    """Extract conventional-frequency rows from a RadioReference HTML fragment.
-
-    Also captures the FCC callsign and licensee/tag anchor text from the
-    License cell (index 1) so later cross-referencing can identify
-    operators by callsign and licensee name.
-    """
-    frequencies: List[Dict[str, Any]] = []
-    for row_match in re.finditer(r"<tr[^>]*>(.*?)</tr>", html_segment, re.DOTALL | re.IGNORECASE):
-        row = row_match.group(1)
-        raw_cells = re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", row, re.DOTALL | re.IGNORECASE)
-        cells = [_collapse_ws(_strip_tags(c)) for c in raw_cells]
-        if len(cells) < 7:
-            continue
-        freq_text = cells[0].replace(",", "")
-        m = re.match(r"^(\d{2,4}\.\d+)$", freq_text)
-        if not m:
-            continue
-        try:
-            mhz = float(m.group(1))
-        except ValueError:
-            continue
-        if not (25.0 <= mhz <= 1300.0):
-            continue
-
-        callsign = ""
-        licensee_text = ""
-        if len(raw_cells) > 1:
-            cs_match = re.search(
-                r"/db/fcc/callsign/([A-Za-z0-9]+)", raw_cells[1], re.IGNORECASE,
-            )
-            if cs_match:
-                callsign = cs_match.group(1).upper()
-            lic_match = re.search(
-                r"<a[^>]*/db/fcc/callsign/[^>]*>([^<]+)</a>",
-                raw_cells[1],
-                re.IGNORECASE,
-            )
-            if lic_match:
-                licensee_text = _collapse_ws(_strip_tags(lic_match.group(1)))
-            elif cells[1]:
-                licensee_text = cells[1]
-
-        tone_text = cells[3] if len(cells) > 3 else ""
-        alpha = cells[4] if len(cells) > 4 else ""
-        desc = cells[5] if len(cells) > 5 else ""
-        mode_text = cells[6] if len(cells) > 6 else ""
-        tag = cells[7] if len(cells) > 7 else ""
-        name = desc or alpha or ""
-        frequencies.append(
-            {
-                "mhz": mhz,
-                "mode": _rr_mode_to_hpd(mode_text),
-                "tone": _rr_tone_to_hpd(tone_text),
-                "name": name,
-                "alpha": alpha,
-                "tag": tag,
-                "fcc_callsign": callsign,
-                "licensee": licensee_text,
-                "licensee_text": licensee_text,
-                "suggested_service_type": _guess_service_type(f"{tag} {desc}") or 14,
-            }
-        )
-    return frequencies
-
-
-def _parse_rr_category_aid(html: str) -> Optional[Dict[str, Any]]:
-    title = _extract_category_title(html)
-    frequencies = _extract_cfreq_rows_from_html(html)
-    if not frequencies:
-        return None
-    return {
-        "group_name": title or "RadioReference Group",
-        "frequencies": frequencies,
-    }
-
-
-def _parse_rr_conventional_ctid(html: str) -> Optional[Dict[str, Any]]:
-    """Parse a RR county/browse page into multiple categories of conventional frequencies.
-
-    Tries subsection heading tags (h3, h4, h2) in order and groups frequency rows
-    under each subsection. Falls back to a single category when no subsections
-    produce usable rows.
-    """
-    title = _extract_category_title(html)
-    categories: List[Dict[str, Any]] = []
-    seen_total_rows = 0
-    for heading_tag in ("h3", "h4", "h5", "h2"):
-        cat_pattern = re.compile(
-            rf"<{heading_tag}[^>]*>(?P<title>.*?)</{heading_tag}>"
-            rf"(?P<after>.*?)(?=<{heading_tag}[^>]*>|<footer|$)",
-            re.DOTALL | re.IGNORECASE,
-        )
-        tmp: List[Dict[str, Any]] = []
-        for m in cat_pattern.finditer(html):
-            cat_title = _clean_rr_category_title(m.group("title"))
-            if not cat_title or cat_title.lower().startswith("premium subscription"):
-                continue
-            freqs = _extract_cfreq_rows_from_html(m.group("after"))
-            if not freqs:
-                continue
-            tmp.append({"name": cat_title, "frequencies": freqs})
-            seen_total_rows += len(freqs)
-        if tmp:
-            categories = tmp
-            break
-    if not categories:
-        freqs = _extract_cfreq_rows_from_html(html)
-        if freqs:
-            categories = [
-                {"name": title or "RadioReference Frequencies", "frequencies": freqs}
-            ]
-    if not categories:
-        return None
-    return {"title": title, "categories": categories}
-
-
-def _parse_rr_trs_sid(html: str) -> Optional[Dict[str, Any]]:
-    """Parse a RadioReference trunked system (sid) page into categories + talkgroups."""
-    system_name = ""
-    page_title_match = re.search(
-        r"<title[^>]*>(.*?)</title>", html, re.DOTALL | re.IGNORECASE
-    )
-    if page_title_match:
-        raw_title = _collapse_ws(_strip_tags(page_title_match.group(1)))
-        primary = raw_title.split(",", 1)[0].strip()
-        if primary:
-            system_name = primary
-    if not system_name:
-        heading_match = re.search(
-            r"<h[12][^>]*>(.*?)</h[12]>", html, re.DOTALL | re.IGNORECASE
-        )
-        if heading_match:
-            system_name = _collapse_ws(_strip_tags(heading_match.group(1)))
-    categories: List[Dict[str, Any]] = []
-    category_pattern = re.compile(
-        r"<h5[^>]*>(?P<title>.*?)</h5>(?P<after>.*?)(?=<h5[^>]*>|<footer|$)",
-        re.DOTALL | re.IGNORECASE,
-    )
-    for m in category_pattern.finditer(html):
-        title = _clean_rr_category_title(m.group("title"))
-        if not title or title.lower() in ("premium subscription required",):
-            continue
-        segment = m.group("after")
-        talkgroups = _extract_rr_trs_talkgroups(segment)
-        if not talkgroups:
-            continue
-        categories.append({"name": title, "talkgroups": talkgroups})
-    if not categories:
-        return None
-    return {"system_name": system_name or "RadioReference Trunk System", "categories": categories}
-
-
-RR_CATEGORY_TITLE_TRAIL_PATTERNS = (
-    "view talkgroup category details",
-    "view subcategory details",
-    "view details",
-)
-
-
-def _clean_rr_category_title(title_html: str) -> str:
-    """Strip inline <a> link text and known trailing UI phrases from a category title."""
-    without_anchors = re.sub(
-        r"<a[^>]*>.*?</a>", "", title_html, flags=re.DOTALL | re.IGNORECASE
-    )
-    text = _collapse_ws(_strip_tags(without_anchors))
-    lowered = text.lower()
-    for phrase in RR_CATEGORY_TITLE_TRAIL_PATTERNS:
-        if lowered.endswith(phrase):
-            text = text[: len(text) - len(phrase)].rstrip()
-            break
-    return text.strip()
-
-
-def _extract_rr_trs_talkgroups(html_segment: str) -> List[Dict[str, Any]]:
-    """Pull talkgroup rows from a category segment of a RR trunk page.
-
-    Handles two column layouts:
-      * P25 / Motorola / LTR (6 cols): DEC | HEX | Mode | Alpha Tag | Description | Tag
-      * EDACS / EDACS-Ext. Addr. (5 cols): DEC | Mode | Alpha Tag | Description | Tag
-
-    The Mode column index is auto-detected per-table from the header row, with a
-    per-row fallback that checks whether cell[1] looks like a hex id or a mode
-    token — so parsing still works if a particular table is missing <th>s.
-    """
-    talkgroups: List[Dict[str, Any]] = []
-    mode_col: Optional[int] = None  # resolved from header when available
-    for row_match in re.finditer(r"<tr[^>]*>(.*?)</tr>", html_segment, re.DOTALL | re.IGNORECASE):
-        row = row_match.group(1)
-        cell_matches = list(
-            re.finditer(r"<(t[dh])[^>]*>(.*?)</\1>", row, re.DOTALL | re.IGNORECASE)
-        )
-        if not cell_matches:
-            continue
-        is_header_row = any(
-            m.group(1).lower() == "th" for m in cell_matches
-        )
-        cells = [_collapse_ws(_strip_tags(m.group(2))) for m in cell_matches]
-
-        if is_header_row:
-            headers = [c.strip().lower() for c in cells]
-            for idx, h in enumerate(headers):
-                if h == "mode":
-                    mode_col = idx
-                    break
-            continue
-
-        if len(cells) < 5:
-            continue
-
-        dec_text = cells[0].replace(",", "").strip()
-        if not dec_text.isdigit():
-            continue
-        try:
-            tgid = int(dec_text)
-        except ValueError:
-            continue
-        if tgid <= 0:
-            continue
-
-        if mode_col is not None and mode_col < len(cells):
-            resolved_mode_col = mode_col
-        else:
-            resolved_mode_col = 2 if _cell_looks_like_hex_id(cells[1]) else 1
-
-        raw_mode = cells[resolved_mode_col].strip() if resolved_mode_col < len(cells) else ""
-        alpha_idx = resolved_mode_col + 1
-        desc_idx = resolved_mode_col + 2
-        tag_idx = resolved_mode_col + 3
-        alpha = cells[alpha_idx] if alpha_idx < len(cells) else ""
-        desc = cells[desc_idx] if desc_idx < len(cells) else ""
-        tag = cells[tag_idx] if tag_idx < len(cells) else ""
-        name = desc or alpha or ""
-        mode = _rr_trs_mode_to_hpd(raw_mode)
-        talkgroups.append(
-            {
-                "tgid": tgid,
-                "name": name,
-                "alpha": alpha,
-                "mode": mode,
-                "mode_raw": raw_mode,
-                "tag": tag,
-                "encrypted": is_rr_mode_encrypted(raw_mode),
-                "suggested_service_type": _tag_to_service_type(tag),
-            }
-        )
-    return talkgroups
-
-
-_RR_MODE_TOKENS = {
-    "A", "AE", "D", "DE", "T", "TE", "TD", "TDMA", "DMR",
-    "ALL", "ANALOG", "DIGITAL", "P25", "P-25",
-}
-
-
-def _cell_looks_like_hex_id(cell: str) -> bool:
-    """Heuristic: does this cell look like the HEX id column (P25/Moto) rather than Mode?
-
-    RR HEX cells are compact hex numbers (e.g. '0A1', '12F4', '1000'). Mode cells are
-    short alphabetic tokens (e.g. 'D', 'DE', 'T', 'TDMA', 'A'). Hex cells can contain
-    the letters A-F, which overlap with Mode ('A','D'), so we require either a digit
-    or a length > 2 to classify as hex.
-    """
-    s = (cell or "").strip().upper()
-    if not s:
-        return False
-    if s in _RR_MODE_TOKENS:
-        return False
-    if not all(ch in "0123456789ABCDEF" for ch in s):
-        return False
-    if any(ch.isdigit() for ch in s):
-        return True
-    return len(s) > 2
-
-
-def is_rr_mode_encrypted(rr_mode: str) -> bool:
-    """True when RadioReference Mode indicates encrypted audio (BT885 can't decode)."""
-    if not rr_mode:
-        return False
-    upper = rr_mode.strip().upper()
-    return upper in {"DE", "TE", "AE"}
-
-
-def classify_rr_tg_import_action(
-    *,
-    is_encrypted: bool,
-    has_existing: bool,
-    has_update_diff: bool,
-    encrypted_policy: str,
-    include_encrypted: bool,
-) -> str:
-    """Decide what to do with a TG row in the RR-import dialog.
-
-    Centralizes the encrypted-policy branching so the rules (skip new
-    encrypted by default; delete existing encrypted by default; respect
-    a per-system "include encrypted" override) are unit-testable without
-    spinning up a Tk window. Returns one of:
-
-    - ``"new"``: add this unseen talkgroup.
-    - ``"update"``: overwrite changed fields on an existing entry.
-    - ``"same"``: identical to existing, nothing to do.
-    - ``"delete_encrypted"``: existing entry now marked encrypted on RR, remove.
-    - ``"same_encrypted"``: existing encrypted entry but user chose to skip.
-    - ``"encrypted"``: new encrypted TG the user hasn't opted into (skip).
-    """
-    if is_encrypted:
-        if has_existing:
-            if encrypted_policy == "delete":
-                return "delete_encrypted"
-            return "same_encrypted"
-        if include_encrypted:
-            return "new"
-        return "encrypted"
-    if has_existing:
-        return "update" if has_update_diff else "same"
-    return "new"
-
-
-def _normalize_tgid_mode_for_diff(mode: str) -> str:
-    """Normalize TGID mode strings so legacy/short values compare equal to what
-    actually lives on the SD card (ALL / ANALOG / DIGITAL).
-
-    The BearTracker 885 HPD TGID Mode column uses the long names exclusively;
-    short forms like D / T / TD / DE only ever come from RadioReference or
-    older half-baked imports, and should be considered equivalent to DIGITAL
-    (or ANALOG for A/AE) for comparison purposes.
-    """
-    m = (mode or "").strip().upper()
-    if not m:
-        return ""
-    if m in ("D", "TD", "T", "TDMA", "DE", "DMR"):
-        return "DIGITAL"
-    if m in ("A", "AE"):
-        return "ANALOG"
-    return m
-
-
-def _rr_trs_mode_to_hpd(mode_text: str) -> str:
-    """Map RadioReference trunk 'Mode' cell to the HPD TGID mode for the active scanner.
-
-    Delegates to :meth:`ScannerProfile.rr_mode_to_hpd_mode` so the exact
-    mapping is owned by the scanner profile. Kept as a free function for
-    back-compat with existing call sites.
-    """
-    return ACTIVE_PROFILE.rr_mode_to_hpd_mode(mode_text)
-
-
-def _tag_to_service_type(tag: str) -> Optional[int]:
-    if not tag:
-        return None
-    lowered = tag.strip().lower()
-    mapping = {
-        "law dispatch": 2,
-        "police dispatch": 2,
-        "law tac": 7,
-        "law talk": 23,
-        "fire dispatch": 3,
-        "fire-tac": 8,
-        "fire-talk": 24,
-        "ems dispatch": 4,
-        "ems-tac": 9,
-        "ems-talk": 25,
-        "public works": 14,
-        "multi-tac": 6,
-        "multi-talk": 22,
-        "multi dispatch": 1,
-        "transportation": 14,
-        "security": 14,
-        "business": 14,
-        "utilities": 14,
-        "hospital": 4,
-        "emergency ops": 14,
-    }
-    if lowered in mapping:
-        return mapping[lowered]
-    return _guess_service_type(tag)
-
-
-def _extract_category_title(html: str) -> str:
-    for heading_tag in ("h1", "h2", "h3"):
-        match = re.search(rf"<{heading_tag}[^>]*>(.*?)</{heading_tag}>", html, re.DOTALL | re.IGNORECASE)
-        if match:
-            text = _collapse_ws(_strip_tags(match.group(1)))
-            if text:
-                return text
-    return ""
-
-
-def _rr_mode_to_hpd(mode_text: str) -> str:
-    if not mode_text:
-        return "NFM"
-    upper = mode_text.strip().upper()
-    if upper == "FM":
-        return "FM"
-    if upper in ("FMN", "NFM"):
-        return "NFM"
-    if upper in ("AM",):
-        return "AM"
-    if upper in ("DMR", "NXDN", "P25", "MOTOTRBO"):
-        return "AUTO"
-    return "NFM"
-
-
-def _rr_tone_to_hpd(tone_text: str) -> str:
-    if not tone_text:
-        return ""
-    cleaned = tone_text.strip()
-    pl_match = re.match(r"^(\d+\.?\d*)\s*PL$", cleaned, re.IGNORECASE)
-    if pl_match:
-        return f"TONE=C{pl_match.group(1)}"
-    dpl_match = re.match(r"^(\d+)\s*DPL$", cleaned, re.IGNORECASE)
-    if dpl_match:
-        return f"TONE=D{dpl_match.group(1)}"
-    return ""
-
-
-def _extract_labeled_value(html: str, label: str) -> str:
-    pattern = re.compile(
-        rf"{re.escape(label)}\s*:?\s*</[^>]+>\s*<[^>]+>(.*?)</",
-        re.IGNORECASE | re.DOTALL,
-    )
-    match = pattern.search(html)
-    if not match:
-        return ""
-    return _collapse_ws(_strip_tags(match.group(1)))
 
 # ---------------------------------------------------------------------------
 # Main GUI Application
@@ -1972,7 +508,13 @@ class ScannerManagerApp:
         self.root.geometry("1280x820")
         self.root.minsize(900, 600)
         self._build_menubar()
+        self._init_core_models()
+        self._init_filter_state()
+        self._init_storage_and_meta()
+        self._build_gui()
+        self._finish_startup()
 
+    def _init_core_models(self) -> None:
         self.hpd = HpdFile()
         self.config = HpdConfig()
         self.config_loaded = False
@@ -1981,6 +523,7 @@ class ScannerManagerApp:
             bundled_dir=bundled_resources_dir(),
         )
 
+    def _init_filter_state(self) -> None:
         self._selected_entry: Optional[FreqEntry] = None
         self._selected_group: Optional[GroupNode] = None
         self._selected_system: Optional[SystemNode] = None
@@ -1994,10 +537,9 @@ class ScannerManagerApp:
         self._sd_space_var = tk.StringVar(value="")
         self._last_reconcile_audit: Optional[Path] = None
         self._state_id_list: List[int] = []
-
         self._location_filter_enabled = tk.BooleanVar(value=False)
         self._zip_var = tk.StringVar()
-        self._county_var = tk.StringVar(value="(Auto from ZIP)")
+        self._county_var = tk.StringVar(value=_LIT_AUTO_FROM_ZIP)
         self._county_choices: List[Tuple[int, str]] = []
         self._active_zip: Optional[str] = None
         self._active_county_id: Optional[int] = None
@@ -2009,47 +551,31 @@ class ScannerManagerApp:
         self._firmware_zip_loaded = False
         self._firmware_city_table = FirmwareCityTable()
         self._firmware_city_loaded = False
-        # Resolve the writable state dir. When running from a PyInstaller
-        # frozen bundle, ``__file__`` is inside ``_MEIPASS`` (a temp dir)
-        # and isn't writable across runs, so we fall back to the dir
-        # containing the EXE itself. That keeps app_settings.json, the
-        # metastore, and session snapshots next to the binary - which is
-        # the convention most Windows users expect.
-        if getattr(sys, "frozen", False):
-            self._script_dir = Path(sys.executable).resolve().parent
-        else:
-            self._script_dir = _repo_root()
+
+    def _init_storage_and_meta(self) -> None:
+        self._script_dir = resolve_script_dir(_repo_root)
         self._custom_locations = CustomLocationsStore(self._script_dir)
         self._app_settings_path = self._script_dir / "app_settings.json"
         self._app_settings = self._load_app_settings()
         self._city_index = ScannerCityIndex()
         self._city_index_state_id: Optional[int] = None
         self._city_var = tk.StringVar()
-
-        # Metastore (event-sourced change log). Global sidecar is always on;
-        # per-HPD sidecars attach on load via _attach_meta_for_hpd().
         self._global_meta = GlobalMetaStore(
             self._script_dir / GlobalMetaStore.DEFAULT_FILENAME
         )
         self._meta: Optional[MetaStore] = None
-        # Paths that have already received a session snapshot this run.
         self._session_snapshot_paths: Set[str] = set()
         self._session_snapshot_enabled = tk.BooleanVar(
             value=bool(self._app_settings.get("session_snapshot_enabled", True))
         )
 
-        # Legacy `max_backups` setting is no longer consulted; leave the
-        # key in app_settings.json for forward-compat but don't surface it.
-
-        self._build_gui()
-        saved_path = self._app_settings.get("sd_path", "")
-        if saved_path and os.path.isdir(saved_path):
+    def _finish_startup(self) -> None:
+        saved_path = validated_sd_folder(self._app_settings.get("sd_path", ""))
+        if saved_path:
             self._set_status(f"Ready. Last SD card path: {saved_path}. Click Load.")
         else:
             self._set_status("Ready. Browse to your SD card's BCDx36HP folder to begin.")
         self._refresh_sd_space()
-        # Show the first-run alpha notice once. Deferred via after()
-        # so the main window is on screen before the modal opens.
         if not self._app_settings.get("first_run_seen"):
             self.root.after(250, self._show_first_run_notice)
         self.root.after(5000, lambda: self._run_update_check(manual=False))
@@ -2093,6 +619,11 @@ class ScannerManagerApp:
         self._build_status_bar()
 
     def _build_toolbar(self):
+        self._build_toolbar_row1()
+        self._build_toolbar_row2()
+        self._build_toolbar_row3()
+
+    def _build_toolbar_row1(self):
         row1 = ttk.Frame(self.root, padding=(5, 5, 5, 2))
         row1.pack(fill=tk.X, side=tk.TOP)
         ttk.Label(row1, text="SD Card Folder:").pack(side=tk.LEFT)
@@ -2107,7 +638,7 @@ class ScannerManagerApp:
             row1, textvariable=self._state_var, state="readonly", width=22,
         )
         self._state_combo.pack(side=tk.LEFT, padx=(5, 2))
-        self._state_combo.bind("<<ComboboxSelected>>", self._on_state_selected)
+        self._state_combo.bind(_LIT_COMBOBOX_SELECTED, self._on_state_selected)
         ttk.Separator(row1, orient=tk.VERTICAL).pack(side=tk.LEFT, padx=8, fill=tk.Y)
         ttk.Button(row1, text="Save", command=self._on_save).pack(side=tk.LEFT, padx=2)
         ttk.Button(
@@ -2145,6 +676,7 @@ class ScannerManagerApp:
             command=self._on_open_rr_pull,
         ).pack(side=tk.LEFT, padx=2)
 
+    def _build_toolbar_row2(self):
         row2 = ttk.Frame(self.root, padding=(5, 2, 5, 2))
         row2.pack(fill=tk.X, side=tk.TOP)
         ttk.Label(row2, text="ZIP:").pack(side=tk.LEFT)
@@ -2160,9 +692,9 @@ class ScannerManagerApp:
         self._county_combo = ttk.Combobox(
             row2, textvariable=self._county_var, state="readonly", width=24
         )
-        self._county_combo["values"] = ["(Auto from ZIP)"]
+        self._county_combo["values"] = [_LIT_AUTO_FROM_ZIP]
         self._county_combo.current(0)
-        self._county_combo.bind("<<ComboboxSelected>>", self._on_county_override_changed)
+        self._county_combo.bind(_LIT_COMBOBOX_SELECTED, self._on_county_override_changed)
         self._county_combo.pack(side=tk.LEFT, padx=(4, 2))
         ttk.Checkbutton(
             row2, text="Apply Location Filter",
@@ -2176,6 +708,7 @@ class ScannerManagerApp:
             command=self._on_filter_changed,
         ).pack(side=tk.LEFT, padx=(2, 2))
 
+    def _build_toolbar_row3(self):
         row3 = ttk.Frame(self.root, padding=(5, 2, 5, 4))
         row3.pack(fill=tk.X, side=tk.TOP)
         ttk.Label(row3, text="Scanner buttons:").pack(side=tk.LEFT)
@@ -2248,18 +781,23 @@ class ScannerManagerApp:
     def _build_tree(self, parent: ttk.Frame):
         cols = ("freq_tgid", "mode", "service")
         self.tree = ttk.Treeview(
-            parent, columns=cols, selectmode="browse", show="tree headings",
+            parent, columns=cols, selectmode="browse", show=_LIT_TREE_HEADINGS,
         )
+        self._configure_tree_headings()
+        self._configure_tree_tags()
+        self._layout_tree_with_scrollbars(parent)
+
+    def _configure_tree_headings(self) -> None:
         self.tree.heading("#0", text="Name", anchor=tk.W)
         self.tree.heading("freq_tgid", text="Freq / TGID", anchor=tk.W)
         self.tree.heading("mode", text="Mode", anchor=tk.W)
         self.tree.heading("service", text="Service Type", anchor=tk.W)
-
         self.tree.column("#0", width=350, minwidth=200)
         self.tree.column("freq_tgid", width=130, minwidth=80)
         self.tree.column("mode", width=60, minwidth=50)
         self.tree.column("service", width=160, minwidth=100)
 
+    def _configure_tree_tags(self) -> None:
         self.tree.tag_configure("scannable", foreground="#006400")
         self.tree.tag_configure("nonscannable", foreground="#888888")
         self.tree.tag_configure("system", font=("TkDefaultFont", 10, "bold"))
@@ -2277,18 +815,17 @@ class ScannerManagerApp:
             "group_no_geo", font=("TkDefaultFont", 9, "bold"), foreground="#606060"
         )
 
+    def _layout_tree_with_scrollbars(self, parent: ttk.Frame) -> None:
         vsb = ttk.Scrollbar(parent, orient=tk.VERTICAL, command=self.tree.yview)
         self.tree.configure(yscrollcommand=vsb.set)
         hsb = ttk.Scrollbar(parent, orient=tk.HORIZONTAL, command=self.tree.xview)
         self.tree.configure(xscrollcommand=hsb.set)
-
         self.tree.grid(row=0, column=0, sticky="nsew")
         vsb.grid(row=0, column=1, sticky="ns")
         hsb.grid(row=1, column=0, sticky="ew")
         parent.grid_rowconfigure(0, weight=1)
         parent.grid_columnconfigure(0, weight=1)
-
-        self.tree.bind("<<TreeviewSelect>>", self._on_tree_select)
+        self.tree.bind(_LIT_TREEVIEW_SELECT, self._on_tree_select)
         self.tree.bind("<Button-3>", self._on_tree_right_click)
 
     def _build_right_panel(self, parent: ttk.Frame):
@@ -2302,13 +839,16 @@ class ScannerManagerApp:
     def _build_details_panel(self, parent: ttk.Frame):
         frame = ttk.LabelFrame(parent, text="Selected Entry Details", padding=10)
         frame.grid(row=0, column=0, sticky="nsew", pady=(0, 5))
-
         self._detail_labels: Dict[str, ttk.Label] = {}
+        self._build_detail_field_rows(frame)
+        self._build_detail_edit_controls(frame)
+
+    def _build_detail_field_rows(self, frame: ttk.LabelFrame) -> None:
         detail_fields = [
             ("Type:", "type"),
-            ("Name:", "name"),
+            (_LIT_NAME_COLON, "name"),
             ("Frequency / TGID:", "freq"),
-            ("Mode:", "mode"),
+            (_LIT_MODE_COLON, "mode"),
             ("Tone / NAC:", "tone"),
             ("Service Type:", "service"),
             ("Group:", "group"),
@@ -2320,12 +860,13 @@ class ScannerManagerApp:
             lbl = ttk.Label(frame, text="—")
             lbl.grid(row=i, column=1, sticky=tk.W, padx=(10, 0), pady=2)
             self._detail_labels[key] = lbl
+        self._detail_sep_row = len(detail_fields)
 
-        sep_row = len(detail_fields)
+    def _build_detail_edit_controls(self, frame: ttk.LabelFrame) -> None:
+        sep_row = self._detail_sep_row
         ttk.Separator(frame, orient=tk.HORIZONTAL).grid(
             row=sep_row, column=0, columnspan=3, sticky="ew", pady=8,
         )
-
         edit_row = sep_row + 1
         ttk.Label(frame, text="Change Service Type:").grid(
             row=edit_row, column=0, sticky=tk.W, pady=2,
@@ -2336,7 +877,6 @@ class ScannerManagerApp:
             values=[s[1] for s in SERVICE_CHOICES],
         )
         self._edit_stype_combo.grid(row=edit_row, column=1, sticky=tk.W, padx=(10, 0))
-
         btn_frame = ttk.Frame(frame)
         btn_frame.grid(row=edit_row + 1, column=0, columnspan=2, pady=8)
         ttk.Button(btn_frame, text="Update Service Type", command=self._on_update_service).pack(
@@ -2348,7 +888,6 @@ class ScannerManagerApp:
         ttk.Button(btn_frame, text="Delete", command=self._on_delete_selected).pack(
             side=tk.LEFT, padx=3,
         )
-
         ttk.Separator(frame, orient=tk.HORIZONTAL).grid(
             row=edit_row + 2, column=0, columnspan=2, sticky="ew", pady=(6, 6)
         )
@@ -2392,7 +931,7 @@ class ScannerManagerApp:
         )
 
         row += 1
-        self._add_freq_label = ttk.Label(frame, text="Frequency (MHz):")
+        self._add_freq_label = ttk.Label(frame, text=_LIT_FREQ_MHZ_COLON)
         self._add_freq_label.grid(row=row, column=0, sticky=tk.W, pady=2)
         self._add_freq_var = tk.StringVar()
         ttk.Entry(frame, textvariable=self._add_freq_var, width=20).grid(
@@ -2400,7 +939,7 @@ class ScannerManagerApp:
         )
 
         row += 1
-        ttk.Label(frame, text="Mode:").grid(row=row, column=0, sticky=tk.W, pady=2)
+        ttk.Label(frame, text=_LIT_MODE_COLON).grid(row=row, column=0, sticky=tk.W, pady=2)
         self._add_mode_var = tk.StringVar(value="NFM")
         self._add_mode_combo = ttk.Combobox(
             frame, textvariable=self._add_mode_var, state="readonly", width=10,
@@ -2470,7 +1009,7 @@ class ScannerManagerApp:
         )
         self._pipeline_health_label.pack(side=tk.LEFT, padx=(0, 2))
         self._pipeline_health_label.bind(
-            "<Button-1>", lambda _e: self._on_open_data_pipeline()
+            _LIT_BUTTON_1, lambda _e: self._on_open_data_pipeline()
         )
         ttk.Label(
             status_frame, textvariable=self._sd_space_var, relief=tk.SUNKEN,
@@ -2606,7 +1145,7 @@ class ScannerManagerApp:
     def _open_profile(self, profile_id: str) -> None:
         profile = self._global_meta.get_profile(profile_id)
         if profile is None:
-            messagebox.showerror("Workspace", "Profile not found.")
+            messagebox.showerror("Workspace", _LIT_PROFILE_NOT_FOUND)
             return
         workspace_dir = profile.get("workspace_dir") or ""
         if not workspace_dir or not os.path.isdir(workspace_dir):
@@ -2715,61 +1254,54 @@ class ScannerManagerApp:
                 "Sync errors",
                 "\n".join(f"{rel}: {msg}" for rel, msg in report.errors[:12]),
             )
-        # Log external HPD changes into the active MetaStore, if we have one.
-        for rel in report.external_changes:
-            if self._meta is not None:
-                self._meta.record(
-                    op=OP_EXTERNAL_CHANGE,
-                    target_id=f"file:{rel}",
-                    payload={"direction": direction, "relpath": rel},
-                    target_name=rel,
-                    summary=f"Card-side change pulled into workspace ({rel})",
-                    source="sync_pull",
-                )
-                self._meta.flush()
-        if report.conflicts:
-            dlg = SyncConflictDialog(
-                self.root, report=report, diffs=diffs, direction=direction
-            )
-            # Persist user's decisions: "take_card", "take_workspace", "skip".
-            decisions = (dlg.result or {}).get("decisions") or {}
-            for rel, decision in decisions.items():
-                if decision == "take_card":
-                    try:
-                        src = Path(card_root) / rel
-                        dst = Path(profile["workspace_dir"]) / rel
-                        dst.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(src, dst)
-                    except Exception as exc:
-                        messagebox.showerror(
-                            "Sync", f"Could not take card copy of {rel}: {exc}"
-                        )
-                elif decision == "take_workspace":
-                    try:
-                        src = Path(profile["workspace_dir"]) / rel
-                        dst = Path(card_root) / rel
-                        dst.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(src, dst)
-                    except Exception as exc:
-                        messagebox.showerror(
-                            "Sync", f"Could not push workspace copy of {rel}: {exc}"
-                        )
-        # Update baseline to reflect the new state after sync.
+        self._log_sync_external_changes(report, direction)
+        self._apply_sync_conflict_decisions(profile, report, diffs, direction, card_root)
         self._update_profile_baseline(profile, profile["workspace_dir"])
         profile["last_synced_card_path"] = card_root
         self._global_meta.upsert_profile(profile)
         self._global_meta.save()
-        # If we pushed, stamp all uncommitted events as committed.
         if direction == "push" and self._meta is not None:
             self._meta.mark_events_committed()
             self._meta.flush()
-        summary = (
-            f"Sync {direction}: {len(report.copied)} copied, "
-            f"{len(report.skipped_same)} unchanged, "
-            f"{len(report.conflicts)} conflict(s), "
-            f"{len(report.external_changes)} external change(s)."
+        self._set_status(sync_result_summary(direction, report))
+
+    def _log_sync_external_changes(
+        self, report: "sdcard.SyncReport", direction: str
+    ) -> None:
+        if self._meta is None:
+            return
+        for rel in report.external_changes:
+            self._meta.record(
+                op=OP_EXTERNAL_CHANGE,
+                target_id=f"file:{rel}",
+                payload={"direction": direction, "relpath": rel},
+                target_name=rel,
+                summary=f"Card-side change pulled into workspace ({rel})",
+                source="sync_pull",
+            )
+            self._meta.flush()
+
+    def _apply_sync_conflict_decisions(
+        self,
+        profile: Dict[str, Any],
+        report: "sdcard.SyncReport",
+        diffs: List["sdcard.FileDiff"],
+        direction: str,
+        card_root: str,
+    ) -> None:
+        if not report.conflicts:
+            return
+        dlg = SyncConflictDialog(
+            self.root, report=report, diffs=diffs, direction=direction
         )
-        self._set_status(summary)
+        decisions = (dlg.result or {}).get("decisions") or {}
+        workspace = profile["workspace_dir"]
+        for rel, decision in decisions.items():
+            err = apply_sync_conflict_decision(
+                rel, decision, card_root=card_root, workspace_dir=workspace
+            )
+            if err:
+                messagebox.showerror("Sync", err)
 
     # --- Snapshots & profile swap --------------------------------------
 
@@ -2842,68 +1374,92 @@ class ScannerManagerApp:
         return snap
 
     def _activate_profile_on_card(self, profile_id: str) -> None:
-        """One-click swap: push profile ``profile_id`` onto the physical SD card.
-
-        Creates a pre-swap snapshot of the currently-active profile (so
-        the card's previous contents are recoverable), then runs the
-        standard push flow with force-overwrite, then flips
-        ``active_profile_id`` to the chosen profile.
-        """
+        """One-click swap: push profile ``profile_id`` onto the physical SD card."""
         target = self._global_meta.get_profile(profile_id)
+        if not self._validate_swap_target(target):
+            return
+        card_hint = self._prompt_swap_card_path(target)
+        if not card_hint:
+            return
+        if not self._confirm_profile_swap(target, profile_id, card_hint):
+            return
+        self._set_status("Preparing profile swap...")
+        self.root.update_idletasks()
+        card_identity = sdcard.probe_card_identity(card_hint)
+        self._snapshot_active_profile_before_swap(profile_id, card_hint, card_identity)
+        self._push_swap_profile_to_card(target, profile_id, card_hint)
+
+    def _validate_swap_target(self, target: Optional[Dict[str, Any]]) -> bool:
         if target is None:
-            messagebox.showerror("Swap Profile", "Profile not found.")
-            return
+            messagebox.showerror(_LIT_SWAP_PROFILE, _LIT_PROFILE_NOT_FOUND)
+            return False
         workspace = target.get("workspace_dir") or ""
-        if not workspace or not os.path.isdir(workspace):
-            messagebox.showerror(
-                "Swap Profile",
-                "The workspace folder for this profile is missing:\n"
-                f"{workspace}",
-            )
-            return
+        if workspace and os.path.isdir(workspace):
+            return True
+        messagebox.showerror(
+            _LIT_SWAP_PROFILE,
+            "The workspace folder for this profile is missing:\n"
+            f"{workspace}",
+        )
+        return False
+
+    def _prompt_swap_card_path(self, target: Dict[str, Any]) -> Optional[str]:
         card_hint = (
             target.get("last_synced_card_path")
             or (self._path_var.get() or "").strip()
         )
-        if not card_hint or not os.path.isdir(card_hint) or card_hint == workspace:
-            card_hint = filedialog.askdirectory(
-                title="Select the SD card root to receive this profile",
-                initialdir=card_hint if card_hint and os.path.isdir(card_hint) else None,
-            )
-            if not card_hint:
-                return
-        if not messagebox.askyesno(
-            "Swap Profile",
+        workspace = target.get("workspace_dir") or ""
+        if card_hint and os.path.isdir(card_hint) and card_hint != workspace:
+            return card_hint
+        card_hint = filedialog.askdirectory(
+            title="Select the SD card root to receive this profile",
+            initialdir=card_hint if card_hint and os.path.isdir(card_hint) else None,
+        )
+        return card_hint or None
+
+    def _confirm_profile_swap(
+        self, target: Dict[str, Any], profile_id: str, card_hint: str
+    ) -> bool:
+        return messagebox.askyesno(
+            _LIT_SWAP_PROFILE,
             (
                 f"Overwrite the SD card at\n  {card_hint}\n"
                 f"with profile '{target.get('name') or profile_id}'?\n\n"
                 "A snapshot of the card's current contents will be saved "
                 "to the currently-active profile before anything is copied."
             ),
-        ):
-            return
-        self._set_status("Preparing profile swap...")
-        self.root.update_idletasks()
+        )
+
+    def _snapshot_active_profile_before_swap(
+        self,
+        profile_id: str,
+        card_hint: str,
+        card_identity: "sdcard.CardIdentity",
+    ) -> None:
         active = self._active_profile()
-        card_identity = sdcard.probe_card_identity(card_hint)
-        if active is not None and active.get("profile_id") != profile_id:
-            try:
-                snap_report = sdcard.sync_pull(
-                    card_root=card_hint,
-                    workspace_root=active["workspace_dir"],
-                    baseline=self._profile_baseline(active),
-                )
-                _ = snap_report
-            except Exception:
-                pass
-            self._take_profile_snapshot(
-                active,
-                reason=sdcard.SNAP_REASON_PRE_SWAP,
-                note=(
-                    f"Card state before activating '{target.get('name') or profile_id}'"
-                ),
-                card_identity=card_identity,
+        if active is None or active.get("profile_id") == profile_id:
+            return
+        try:
+            sdcard.sync_pull(
+                card_root=card_hint,
+                workspace_root=active["workspace_dir"],
+                baseline=self._profile_baseline(active),
             )
+        except Exception:
+            pass
+        target = self._global_meta.get_profile(profile_id)
+        name = (target or {}).get("name") or profile_id
+        self._take_profile_snapshot(
+            active,
+            reason=sdcard.SNAP_REASON_PRE_SWAP,
+            note=f"Card state before activating '{name}'",
+            card_identity=card_identity,
+        )
+
+    def _push_swap_profile_to_card(
+        self, target: Dict[str, Any], profile_id: str, card_hint: str
+    ) -> None:
+        workspace = target.get("workspace_dir") or ""
         self._set_status(
             f"Copying profile '{target.get('name') or profile_id}' onto SD card..."
         )
@@ -2917,7 +1473,7 @@ class ScannerManagerApp:
         )
         if report.errors:
             messagebox.showerror(
-                "Swap Profile",
+                _LIT_SWAP_PROFILE,
                 "Some files could not be copied:\n\n"
                 + "\n".join(f"{rel}: {msg}" for rel, msg in report.errors[:12]),
             )
@@ -2940,7 +1496,7 @@ class ScannerManagerApp:
         """Open the snapshots dialog for ``profile_id`` and act on the result."""
         profile = self._global_meta.get_profile(profile_id)
         if profile is None:
-            messagebox.showerror("Snapshots", "Profile not found.")
+            messagebox.showerror("Snapshots", _LIT_PROFILE_NOT_FOUND)
             return
         dlg = ProfileSnapshotsDialog(self.root, self, profile_id)
         if dlg.result is None:
@@ -2963,12 +1519,12 @@ class ScannerManagerApp:
         workspace = profile.get("workspace_dir") or ""
         if not workspace or not os.path.isdir(workspace):
             messagebox.showerror(
-                "Restore Snapshot",
+                _LIT_RESTORE_SNAPSHOT,
                 "Workspace folder for this profile is missing.",
             )
             return
         if not messagebox.askyesno(
-            "Restore Snapshot",
+            _LIT_RESTORE_SNAPSHOT,
             (
                 "Restore this snapshot into the workspace? Any unsaved "
                 "changes will be lost, and a 'pre-restore' snapshot will "
@@ -2980,7 +1536,7 @@ class ScannerManagerApp:
             _marker, pre_restore = sdcard.restore_snapshot(workspace, snap_id)
         except Exception as exc:
             messagebox.showerror(
-                "Restore Snapshot", f"Could not restore snapshot:\n{exc}"
+                _LIT_RESTORE_SNAPSHOT, f"Could not restore snapshot:\n{exc}"
             )
             return
         snapshots = self._profile_snapshots(profile)
@@ -3033,42 +1589,27 @@ class ScannerManagerApp:
     def _try_load_config(self, folder: str):
         if self.config_loaded:
             return
-
-        cfg = os.path.join(folder, "HPDB", "hpdb.cfg")
-        if not os.path.exists(cfg):
-            cfg2 = os.path.join(folder, "hpdb.cfg")
-            if os.path.exists(cfg2):
-                cfg = cfg2
-            else:
-                return
-
+        cfg = find_hpdb_config(folder)
+        if cfg is None:
+            return
         try:
             self.config.load(cfg)
             self.config_loaded = True
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load config:\n{e}")
             return
+        self._populate_state_combo_from_config()
 
+    def _populate_state_combo_from_config(self) -> None:
         state_items = []
         self._state_id_list = []
         for sid in sorted(self.config.state_files.keys()):
-            name = self.config.get_state_name(sid)
-            state_items.append(name)
+            state_items.append(self.config.get_state_name(sid))
             self._state_id_list.append(sid)
-
         self._state_combo["values"] = state_items
-
-        florida_idx = None
-        for i, sid in enumerate(self._state_id_list):
-            if sid == 12:
-                florida_idx = i
-                break
-
-        if florida_idx is not None:
-            self._state_combo.current(florida_idx)
-        elif state_items:
-            self._state_combo.current(0)
-
+        idx = default_state_combo_index(self._state_id_list)
+        if idx is not None:
+            self._state_combo.current(idx)
         self._refresh_county_options()
 
     def _on_state_selected(self, event=None):
@@ -3468,7 +2009,7 @@ class ScannerManagerApp:
         try:
             parsed = fetch_radioreference_data(url)
         except Exception as exc:
-            messagebox.showerror("Fetch Error", f"Could not fetch URL:\n{exc}")
+            messagebox.showerror(_LIT_FETCH_ERROR, f"Could not fetch URL:\n{exc}")
             self._set_status("RadioReference fetch failed.")
             return
         if not parsed:
@@ -3553,7 +2094,7 @@ class ScannerManagerApp:
 
     def _on_add_type_changed(self):
         if self._add_type_var.get() == "Conventional":
-            self._add_freq_label.config(text="Frequency (MHz):")
+            self._add_freq_label.config(text=_LIT_FREQ_MHZ_COLON)
             self._add_mode_combo["values"] = MODE_CHOICES_CONV
             self._add_mode_var.set("NFM")
             self._add_tone_label.config(text="Tone (e.g. TONE=C156.7):")
@@ -3573,7 +2114,7 @@ class ScannerManagerApp:
         try:
             parsed = fetch_radioreference_data(url)
         except Exception as exc:
-            messagebox.showerror("Fetch Error", f"Could not fetch URL:\n{exc}")
+            messagebox.showerror(_LIT_FETCH_ERROR, f"Could not fetch URL:\n{exc}")
             self._set_status("RadioReference fetch failed.")
             return
         if not parsed:
@@ -3594,7 +2135,7 @@ class ScannerManagerApp:
             return
         frequencies = parsed.get("frequencies") or []
         if not frequencies:
-            messagebox.showinfo("No Frequencies", "No frequencies found on that page.")
+            messagebox.showinfo(_LIT_NO_FREQUENCIES, _LIT_NO_FREQS_ON_PAGE)
             return
         if len(frequencies) == 1:
             chosen = frequencies[0]
@@ -3720,7 +2261,7 @@ class ScannerManagerApp:
     def _handle_rr_category(self, parsed: Dict[str, Any]):
         frequencies = parsed.get("frequencies") or []
         if not frequencies:
-            messagebox.showinfo("No Frequencies", "No frequencies found on that page.")
+            messagebox.showinfo(_LIT_NO_FREQUENCIES, _LIT_NO_FREQS_ON_PAGE)
             return
         system = self._resolve_target_system()
         if system is None or system.system_type != "Conventional":
@@ -3732,10 +2273,10 @@ class ScannerManagerApp:
         if not self._confirm_location_mismatch(system=system):
             return
         wrapped = {
-            "title": parsed.get("group_name") or "RadioReference Group",
+            "title": parsed.get("group_name") or _LIT_RR_GROUP,
             "categories": [
                 {
-                    "name": parsed.get("group_name") or "RadioReference Group",
+                    "name": parsed.get("group_name") or _LIT_RR_GROUP,
                     "frequencies": frequencies,
                 }
             ],
@@ -3752,7 +2293,7 @@ class ScannerManagerApp:
     def _handle_rr_conventional_multi(self, parsed: Dict[str, Any]):
         categories = parsed.get("categories") or []
         if not categories:
-            messagebox.showinfo("No Frequencies", "No frequencies found on that page.")
+            messagebox.showinfo(_LIT_NO_FREQUENCIES, _LIT_NO_FREQS_ON_PAGE)
             return
         system = self._resolve_target_system()
         if system is None or system.system_type != "Conventional":
@@ -4026,141 +2567,34 @@ class ScannerManagerApp:
                 key = cat_name.strip().lower()
                 group = existing_names.get(key)
                 needs_new_group = any(item.get("__action__") == "new" for item in talkgroups)
+                group = self._trs_ensure_import_group(
+                    system,
+                    cat_name,
+                    key,
+                    group,
+                    needs_new_group,
+                    existing_names,
+                    groups_created,
+                    default_lat,
+                    default_lon,
+                    default_range,
+                    source,
+                    import_txn,
+                )
                 if group is None and needs_new_group:
-                    try:
-                        group = self._do_add_tgroup(
-                            system,
-                            cat_name.strip(),
-                            lat=default_lat,
-                            lon=default_lon,
-                            range_miles=default_range,
-                            source=source,
-                            txn_id=import_txn,
-                            log=False,
-                        )
-                        groups_created.append(self._group_key_for(group))
-                        existing_names[key] = group
-                    except Exception as exc:
-                        messagebox.showerror(
-                            "Error", f"Could not create T-Group '{cat_name}':\n{exc}"
-                        )
-                        continue
-                elif group is not None:
-                    if (
-                        group.lat is None
-                        and group.lon is None
-                        and default_lat is not None
-                        and default_lon is not None
-                    ):
-                        try:
-                            self._do_edit_group(
-                                group,
-                                lat=default_lat,
-                                lon=default_lon,
-                                range_miles=default_range,
-                                source=source,
-                                txn_id=import_txn,
-                                log=False,
-                            )
-                        except Exception:
-                            pass
+                    continue
+                self._trs_apply_group_geo_defaults(
+                    group, default_lat, default_lon, default_range, source, import_txn
+                )
                 for tg in talkgroups:
-                    action = tg.get("__action__")
-                    try:
-                        tgid_val = int(tg["tgid"])
-                    except Exception:
-                        continue
-                    if action == "new":
-                        if group is None:
-                            tgids_skipped += 1
-                            continue
-                        try:
-                            stype = tg.get("suggested_service_type")
-                            if not isinstance(stype, int):
-                                stype = 1
-                            entry = self._do_add_tgid(
-                                group=group,
-                                name=tg.get("name") or tg.get("alpha") or f"TGID {tgid_val}",
-                                tgid=tgid_val,
-                                mode=tg.get("mode") or "ALL",
-                                service_type=stype,
-                                source=source,
-                                txn_id=import_txn,
-                                log=False,
-                            )
-                            added_records.append({
-                                "id": self._entry_id_for(entry),
-                                "snapshot": self._entry_snapshot(entry),
-                                "record_fields": list(entry.record.fields),
-                                "group_key": self._group_key_for(group),
-                            })
-                            tgids_added += 1
-                        except Exception:
-                            continue
-                    elif action == "update":
-                        existing = tg.get("__existing__")
-                        changes = tg.get("__changes__", {})
-                        if existing is None or not changes:
-                            tgids_skipped += 1
-                            continue
-                        try:
-                            before = self._entry_snapshot(existing)
-                            if "name" in changes:
-                                new_name = changes["name"][1]
-                                existing.record.set_field(3, new_name)
-                                existing.name = new_name
-                            if "mode" in changes:
-                                existing.record.set_field(6, changes["mode"][1])
-                            if "service_type" in changes:
-                                new_stype = changes["service_type"][1]
-                                self.hpd.update_service_type(existing, new_stype)
-                            else:
-                                self.hpd.has_changes = True
-                            after = self._entry_snapshot(existing)
-                            updated_records.append({
-                                "id": self._entry_id_for(existing),
-                                "before": before,
-                                "after": after,
-                            })
-                            tgids_updated += 1
-                        except Exception:
-                            continue
-                    elif action == "delete_encrypted":
-                        existing = tg.get("__existing__")
-                        if existing is None:
-                            tgids_skipped += 1
-                            continue
-                        try:
-                            eid = self._entry_id_for(existing)
-                            name = existing.name
-                            record_fields = list(existing.record.fields)
-                            snapshot = self._entry_snapshot(existing)
-                            group_key = None
-                            for sys_node in self.hpd.systems:
-                                for g in sys_node.groups:
-                                    if existing in g.entries:
-                                        group_key = self._group_key_for(g)
-                                        break
-                                if group_key:
-                                    break
-                            self._do_delete_entry(
-                                existing,
-                                source=source,
-                                txn_id=import_txn,
-                                log=False,
-                            )
-                            deleted_records.append({
-                                "id": eid,
-                                "name": name,
-                                "snapshot": snapshot,
-                                "record_fields": record_fields,
-                                "group_key": group_key,
-                            })
-                            tgids_deleted += 1
-                        except Exception:
-                            continue
-                    else:
-                        tgids_skipped += 1
+                    result = self._trs_apply_talkgroup_action(
+                        tg, group, source, import_txn,
+                        added_records, updated_records, deleted_records,
+                    )
+                    tgids_added += result["added"]
+                    tgids_updated += result["updated"]
+                    tgids_deleted += result["deleted"]
+                    tgids_skipped += result["skipped"]
 
             if (
                 added_records
@@ -4204,6 +2638,209 @@ class ScannerManagerApp:
             f"Deleted {tgids_deleted} encrypted entries.\n"
             f"Skipped {tgids_skipped}.",
         )
+
+    def _trs_ensure_import_group(
+        self,
+        system: SystemNode,
+        cat_name: str,
+        key: str,
+        group: Optional[GroupNode],
+        needs_new_group: bool,
+        existing_names: Dict[str, GroupNode],
+        groups_created: List[str],
+        default_lat: Optional[float],
+        default_lon: Optional[float],
+        default_range: Optional[float],
+        source: str,
+        import_txn: Optional[str],
+    ) -> Optional[GroupNode]:
+        if group is not None or not needs_new_group:
+            return group
+        try:
+            group = self._do_add_tgroup(
+                system,
+                cat_name.strip(),
+                lat=default_lat,
+                lon=default_lon,
+                range_miles=default_range,
+                source=source,
+                txn_id=import_txn,
+                log=False,
+            )
+            groups_created.append(self._group_key_for(group))
+            existing_names[key] = group
+            return group
+        except Exception as exc:
+            messagebox.showerror(
+                "Error", f"Could not create T-Group '{cat_name}':\n{exc}"
+            )
+            return None
+
+    def _trs_apply_group_geo_defaults(
+        self,
+        group: Optional[GroupNode],
+        default_lat: Optional[float],
+        default_lon: Optional[float],
+        default_range: Optional[float],
+        source: str,
+        import_txn: Optional[str],
+    ) -> None:
+        if group is None:
+            return
+        if group.lat is not None or group.lon is not None:
+            return
+        if default_lat is None or default_lon is None:
+            return
+        try:
+            self._do_edit_group(
+                group,
+                lat=default_lat,
+                lon=default_lon,
+                range_miles=default_range,
+                source=source,
+                txn_id=import_txn,
+                log=False,
+            )
+        except Exception:
+            pass
+
+    def _trs_apply_talkgroup_action(
+        self,
+        tg: Dict[str, Any],
+        group: Optional[GroupNode],
+        source: str,
+        import_txn: Optional[str],
+        added_records: List[Dict[str, Any]],
+        updated_records: List[Dict[str, Any]],
+        deleted_records: List[Dict[str, Any]],
+    ) -> Dict[str, int]:
+        result = {"added": 0, "updated": 0, "deleted": 0, "skipped": 0}
+        action = tg.get("__action__")
+        try:
+            tgid_val = int(tg["tgid"])
+        except Exception:
+            return result
+        if action == "new":
+            result["added"] = self._trs_import_new_tgid(
+                tg, group, tgid_val, source, import_txn, added_records
+            )
+            if result["added"] == 0 and group is None:
+                result["skipped"] = 1
+        elif action == "update":
+            result["updated"] = self._trs_import_update_tgid(
+                tg, source, import_txn, updated_records
+            )
+            if result["updated"] == 0:
+                result["skipped"] = 1
+        elif action == "delete_encrypted":
+            result["deleted"] = self._trs_import_delete_encrypted(
+                tg, source, import_txn, deleted_records
+            )
+            if result["deleted"] == 0:
+                result["skipped"] = 1
+        else:
+            result["skipped"] = 1
+        return result
+
+    def _trs_import_new_tgid(
+        self,
+        tg: Dict[str, Any],
+        group: Optional[GroupNode],
+        tgid_val: int,
+        source: str,
+        import_txn: Optional[str],
+        added_records: List[Dict[str, Any]],
+    ) -> int:
+        if group is None:
+            return 0
+        try:
+            stype = tg.get("suggested_service_type")
+            if not isinstance(stype, int):
+                stype = 1
+            entry = self._do_add_tgid(
+                group=group,
+                name=tg.get("name") or tg.get("alpha") or f"TGID {tgid_val}",
+                tgid=tgid_val,
+                mode=tg.get("mode") or "ALL",
+                service_type=stype,
+                source=source,
+                txn_id=import_txn,
+                log=False,
+            )
+            added_records.append({
+                "id": self._entry_id_for(entry),
+                "snapshot": self._entry_snapshot(entry),
+                "record_fields": list(entry.record.fields),
+                "group_key": self._group_key_for(group),
+            })
+            return 1
+        except Exception:
+            return 0
+
+    def _trs_import_update_tgid(
+        self,
+        tg: Dict[str, Any],
+        source: str,
+        import_txn: Optional[str],
+        updated_records: List[Dict[str, Any]],
+    ) -> int:
+        existing = tg.get("__existing__")
+        changes = tg.get("__changes__", {})
+        if existing is None or not changes:
+            return 0
+        try:
+            before = self._entry_snapshot(existing)
+            if "name" in changes:
+                new_name = changes["name"][1]
+                existing.record.set_field(3, new_name)
+                existing.name = new_name
+            if "mode" in changes:
+                existing.record.set_field(6, changes["mode"][1])
+            if "service_type" in changes:
+                self.hpd.update_service_type(existing, changes["service_type"][1])
+            else:
+                self.hpd.has_changes = True
+            updated_records.append({
+                "id": self._entry_id_for(existing),
+                "before": before,
+                "after": self._entry_snapshot(existing),
+            })
+            return 1
+        except Exception:
+            return 0
+
+    def _trs_import_delete_encrypted(
+        self,
+        tg: Dict[str, Any],
+        source: str,
+        import_txn: Optional[str],
+        deleted_records: List[Dict[str, Any]],
+    ) -> int:
+        existing = tg.get("__existing__")
+        if existing is None:
+            return 0
+        try:
+            group_key = self._group_key_for_entry(existing)
+            self._do_delete_entry(
+                existing, source=source, txn_id=import_txn, log=False,
+            )
+            deleted_records.append({
+                "id": self._entry_id_for(existing),
+                "name": existing.name,
+                "snapshot": self._entry_snapshot(existing),
+                "record_fields": list(existing.record.fields),
+                "group_key": group_key,
+            })
+            return 1
+        except Exception:
+            return 0
+
+    def _group_key_for_entry(self, entry: FreqEntry) -> Optional[str]:
+        for sys_node in self.hpd.systems:
+            for group in sys_node.groups:
+                if entry in group.entries:
+                    return self._group_key_for(group)
+        return None
 
     def _prompt_pick_frequency(self, frequencies: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         top = tk.Toplevel(self.root)
@@ -4392,7 +3029,7 @@ class ScannerManagerApp:
         if self._active_county_id is not None:
             self._set_county_combo_to_id(self._active_county_id)
         else:
-            self._county_var.set("(Auto from ZIP)")
+            self._county_var.set(_LIT_AUTO_FROM_ZIP)
         self._location_filter_enabled.set(True)
         self._load_state_hpd(state_id, suppress_message=True)
         source = match.get("source", "local")
@@ -4413,25 +3050,25 @@ class ScannerManagerApp:
 
     def _refresh_county_options(self):
         sid = self._get_selected_state_id()
-        items = ["(Auto from ZIP)"]
+        items = [_LIT_AUTO_FROM_ZIP]
         self._county_choices = []
         if sid is not None and self.config_loaded:
             self._county_choices = self.config.get_counties_for_state(sid)
             items.extend(name for _, name in self._county_choices)
         self._county_combo["values"] = items
         if self._county_var.get() not in items:
-            self._county_var.set("(Auto from ZIP)")
+            self._county_var.set(_LIT_AUTO_FROM_ZIP)
 
     def _set_county_combo_to_id(self, county_id: int):
         for cid, name in self._county_choices:
             if cid == county_id:
                 self._county_var.set(name)
                 return
-        self._county_var.set("(Auto from ZIP)")
+        self._county_var.set(_LIT_AUTO_FROM_ZIP)
 
     def _on_county_override_changed(self, event=None):
         selected = self._county_var.get()
-        if selected == "(Auto from ZIP)":
+        if selected == _LIT_AUTO_FROM_ZIP:
             if self._active_zip:
                 match = self.zip_lookup.resolve(self._active_zip, self.config)
                 self._active_county_id = match["county_id"] if match else None
@@ -4583,7 +3220,7 @@ class ScannerManagerApp:
         matches; we assume BT885 by default)."""
         path = filedialog.askopenfilename(
             title="Select Uniden updater executable",
-            filetypes=[("Executable", "*.exe"), ("All Files", "*.*")],
+            filetypes=[("Executable", _LIT_EXE_GLOB), (_LIT_ALL_FILES, "*.*")],
         )
         if not path:
             return
@@ -4876,7 +3513,7 @@ class ScannerManagerApp:
 
     def _on_run_updater_and_reconcile(self):
         if not self.hpd.filepath:
-            messagebox.showinfo("Info", "Load an HPD file first.")
+            messagebox.showinfo("Info", _LIT_LOAD_HPD_FIRST)
             return
 
         updater_path = self._detect_updater_path()
@@ -5023,7 +3660,7 @@ class ScannerManagerApp:
         """
         if not self.hpd.filepath:
             messagebox.showinfo(
-                "Pipeline", "Load an HPD file first."
+                "Pipeline", _LIT_LOAD_HPD_FIRST
             )
             return
 
@@ -5315,7 +3952,7 @@ class ScannerManagerApp:
             return
         try:
             mtime = os.path.getmtime(hpd_path)
-            stamp = datetime.utcfromtimestamp(mtime).replace(
+            stamp = datetime.fromtimestamp(mtime, tz=timezone.utc).replace(tzinfo=None).replace(
                 microsecond=0
             ).isoformat() + "Z"
         except Exception:
@@ -5328,55 +3965,68 @@ class ScannerManagerApp:
             return
         new_baselines = 0
         for sys_node in self.hpd.systems:
-            sid = self._system_key_for(sys_node)
-            if not self._meta.has_baseline(sid):
-                self._meta.ensure_baseline(
-                    sid,
-                    origin="first_load",
-                    snapshot=self._system_snapshot(sys_node),
-                    record_fields=list(sys_node.record.fields),
-                    group_ref={
-                        "system_id": sys_node.system_id,
-                        "system_type": sys_node.system_type,
-                    },
-                )
-                new_baselines += 1
+            new_baselines += self._ensure_system_baseline(sys_node)
             for group in sys_node.groups:
-                gid = self._group_key_for(group)
-                if not self._meta.has_baseline(gid):
-                    self._meta.ensure_baseline(
-                        gid,
-                        origin="first_load",
-                        snapshot=self._group_snapshot(group),
-                        record_fields=list(group.record.fields),
-                        group_ref={
-                            "system_id": sys_node.system_id,
-                            "system_name": sys_node.name,
-                            "group_type": group.group_type,
-                        },
-                    )
-                    new_baselines += 1
+                new_baselines += self._ensure_group_baseline(sys_node, group)
                 for entry in group.entries:
-                    eid = self._entry_id_for(entry)
-                    if self._meta.has_baseline(eid):
-                        continue
-                    self._meta.ensure_baseline(
-                        eid,
-                        origin="first_load",
-                        snapshot=self._entry_snapshot(entry),
-                        record_fields=list(entry.record.fields),
-                        group_ref={
-                            "system_id": entry.system_id,
-                            "group_id": entry.group_id,
-                            "group_name": entry.group_name,
-                            "system_name": entry.system_name,
-                            "group_type": entry.group_type,
-                            "entry_type": entry.entry_type,
-                        },
-                    )
-                    new_baselines += 1
+                    new_baselines += self._ensure_entry_baseline(sys_node, group, entry)
         if new_baselines:
             self._meta.mark_dirty()
+
+    def _ensure_system_baseline(self, sys_node: SystemNode) -> int:
+        sid = self._system_key_for(sys_node)
+        if self._meta.has_baseline(sid):
+            return 0
+        self._meta.ensure_baseline(
+            sid,
+            origin="first_load",
+            snapshot=self._system_snapshot(sys_node),
+            record_fields=list(sys_node.record.fields),
+            group_ref={
+                "system_id": sys_node.system_id,
+                "system_type": sys_node.system_type,
+            },
+        )
+        return 1
+
+    def _ensure_group_baseline(self, sys_node: SystemNode, group: GroupNode) -> int:
+        gid = self._group_key_for(group)
+        if self._meta.has_baseline(gid):
+            return 0
+        self._meta.ensure_baseline(
+            gid,
+            origin="first_load",
+            snapshot=self._group_snapshot(group),
+            record_fields=list(group.record.fields),
+            group_ref={
+                "system_id": sys_node.system_id,
+                "system_name": sys_node.name,
+                "group_type": group.group_type,
+            },
+        )
+        return 1
+
+    def _ensure_entry_baseline(
+        self, sys_node: SystemNode, group: GroupNode, entry: FreqEntry
+    ) -> int:
+        eid = self._entry_id_for(entry)
+        if self._meta.has_baseline(eid):
+            return 0
+        self._meta.ensure_baseline(
+            eid,
+            origin="first_load",
+            snapshot=self._entry_snapshot(entry),
+            record_fields=list(entry.record.fields),
+            group_ref={
+                "system_id": entry.system_id,
+                "group_id": entry.group_id,
+                "group_name": entry.group_name,
+                "system_name": entry.system_name,
+                "group_type": entry.group_type,
+                "entry_type": entry.entry_type,
+            },
+        )
+        return 1
 
     # --- id / snapshot helpers ---
 
@@ -5648,139 +4298,141 @@ class ScannerManagerApp:
         payload = evt.payload or {}
         after = payload.get("after") or {}
 
-        # Legacy `set_avoid` events exist in sidecar files written by
-        # v0.9.0a2 and earlier. The Avoid feature was removed in v0.9.0a3
-        # because the BT885 doesn't persist the flag, so there's nothing
-        # to replay; swallow them as "replayed" so they don't pollute the
-        # "missed" count on existing installs.
         if op == "set_avoid":
             return True
 
-        if op == OP_DELETE_ENTRY:
-            entry = self._find_entry_after_update(evt)
-            if entry is None:
-                return True  # already gone — desired state achieved
-            self.hpd.delete_entry(entry)
-            report["deletions"] += 1
-            return True
+        handlers = {
+            OP_DELETE_ENTRY: self._replay_delete_entry,
+            OP_DELETE_GROUP: self._replay_delete_group,
+            OP_DELETE_SYSTEM: self._replay_delete_system,
+            OP_SET_SERVICE: self._replay_set_service,
+            OP_EDIT_ENTRY: self._replay_edit_entry,
+            OP_EDIT_GROUP: self._replay_edit_group,
+            OP_EDIT_SYSTEM: self._replay_edit_system,
+            OP_ADD_ENTRY: self._replay_add_entry,
+        }
+        handler = handlers.get(op)
+        if handler is None:
+            return False
+        return handler(evt, report, after)
 
-        if op == OP_DELETE_GROUP:
-            group = self._find_group_after_update(evt)
-            if group is None:
-                return True
-            self.hpd.delete_group(group)
-            report["deletions"] += 1
+    def _replay_delete_entry(self, evt: "Event", report: Dict[str, int], _after: Any) -> bool:
+        entry = self._find_entry_after_update(evt)
+        if entry is None:
             return True
+        self.hpd.delete_entry(entry)
+        report["deletions"] += 1
+        return True
 
-        if op == OP_DELETE_SYSTEM:
-            system = self._find_system_after_update(evt)
-            if system is None:
-                return True
-            self.hpd.delete_system(system)
-            report["deletions"] += 1
+    def _replay_delete_group(self, evt: "Event", report: Dict[str, int], _after: Any) -> bool:
+        group = self._find_group_after_update(evt)
+        if group is None:
             return True
+        self.hpd.delete_group(group)
+        report["deletions"] += 1
+        return True
 
-        if op == OP_SET_SERVICE:
-            entry = self._find_entry_after_update(evt)
-            if entry is None:
-                return False
-            svc_raw = after.get("service_type")
+    def _replay_delete_system(self, evt: "Event", report: Dict[str, int], _after: Any) -> bool:
+        system = self._find_system_after_update(evt)
+        if system is None:
+            return True
+        self.hpd.delete_system(system)
+        report["deletions"] += 1
+        return True
+
+    def _replay_set_service(self, evt: "Event", report: Dict[str, int], after: Any) -> bool:
+        entry = self._find_entry_after_update(evt)
+        if entry is None:
+            return False
+        try:
+            svc = int(after.get("service_type"))
+        except (TypeError, ValueError):
+            return False
+        if entry.service_type != svc:
+            self.hpd.update_service_type(entry, svc)
+        report["services"] += 1
+        return True
+
+    def _replay_edit_entry(self, evt: "Event", report: Dict[str, int], after: Any) -> bool:
+        entry = self._find_entry_after_update(evt)
+        if entry is None:
+            return False
+        self.hpd.edit_entry(
+            entry,
+            name=after.get("name"),
+            identity_value=(
+                str(after.get("identity_value"))
+                if after.get("identity_value") is not None else None
+            ),
+            mode=after.get("mode"),
+            tone=after.get("tone"),
+        )
+        if "service_type" in after:
             try:
-                svc = int(svc_raw)
+                svc = int(after.get("service_type"))
+                if entry.service_type != svc:
+                    self.hpd.update_service_type(entry, svc)
             except (TypeError, ValueError):
-                return False
-            if entry.service_type != svc:
-                self.hpd.update_service_type(entry, svc)
-            report["services"] += 1
-            return True
+                pass
+        report["edits"] += 1
+        return True
 
-        if op == OP_EDIT_ENTRY:
-            entry = self._find_entry_after_update(evt)
-            if entry is None:
-                return False
-            self.hpd.edit_entry(
-                entry,
-                name=after.get("name"),
-                identity_value=(
-                    str(after.get("identity_value"))
-                    if after.get("identity_value") is not None else None
-                ),
-                mode=after.get("mode"),
-                tone=after.get("tone"),
-            )
-            # Also reapply service_type captured in `after` so a single
-            # edit event restores the full row.
-            if "service_type" in after:
-                try:
-                    svc = int(after.get("service_type"))
-                    if entry.service_type != svc:
-                        self.hpd.update_service_type(entry, svc)
-                except (TypeError, ValueError):
-                    pass
-            report["edits"] += 1
-            return True
+    def _replay_edit_group(self, evt: "Event", report: Dict[str, int], after: Any) -> bool:
+        group = self._find_group_after_update(evt)
+        if group is None:
+            return False
+        self.hpd.edit_group(
+            group,
+            name=after.get("name"),
+            lat=after.get("lat"),
+            lon=after.get("lon"),
+            range_miles=after.get("range_miles"),
+        )
+        report["edits"] += 1
+        return True
 
-        if op == OP_EDIT_GROUP:
-            group = self._find_group_after_update(evt)
-            if group is None:
-                return False
-            self.hpd.edit_group(
-                group,
-                name=after.get("name"),
-                lat=after.get("lat"),
-                lon=after.get("lon"),
-                range_miles=after.get("range_miles"),
-            )
-            report["edits"] += 1
-            return True
+    def _replay_edit_system(self, evt: "Event", report: Dict[str, int], after: Any) -> bool:
+        system = self._find_system_after_update(evt)
+        if system is None:
+            return False
+        self.hpd.edit_system(system, name=after.get("name"))
+        report["edits"] += 1
+        return True
 
-        if op == OP_EDIT_SYSTEM:
-            system = self._find_system_after_update(evt)
-            if system is None:
-                return False
-            self.hpd.edit_system(system, name=after.get("name"))
-            report["edits"] += 1
+    def _replay_add_entry(self, evt: "Event", report: Dict[str, int], _after: Any) -> bool:
+        payload = evt.payload or {}
+        snap = payload.get("snapshot") or {}
+        et = (snap.get("entry_type") or "").upper()
+        identity = str(snap.get("identity_value") or "").strip()
+        if not (et and identity):
+            return False
+        if self._find_entry_after_update(evt) is not None:
             return True
-
-        if op == OP_ADD_ENTRY:
-            snap = payload.get("snapshot") or {}
-            et = (snap.get("entry_type") or "").upper()
-            identity = str(snap.get("identity_value") or "").strip()
-            if not (et and identity):
-                return False
-            existing = self._find_entry_after_update(evt)
-            if existing is not None:
-                return True  # already present
-            group = self._find_group_for_reinsert(evt)
-            if group is None:
-                return False
-            try:
-                if et == "C-FREQ":
-                    entry = self.hpd.add_cfreq(
-                        group=group,
-                        name=snap.get("name") or "",
-                        freq_hz=int(identity),
-                        mode=snap.get("mode") or "NFM",
-                        tone=snap.get("tone") or "",
-                        service_type=int(snap.get("service_type") or 0),
-                    )
-                else:
-                    entry = self.hpd.add_tgid(
-                        group=group,
-                        name=snap.get("name") or "",
-                        tgid=int(identity),
-                        mode=snap.get("mode") or "ALL",
-                        service_type=int(snap.get("service_type") or 0),
-                    )
-                _ = entry
-            except Exception:
-                return False
-            report["additions"] += 1
-            return True
-
-        # Unhandled op types (OP_ADD_GROUP, OP_IMPORT_APPLY, etc.) — leave
-        # for the snapshot-based safety-net pass.
-        return False
+        group = self._find_group_for_reinsert(evt)
+        if group is None:
+            return False
+        try:
+            if et == "C-FREQ":
+                self.hpd.add_cfreq(
+                    group=group,
+                    name=snap.get("name") or "",
+                    freq_hz=int(identity),
+                    mode=snap.get("mode") or "NFM",
+                    tone=snap.get("tone") or "",
+                    service_type=int(snap.get("service_type") or 0),
+                )
+            else:
+                self.hpd.add_tgid(
+                    group=group,
+                    name=snap.get("name") or "",
+                    tgid=int(identity),
+                    mode=snap.get("mode") or "ALL",
+                    service_type=int(snap.get("service_type") or 0),
+                )
+        except Exception:
+            return False
+        report["additions"] += 1
+        return True
 
     # --- event log recording ---
 
@@ -6717,7 +5369,7 @@ class ScannerManagerApp:
         self._meta.record(
             op=OP_BULK_REVERT,
             target_id="",
-            target_name="Revert to point",
+            target_name=_LIT_REVERT_TO_POINT,
             summary=f"Reverted {ok_count} events after #{pivot_event_id}",
             source="manual",
             txn_id=txn,
@@ -6740,8 +5392,19 @@ class ScannerManagerApp:
         apply_location = self._location_filter_enabled.get() and (
             self._active_county_id is not None or self._active_coords is not None
         )
+        ordered_systems = self._ordered_systems_for_tree(apply_location)
+        ranking_on = apply_location and self._active_coords is not None
+        tolerance = self._coverage_tolerance_miles()
 
-        ordered_systems: List[Tuple[SystemNode, Optional[float]]] = []
+        for idx, (sys_node, distance) in enumerate(ordered_systems):
+            self._insert_system_tree_branch(
+                sys_node, distance, apply_location, ranking_on, idx, tolerance
+            )
+
+    def _ordered_systems_for_tree(
+        self, apply_location: bool
+    ) -> List[Tuple[SystemNode, Optional[float]]]:
+        ordered: List[Tuple[SystemNode, Optional[float]]] = []
         for sys_node in self.hpd.systems:
             if apply_location and not self._system_matches_location(sys_node):
                 continue
@@ -6750,82 +5413,79 @@ class ScannerManagerApp:
                 distance = nearest_distance_miles(
                     sys_node, self._active_coords[0], self._active_coords[1]
                 )
-            ordered_systems.append((sys_node, distance))
-
+            ordered.append((sys_node, distance))
         if apply_location and self._active_coords is not None:
-            ordered_systems.sort(key=lambda item: (item[1] if item[1] is not None else float("inf")))
-
-        ranking_on = apply_location and self._active_coords is not None
-        for idx, (sys_node, distance) in enumerate(ordered_systems):
-            sys_prefix = "CONV" if sys_node.system_type == "Conventional" else "TRUNK"
-            rank_prefix = f"#{idx + 1} " if ranking_on else ""
-            if apply_location:
-                scope = self._system_scope_label(sys_node)
-                if distance is not None:
-                    sys_text = (
-                        f"{rank_prefix}[{scope}][{sys_prefix}] "
-                        f"{sys_node.name} ({distance:.1f} mi)"
-                    )
-                else:
-                    sys_text = (
-                        f"{rank_prefix}[{scope}][{sys_prefix}] {sys_node.name}"
-                    )
-            else:
-                sys_text = f"[{sys_prefix}] {sys_node.name}"
-
-            tolerance = self._coverage_tolerance_miles()
-            visible_groups: List[Tuple[GroupNode, List[FreqEntry], Dict[str, Any]]] = []
-            for g in sys_node.groups:
-                entries = [e for e in g.entries if self._entry_passes_button_filter(e)]
-                if not entries:
-                    continue
-                info = self._group_coverage_info(g, tolerance)
-                if apply_location and self._active_coords is not None:
-                    if info["status"] == "out_range":
-                        continue
-                visible_groups.append((g, entries, info))
-            if not visible_groups:
-                continue
-
-            if ranking_on:
-                visible_groups.sort(
-                    key=lambda item: (
-                        item[2]["distance"]
-                        if item[2].get("distance") is not None
-                        else float("inf")
-                    )
-                )
-
-            sys_id = self.tree.insert(
-                "", tk.END, text=sys_text, tags=("system",), open=False,
+            ordered.sort(
+                key=lambda item: item[1] if item[1] is not None else float("inf")
             )
-            self._tree_id_map[sys_id] = sys_node
+        return ordered
 
-            for grp, entries_to_show, info in visible_groups:
-                grp_text = grp.name
-                if apply_location and self._active_coords is not None and info["has_geo"]:
-                    if info["range_miles"] is not None:
-                        grp_text = (
-                            f"{grp.name}  "
-                            f"[{info['distance']:.1f} mi / {info['range_miles']:.1f} mi range]"
-                        )
-                    else:
-                        grp_text = f"{grp.name}  [{info['distance']:.1f} mi]"
-                tag_name = "group"
-                if apply_location and self._active_coords is not None:
-                    tag_name = {
-                        "in_range": "group_in_range",
-                        "nearby": "group_nearby",
-                        "out_range": "group_out_range",
-                        "no_geo": "group_no_geo",
-                    }.get(info["status"], "group")
-                grp_id = self.tree.insert(
-                    sys_id, tk.END, text=grp_text, tags=(tag_name,), open=False,
+    def _visible_groups_for_system(
+        self,
+        sys_node: SystemNode,
+        tolerance: float,
+        apply_location: bool,
+    ) -> List[Tuple[GroupNode, List[FreqEntry], Dict[str, Any]]]:
+        visible: List[Tuple[GroupNode, List[FreqEntry], Dict[str, Any]]] = []
+        for group in sys_node.groups:
+            entries = [e for e in group.entries if self._entry_passes_button_filter(e)]
+            if not entries:
+                continue
+            info = self._group_coverage_info(group, tolerance)
+            if apply_location and self._active_coords is not None:
+                if info["status"] == "out_range":
+                    continue
+            visible.append((group, entries, info))
+        return visible
+
+    def _insert_system_tree_branch(
+        self,
+        sys_node: SystemNode,
+        distance: Optional[float],
+        apply_location: bool,
+        ranking_on: bool,
+        rank: int,
+        tolerance: float,
+    ) -> None:
+        visible_groups = self._visible_groups_for_system(
+            sys_node, tolerance, apply_location
+        )
+        if not visible_groups:
+            return
+        if ranking_on:
+            visible_groups.sort(
+                key=lambda item: (
+                    item[2]["distance"]
+                    if item[2].get("distance") is not None
+                    else float("inf")
                 )
-                self._tree_id_map[grp_id] = grp
-
-                for entry in entries_to_show:
-                    self._insert_entry_item(grp_id, entry)
+            )
+        sys_text = system_tree_label(
+            sys_node,
+            apply_location=apply_location,
+            ranking_on=ranking_on,
+            rank=rank,
+            distance=distance,
+            scope_label_fn=self._system_scope_label,
+        )
+        sys_id = self.tree.insert(
+            "", tk.END, text=sys_text, tags=("system",), open=False,
+        )
+        self._tree_id_map[sys_id] = sys_node
+        has_coords = self._active_coords is not None
+        for group, entries_to_show, info in visible_groups:
+            grp_text = group_tree_label(
+                group, info, apply_location=apply_location, has_active_coords=has_coords
+            )
+            tag_name = "group"
+            if apply_location and has_coords:
+                tag_name = group_coverage_tree_tag(info["status"])
+            grp_id = self.tree.insert(
+                sys_id, tk.END, text=grp_text, tags=(tag_name,), open=False,
+            )
+            self._tree_id_map[grp_id] = group
+            for entry in entries_to_show:
+                self._insert_entry_item(grp_id, entry)
 
     def _group_coverage_info(self, group: GroupNode, tolerance: float) -> Dict[str, Any]:
         info: Dict[str, Any] = {
@@ -6936,12 +5596,12 @@ class ScannerManagerApp:
 
     def _on_export_scan_set(self):
         if not self.hpd.systems:
-            messagebox.showinfo("Export", "Load an HPD file first.")
+            messagebox.showinfo("Export", _LIT_LOAD_HPD_FIRST)
             return
         target = filedialog.asksaveasfilename(
             title="Export Effective Scan Set",
             defaultextension=".csv",
-            filetypes=[("CSV file", "*.csv"), ("Text file", "*.txt"), ("All Files", "*.*")],
+            filetypes=[("CSV file", "*.csv"), ("Text file", "*.txt"), (_LIT_ALL_FILES, "*.*")],
         )
         if not target:
             return
@@ -6978,63 +5638,68 @@ class ScannerManagerApp:
         for sys_node in self.hpd.systems:
             if apply_location and not self._system_matches_location(sys_node):
                 continue
-            scope = self._system_scope_label(sys_node) if apply_location else ""
-            sys_distance = ""
-            if self._active_coords is not None:
-                d = nearest_distance_miles(sys_node, self._active_coords[0], self._active_coords[1])
-                if d is not None:
-                    sys_distance = f"{d:.2f}"
-            for group in sys_node.groups:
-                # Group-level coverage info (distance/range) comes from the
-                # same helper the tree uses, so the CSV mirrors on-screen
-                # ranges rather than just system-nearest distance.
-                info = self._group_coverage_info(
-                    group, self._coverage_tolerance_miles()
+            yield from self._scan_rows_for_system(sys_node, apply_location)
+
+    def _scan_rows_for_system(self, sys_node: SystemNode, apply_location: bool):
+        scope = self._system_scope_label(sys_node) if apply_location else ""
+        sys_distance = self._system_distance_label(sys_node)
+        tolerance = self._coverage_tolerance_miles()
+        for group in sys_node.groups:
+            info = self._group_coverage_info(group, tolerance)
+            if apply_location and self._active_coords is not None:
+                if info["status"] == "out_range":
+                    continue
+            lat_s = "" if group.lat is None else f"{group.lat:.6f}"
+            lon_s = "" if group.lon is None else f"{group.lon:.6f}"
+            range_s = "" if not group.range_miles else f"{group.range_miles:.2f}"
+            distance_mi = sys_distance
+            if info.get("distance") is not None:
+                distance_mi = f"{info['distance']:.2f}"
+            for entry in group.entries:
+                if not self._entry_passes_button_filter(entry):
+                    continue
+                yield self._scan_row_for_entry(
+                    entry, sys_node, group, scope, lat_s, lon_s, range_s, distance_mi
                 )
-                if apply_location and self._active_coords is not None:
-                    if info["status"] == "out_range":
-                        continue
-                distance_mi = sys_distance
-                if info.get("distance") is not None:
-                    distance_mi = f"{info['distance']:.2f}"
-                lat_s = "" if group.lat is None else f"{group.lat:.6f}"
-                lon_s = "" if group.lon is None else f"{group.lon:.6f}"
-                range_s = "" if not group.range_miles else f"{group.range_miles:.2f}"
-                for entry in group.entries:
-                    if not self._entry_passes_button_filter(entry):
-                        continue
-                    rec = entry.record
-                    if entry.entry_type == "C-Freq":
-                        freq_hz = HpdFile._parse_int(rec.get_field(5, "0"))
-                        identity = f"{freq_hz / 1_000_000:.4f} MHz" if freq_hz else ""
-                        tone = rec.get_field(7, "")
-                    elif entry.entry_type == "TGID":
-                        identity = f"TGID {rec.get_field(5, '')}"
-                        tone = ""
-                    else:
-                        identity = ""
-                        tone = ""
-                    mode = rec.get_field(6, "")
-                    service_name = SERVICE_TYPES.get(
-                        entry.service_type, f"Type {entry.service_type}"
-                    )
-                    yield (
-                        scope,
-                        sys_node.name,
-                        sys_node.system_type,
-                        group.name,
-                        entry.entry_type,
-                        entry.name,
-                        identity,
-                        mode,
-                        tone,
-                        entry.service_type,
-                        service_name,
-                        lat_s,
-                        lon_s,
-                        range_s,
-                        distance_mi,
-                    )
+
+    def _system_distance_label(self, sys_node: SystemNode) -> str:
+        if self._active_coords is None:
+            return ""
+        d = nearest_distance_miles(sys_node, self._active_coords[0], self._active_coords[1])
+        return f"{d:.2f}" if d is not None else ""
+
+    def _scan_row_for_entry(
+        self,
+        entry: FreqEntry,
+        sys_node: SystemNode,
+        group: GroupNode,
+        scope: str,
+        lat_s: str,
+        lon_s: str,
+        range_s: str,
+        distance_mi: str,
+    ):
+        identity, mode, tone = entry_identity_display(entry, HpdFile._parse_int)
+        service_name = SERVICE_TYPES.get(
+            entry.service_type, f"Type {entry.service_type}"
+        )
+        return (
+            scope,
+            sys_node.name,
+            sys_node.system_type,
+            group.name,
+            entry.entry_type,
+            entry.name,
+            identity,
+            mode,
+            tone,
+            entry.service_type,
+            service_name,
+            lat_s,
+            lon_s,
+            range_s,
+            distance_mi,
+        )
 
     def _insert_entry_item(self, parent_id: str, entry: FreqEntry) -> str:
         rec = entry.record
@@ -7171,18 +5836,10 @@ class ScannerManagerApp:
         folder = (self._path_var.get() or "").strip()
         if not folder:
             folder = self._app_settings.get("sd_path", "") or ""
-        if not folder:
+        resolved = resolve_existing_folder(folder)
+        if resolved is None:
             return None
-        p = Path(folder)
-        if not p.exists():
-            return None
-        while p != p.parent and not p.anchor.rstrip("\\/") == str(p).rstrip("\\/"):
-            p = p.parent
-        try:
-            p.resolve()
-            return p
-        except Exception:
-            return None
+        return filesystem_space_root(resolved)
 
     def _refresh_sd_space(self):
         root = self._sd_space_root()
@@ -7355,12 +6012,12 @@ class ScannerManagerApp:
                 self._open_profile_snapshots(active["profile_id"])
                 return
         if not self.hpd.filepath:
-            messagebox.showinfo("Restore Session", "No HPD file loaded.")
+            messagebox.showinfo(_LIT_RESTORE_SESSION, "No HPD file loaded.")
             return
         snap = session_snapshot_path(self.hpd.filepath)
         if not snap.exists():
             messagebox.showinfo(
-                "Restore Session",
+                _LIT_RESTORE_SESSION,
                 "No session snapshot exists for this file. "
                 "A session snapshot is created automatically when a file is loaded.",
             )
@@ -7384,20 +6041,20 @@ class ScannerManagerApp:
             )
             self._refresh_sd_space()
         except Exception as exc:
-            messagebox.showerror("Restore Session", f"Restore failed:\n{exc}")
+            messagebox.showerror(_LIT_RESTORE_SESSION, f"Restore failed:\n{exc}")
 
     def _on_view_alerts(self):
         AlertsViewerDialog(self)
 
     def _on_coverage_heatmap(self):
         if not self.hpd.systems:
-            messagebox.showinfo("Coverage Heatmap", "Load an HPD file first.")
+            messagebox.showinfo(_LIT_COVERAGE_HEATMAP, _LIT_LOAD_HPD_FIRST)
             return
         CoverageHeatmapDialog(self)
 
     def _on_coverage_map(self):
         if not self.hpd.systems:
-            messagebox.showinfo("Coverage Map", "Load an HPD file first.")
+            messagebox.showinfo(_LIT_COVERAGE_MAP, _LIT_LOAD_HPD_FIRST)
             return
         CoverageMapDialog(self)
 
@@ -7554,13 +6211,13 @@ class ScannerManagerApp:
 
     def _on_bulk_remap(self):
         if not self.hpd.systems:
-            messagebox.showinfo("Bulk Remap", "Load an HPD file first.")
+            messagebox.showinfo(_LIT_BULK_REMAP, _LIT_LOAD_HPD_FIRST)
             return
         BulkRemapDialog(self)
 
     def _on_mode_band_audit(self):
         if not self.hpd.systems:
-            messagebox.showinfo("Audit", "Load an HPD file first.")
+            messagebox.showinfo("Audit", _LIT_LOAD_HPD_FIRST)
             return
         ModeBandAuditorDialog(self)
 
@@ -7738,7 +6395,7 @@ class RadioReferenceDiffDialog:
             parsed = fetch_radioreference_data(self.url)
         except Exception as exc:
             messagebox.showerror(
-                "Fetch Error", f"Could not fetch RadioReference page:\n{exc}",
+                _LIT_FETCH_ERROR, f"Could not fetch RadioReference page:\n{exc}",
                 parent=self.top,
             )
             self.summary_var.set("Fetch failed.")
@@ -7763,1066 +6420,157 @@ class RadioReferenceDiffDialog:
         self.app._refresh_group_from_rr(self.group, self.url)
 
     def _flatten_cfreq_rows(self) -> List[Dict[str, Any]]:
-        rows: List[Dict[str, Any]] = []
-        if not self.parsed:
-            return rows
-        if self.parsed.get("frequencies"):
-            rows.extend(self.parsed["frequencies"])
-        for cat in self.parsed.get("categories") or []:
-            for f in cat.get("frequencies") or []:
-                rows.append(f)
-        return rows
+        return flatten_rr_cfreq_rows(self.parsed)
 
     def _flatten_tg_rows(self) -> List[Dict[str, Any]]:
-        rows: List[Dict[str, Any]] = []
-        if not self.parsed:
-            return rows
-        for cat in self.parsed.get("categories") or []:
-            for tg in cat.get("talkgroups") or []:
-                rows.append(tg)
-        return rows
+        return flatten_rr_tg_rows(self.parsed)
 
     def _populate(self) -> None:
-        is_trunked_group = any(
-            e.entry_type == "TGID" for e in self.group.entries
-        )
-        rr_mode = "tgid" if (
-            is_trunked_group
-            or (self.parsed and self.parsed.get("kind") == "trs")
-        ) else "cfreq"
-
-        added = removed = changed = same = 0
+        rr_mode = rr_diff_mode(self.group, self.parsed)
         if rr_mode == "cfreq":
-            local_by_hz: Dict[int, FreqEntry] = {}
-            for e in self.group.entries:
-                if e.entry_type != "C-Freq":
-                    continue
-                try:
-                    hz = int(e.record.get_field(5, ""))
-                except ValueError:
-                    continue
-                local_by_hz[hz] = e
-            seen: Set[int] = set()
-            for rr in self._flatten_cfreq_rows():
-                try:
-                    hz = int(round(float(rr.get("mhz") or 0) * 1_000_000))
-                except Exception:
-                    continue
-                if hz <= 0:
-                    continue
-                seen.add(hz)
-                existing = local_by_hz.get(hz)
-                rr_name = rr.get("name") or rr.get("alpha") or ""
-                rr_mode_str = rr.get("mode") or ""
-                ident = f"{hz / 1_000_000:.4f} MHz"
-                if existing is None:
-                    self.tree.insert(
-                        "", tk.END,
-                        values=(self.STATUS_ADDED, ident, "",
-                                f"{rr_name} / {rr_mode_str}", "New on RR"),
-                        tags=("added",),
-                    )
-                    added += 1
-                else:
-                    changes = diff_cfreq_with_rr(
-                        existing.name,
-                        existing.record.get_field(6, ""),
-                        existing.record.get_field(7, ""),
-                        existing.service_type,
-                        rr_name,
-                        rr_mode_str,
-                        rr.get("tone") or "",
-                        rr.get("suggested_service_type")
-                        if isinstance(rr.get("suggested_service_type"), int) else None,
-                    )
-                    if changes:
-                        detail = ", ".join(
-                            f"{k}: {changes[k][0]!r}->{changes[k][1]!r}"
-                            for k in sorted(changes)
-                        )
-                        self.tree.insert(
-                            "", tk.END,
-                            values=(self.STATUS_CHANGED, ident,
-                                    f"{existing.name} / {existing.record.get_field(6, '')}",
-                                    f"{rr_name} / {rr_mode_str}",
-                                    detail),
-                            tags=("changed",),
-                        )
-                        changed += 1
-                    else:
-                        self.tree.insert(
-                            "", tk.END,
-                            values=(self.STATUS_SAME, ident,
-                                    existing.name, rr_name, ""),
-                            tags=("same",),
-                        )
-                        same += 1
-            for hz, e in local_by_hz.items():
-                if hz in seen:
-                    continue
-                self.tree.insert(
-                    "", tk.END,
-                    values=(self.STATUS_REMOVED, f"{hz / 1_000_000:.4f} MHz",
-                            e.name, "", "Missing on RR"),
-                    tags=("removed",),
-                )
-                removed += 1
+            counts = self._populate_cfreq_diff()
         else:
-            local_by_tgid: Dict[int, FreqEntry] = {}
-            for e in self.group.entries:
-                if e.entry_type != "TGID":
-                    continue
-                try:
-                    tgid = int(e.record.get_field(5, ""))
-                except ValueError:
-                    continue
-                local_by_tgid[tgid] = e
-            seen_tgids: Set[int] = set()
-            for rr in self._flatten_tg_rows():
-                try:
-                    tgid = int(rr.get("tgid") or 0)
-                except Exception:
-                    continue
-                if tgid <= 0:
-                    continue
-                seen_tgids.add(tgid)
-                existing = local_by_tgid.get(tgid)
-                rr_name = rr.get("name") or rr.get("alpha") or ""
-                rr_mode_str = rr.get("mode") or ""
-                ident = f"TGID {tgid}"
-                if existing is None:
-                    status = self.STATUS_ADDED
-                    detail = "Encrypted" if rr.get("encrypted") else "New on RR"
-                    self.tree.insert(
-                        "", tk.END,
-                        values=(status, ident, "",
-                                f"{rr_name} / {tgid_mode_label(rr_mode_str) or rr_mode_str}",
-                                detail),
-                        tags=("added",),
-                    )
-                    added += 1
-                else:
-                    changes = diff_tgid_with_rr(
-                        existing.name,
-                        existing.record.get_field(6, ""),
-                        existing.service_type,
-                        rr_name,
-                        rr_mode_str,
-                        rr.get("suggested_service_type")
-                        if isinstance(rr.get("suggested_service_type"), int) else None,
-                    )
-                    if changes:
-                        detail = ", ".join(
-                            f"{k}: {changes[k][0]!r}->{changes[k][1]!r}"
-                            for k in sorted(changes)
-                        )
-                        if rr.get("encrypted"):
-                            detail = f"[enc] {detail}"
-                        self.tree.insert(
-                            "", tk.END,
-                            values=(self.STATUS_CHANGED, ident,
-                                    f"{existing.name} / "
-                                    f"{tgid_mode_label(existing.record.get_field(6, '')) or ''}",
-                                    f"{rr_name} / "
-                                    f"{tgid_mode_label(rr_mode_str) or rr_mode_str}",
-                                    detail),
-                            tags=("changed",),
-                        )
-                        changed += 1
-                    else:
-                        self.tree.insert(
-                            "", tk.END,
-                            values=(self.STATUS_SAME, ident,
-                                    existing.name, rr_name, ""),
-                            tags=("same",),
-                        )
-                        same += 1
-            for tgid, e in local_by_tgid.items():
-                if tgid in seen_tgids:
-                    continue
-                self.tree.insert(
-                    "", tk.END,
-                    values=(self.STATUS_REMOVED, f"TGID {tgid}",
-                            e.name, "", "Missing on RR"),
-                    tags=("removed",),
-                )
-                removed += 1
-
+            counts = self._populate_tgid_diff()
         self.summary_var.set(
-            f"Diff: {added} added, {removed} removed, {changed} changed, {same} same"
+            f"Diff: {counts['added']} added, {counts['removed']} removed, "
+            f"{counts['changed']} changed, {counts['same']} same"
         )
 
-
-class ConventionalImportSelectionDialog:
-    """Select / reconcile conventional frequencies against RadioReference data."""
-
-    CHECK_ON = "\u2611"
-    CHECK_OFF = "\u2610"
-
-    def __init__(
-        self,
-        app: "ScannerManagerApp",
-        system: SystemNode,
-        parsed: Dict[str, Any],
-    ):
-        self.app = app
-        self.system = system
-        self.parsed = parsed
-        self.categories = parsed.get("categories") or []
-        self.result: List[Tuple[str, List[Dict[str, Any]]]] = []
-        self._item_meta: Dict[str, Dict[str, Any]] = {}
-
-        self.update_mode_var = tk.BooleanVar(value=True)
-        self.update_name_var = tk.BooleanVar(value=False)
-        self.update_tone_var = tk.BooleanVar(value=True)
-        self.update_service_var = tk.BooleanVar(value=False)
-
-        self._existing_by_freq: Dict[int, FreqEntry] = {}
-        for group in system.groups:
-            for entry in group.entries:
-                if entry.entry_type != "C-Freq":
-                    continue
-                try:
-                    freq_hz = int(entry.record.get_field(5, ""))
-                except ValueError:
-                    continue
-                if freq_hz <= 0:
-                    continue
-                self._existing_by_freq[freq_hz] = entry
-
-        self.top = tk.Toplevel(app.root)
-        self.top.title("Conventional Frequencies: Import / Reconcile")
-        self.top.transient(app.root)
-        self.top.geometry("1040x640")
-        self.top.grab_set()
-
-        header = ttk.Frame(self.top, padding=8)
-        header.pack(fill=tk.X)
-        source = parsed.get("title") or parsed.get("group_name") or "RadioReference"
-        ttk.Label(
-            header,
-            text=(
-                f"Source: {source}    Target system: '{system.name}'    "
-                "Click a row to toggle. Existing entries compared against RR."
-            ),
-            wraplength=1000, justify=tk.LEFT,
-        ).pack(side=tk.TOP, anchor=tk.W)
-
-        policy = ttk.Frame(self.top, padding=(8, 0, 8, 0))
-        policy.pack(fill=tk.X)
-        ttk.Label(policy, text="Update fields on existing entries:").pack(side=tk.LEFT)
-        ttk.Checkbutton(
-            policy, text="Mode", variable=self.update_mode_var,
-            command=self._on_policy_changed,
-        ).pack(side=tk.LEFT, padx=4)
-        ttk.Checkbutton(
-            policy, text="Tone", variable=self.update_tone_var,
-            command=self._on_policy_changed,
-        ).pack(side=tk.LEFT, padx=4)
-        ttk.Checkbutton(
-            policy, text="Name (may overwrite user edits)",
-            variable=self.update_name_var, command=self._on_policy_changed,
-        ).pack(side=tk.LEFT, padx=4)
-        ttk.Checkbutton(
-            policy, text="Service type (changes which scanner button plays this channel)",
-            variable=self.update_service_var, command=self._on_policy_changed,
-        ).pack(side=tk.LEFT, padx=4)
-
-        tools = ttk.Frame(self.top, padding=(8, 0, 8, 0))
-        tools.pack(fill=tk.X)
-        ttk.Button(tools, text="Select New + Updates", command=self._on_select_new_and_updates).pack(
-            side=tk.LEFT, padx=2
-        )
-        ttk.Button(tools, text="Select Updates Only", command=self._on_select_updates_only).pack(
-            side=tk.LEFT, padx=2
-        )
-        ttk.Button(tools, text="Select All", command=self._on_select_all).pack(side=tk.LEFT, padx=2)
-        ttk.Button(tools, text="Clear All", command=self._on_clear_all).pack(side=tk.LEFT, padx=2)
-        self.summary_var = tk.StringVar()
-        ttk.Label(tools, textvariable=self.summary_var, foreground="#333333").pack(side=tk.RIGHT)
-
-        tree_frame = ttk.Frame(self.top, padding=8)
-        tree_frame.pack(fill=tk.BOTH, expand=True)
-        columns = (
-            "check", "action", "freq", "name", "mode", "tone",
-            "tag", "service", "target_group", "crossref",
-        )
-        self.tree = ttk.Treeview(
-            tree_frame, columns=columns, show="tree headings", selectmode="browse"
-        )
-        self.tree.heading("#0", text="Category")
-        self.tree.column("#0", width=200, stretch=False)
-        for col, label, width, anchor in (
-            ("check", "", 34, tk.CENTER),
-            ("action", "Action", 160, tk.W),
-            ("freq", "Freq MHz", 90, tk.E),
-            ("name", "Name", 180, tk.W),
-            ("mode", "Mode", 60, tk.CENTER),
-            ("tone", "Tone", 110, tk.W),
-            ("tag", "Tag", 110, tk.W),
-            ("service", "Service", 110, tk.W),
-            ("target_group", "Target Group", 180, tk.W),
-            ("crossref", "Cross-ref", 200, tk.W),
-        ):
-            self.tree.heading(col, text=label)
-            self.tree.column(col, width=width, anchor=anchor)
-        self.tree.tag_configure("category", font=("TkDefaultFont", 9, "bold"))
-        self.tree.tag_configure("update_available", foreground="#b8860b")
-        self.tree.tag_configure("same", foreground="#808080")
-        self.tree.tag_configure("crossref_callsign", background="#eaf5ff")
-        self.tree.tag_configure("crossref_fuzzy", background="#fff8e1")
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        sb = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.tree.yview)
-        sb.pack(side=tk.LEFT, fill=tk.Y)
-        self.tree.configure(yscrollcommand=sb.set)
-        self.tree.bind("<Button-1>", self._on_click)
-
-        footer = ttk.Frame(self.top, padding=8)
-        footer.pack(fill=tk.X)
-        ttk.Button(footer, text="Import Selected", command=self._on_confirm).pack(side=tk.LEFT)
-        ttk.Button(footer, text="Cancel", command=self.top.destroy).pack(side=tk.RIGHT)
-
-        self._populate()
-        self._refresh_summary()
-        app.root.wait_window(self.top)
-
-    def _filter_changes_by_policy(
-        self, raw: Dict[str, Tuple[Any, Any]]
-    ) -> Dict[str, Tuple[Any, Any]]:
-        result: Dict[str, Tuple[Any, Any]] = {}
-        if self.update_mode_var.get() and "mode" in raw:
-            result["mode"] = raw["mode"]
-        if self.update_tone_var.get() and "tone" in raw:
-            result["tone"] = raw["tone"]
-        if self.update_name_var.get() and "name" in raw:
-            result["name"] = raw["name"]
-        if self.update_service_var.get() and "service_type" in raw:
-            result["service_type"] = raw["service_type"]
-        return result
-
-    def _target_group_name_for_existing(self, entry: FreqEntry) -> str:
-        for sys_node in self.app.hpd.systems:
-            for group in sys_node.groups:
-                if entry in group.entries:
-                    return group.name
-        return "(existing)"
-
-    def _populate(self):
-        self._crossref_counts = {"callsign": 0, "fuzzy": 0}
-        for cat in self.categories:
-            cat_name = cat.get("name") or "Imported"
-            cat_id = self.tree.insert(
-                "", tk.END, text=cat_name,
-                values=(self.CHECK_ON, "", "", "", "", "", "", "", "", ""),
-                tags=("category",), open=True,
-            )
-            self._item_meta[cat_id] = {"type": "category"}
-            for freq in cat.get("frequencies", []):
-                try:
-                    freq_hz = int(round(float(freq["mhz"]) * 1_000_000))
-                except Exception:
-                    continue
-                existing = self._existing_by_freq.get(freq_hz)
-                service = freq.get("suggested_service_type")
-                raw_changes: Dict[str, Tuple[Any, Any]] = {}
-                changes: Dict[str, Tuple[Any, Any]] = {}
-                action = "new"
-                if existing is not None:
-                    raw_changes = diff_cfreq_with_rr(
-                        existing.name,
-                        existing.record.get_field(6, ""),
-                        existing.record.get_field(7, ""),
-                        existing.service_type,
-                        freq.get("name") or freq.get("alpha") or "",
-                        freq.get("mode") or "",
-                        freq.get("tone") or "",
-                        service if isinstance(service, int) else None,
-                    )
-                    changes = self._filter_changes_by_policy(raw_changes)
-                    action = "update" if changes else "same"
-
-                if action == "new":
-                    checked = True
-                    action_text = "New"
-                    row_tags: Tuple[str, ...] = ()
-                elif action == "update":
-                    checked = True
-                    change_text = ", ".join(
-                        f"{k}: {changes[k][0]!r}→{changes[k][1]!r}" for k in sorted(changes)
-                    )
-                    action_text = f"Update ({change_text})"
-                    row_tags = ("update_available",)
-                else:
-                    checked = False
-                    action_text = "Same (skip)"
-                    row_tags = ("same",)
-
-                target_group = (
-                    self._target_group_name_for_existing(existing)
-                    if existing is not None else cat_name
-                )
-                service_text = service_label(service) if isinstance(service, int) else ""
-                hint = self.app.crossref_hint_for_rr_row(
-                    freq, fallback_name=cat_name
-                ) if existing is None else None
-                crossref_text = hint["label"] if hint else ""
-                if hint is not None:
-                    kind = hint.get("kind")
-                    if kind == "callsign":
-                        self._crossref_counts["callsign"] += 1
-                        row_tags = row_tags + ("crossref_callsign",)
-                    elif kind == "fuzzy":
-                        self._crossref_counts["fuzzy"] += 1
-                        row_tags = row_tags + ("crossref_fuzzy",)
-                iid = self.tree.insert(
-                    cat_id, tk.END, text="",
-                    values=(
-                        self.CHECK_ON if checked else self.CHECK_OFF,
-                        action_text,
-                        f"{freq['mhz']:.4f}",
-                        freq.get("name") or freq.get("alpha") or "",
-                        freq.get("mode") or "",
-                        freq.get("tone") or "",
-                        freq.get("tag", ""),
-                        service_text,
-                        target_group,
-                        crossref_text,
-                    ),
-                    tags=row_tags,
-                )
-                self._item_meta[iid] = {
-                    "type": "cfreq",
-                    "parent": cat_id,
-                    "data": freq,
-                    "freq_hz": freq_hz,
-                    "checked": checked,
-                    "action": action,
-                    "changes": changes,
-                    "raw_changes": raw_changes,
-                    "existing": existing,
-                    "crossref": hint,
-                }
-            self._refresh_category(cat_id)
-
-    def _refresh_category(self, cat_id: str):
-        children = self.tree.get_children(cat_id)
-        if not children:
-            self.tree.set(cat_id, "check", self.CHECK_OFF)
-            return
-        total = len(children)
-        checked = sum(1 for c in children if self._item_meta[c].get("checked"))
-        if checked == 0:
-            mark = self.CHECK_OFF
-        elif checked == total:
-            mark = self.CHECK_ON
-        else:
-            mark = "\u25A3"
-        self.tree.set(cat_id, "check", mark)
-
-    def _refresh_summary(self):
-        total = 0
-        new_sel = 0
-        update_sel = 0
-        updates_available = 0
-        for meta in self._item_meta.values():
-            if meta.get("type") != "cfreq":
-                continue
-            total += 1
-            if meta.get("action") == "update":
-                updates_available += 1
-            if meta.get("checked"):
-                if meta.get("action") == "new":
-                    new_sel += 1
-                elif meta.get("action") == "update":
-                    update_sel += 1
-        xref = getattr(self, "_crossref_counts", {"callsign": 0, "fuzzy": 0})
-        extra = ""
-        if xref["callsign"] or xref["fuzzy"]:
-            extra = f"   |  xref: {xref['callsign']} callsign, {xref['fuzzy']} fuzzy"
-        self.summary_var.set(
-            f"{total} frequencies; {new_sel} new, {update_sel}/{updates_available} updates"
-            + extra
-        )
-
-    def _toggle_cfreq(self, iid: str, value: Optional[bool] = None):
-        meta = self._item_meta[iid]
-        if meta.get("type") != "cfreq":
-            return
-        new_val = value if value is not None else not meta.get("checked", False)
-        meta["checked"] = new_val
-        self.tree.set(iid, "check", self.CHECK_ON if new_val else self.CHECK_OFF)
-        self._refresh_category(meta["parent"])
-        self._refresh_summary()
-
-    def _toggle_category(self, cat_id: str, value: Optional[bool] = None):
-        children = self.tree.get_children(cat_id)
-        if not children:
-            return
-        if value is None:
-            current = self.tree.set(cat_id, "check")
-            new_val = current != self.CHECK_ON
-        else:
-            new_val = value
-        for c in children:
-            self._toggle_cfreq(c, new_val)
-
-    def _on_click(self, event):
-        iid = self.tree.identify_row(event.y)
-        if not iid:
-            return
-        meta = self._item_meta.get(iid)
-        if not meta:
-            return
-        if meta.get("type") == "category":
-            self._toggle_category(iid)
-        else:
-            self._toggle_cfreq(iid)
-
-    def _on_select_all(self):
-        for iid, meta in self._item_meta.items():
-            if meta.get("type") == "cfreq":
-                self._toggle_cfreq(iid, True)
-
-    def _on_select_new_and_updates(self):
-        for iid, meta in self._item_meta.items():
-            if meta.get("type") != "cfreq":
-                continue
-            self._toggle_cfreq(iid, meta.get("action") in ("new", "update"))
-
-    def _on_select_updates_only(self):
-        for iid, meta in self._item_meta.items():
-            if meta.get("type") != "cfreq":
-                continue
-            self._toggle_cfreq(iid, meta.get("action") == "update")
-
-    def _on_clear_all(self):
-        for iid, meta in self._item_meta.items():
-            if meta.get("type") == "cfreq":
-                self._toggle_cfreq(iid, False)
-
-    def _on_policy_changed(self):
-        for iid in self.tree.get_children(""):
-            self.tree.delete(iid)
-        self._item_meta.clear()
-        self._populate()
-        self._refresh_summary()
-
-    def _on_confirm(self):
-        selection: List[Tuple[str, List[Dict[str, Any]]]] = []
-        new_count = 0
-        update_count = 0
-        for cat_id in self.tree.get_children(""):
-            cat_name = self.tree.item(cat_id, "text")
-            items: List[Dict[str, Any]] = []
-            for child in self.tree.get_children(cat_id):
-                meta = self._item_meta[child]
-                if not meta.get("checked"):
-                    continue
-                action = meta.get("action")
-                if action not in ("new", "update"):
-                    continue
-                payload = dict(meta["data"])
-                payload["__action__"] = action
-                payload["__changes__"] = meta.get("changes", {})
-                payload["__existing__"] = meta.get("existing")
-                payload["__freq_hz__"] = meta.get("freq_hz")
-                items.append(payload)
-                if action == "new":
-                    new_count += 1
-                elif action == "update":
-                    update_count += 1
-            if items:
-                selection.append((cat_name, items))
-        if not selection:
-            messagebox.showinfo("Import", "No frequencies selected.", parent=self.top)
-            return
-        if not messagebox.askyesno(
-            "Import Selected",
-            f"Add {new_count} new frequencies and update {update_count} existing "
-            f"frequencies in '{self.system.name}'?",
-            parent=self.top,
-        ):
-            return
-        self.result = selection
-        self.top.destroy()
-
-
-class TrunkedImportSelectionDialog:
-    """Dialog to review and check/uncheck talkgroups from a RadioReference trunk page."""
-
-    CHECK_ON = "\u2611"
-    CHECK_OFF = "\u2610"
-
-    def __init__(
-        self,
-        app: "ScannerManagerApp",
-        system: SystemNode,
-        parsed: Dict[str, Any],
-    ):
-        self.app = app
-        self.system = system
-        self.parsed = parsed
-        self.categories = parsed.get("categories") or []
-        self.result: List[Tuple[str, List[Dict[str, Any]]]] = []
-        self._item_meta: Dict[str, Dict[str, Any]] = {}
-
-        # Default: only overwrite "mode" on existing entries. Name and service_type
-        # are user customizations (reconciler-style): preserved unless opted in.
-        self.update_mode_var = tk.BooleanVar(value=True)
-        self.update_name_var = tk.BooleanVar(value=False)
-        self.update_service_var = tk.BooleanVar(value=False)
-        # Existing entries now reported as encrypted by RR are deleted from
-        # the HPD by default (they're unscannable). User can override to
-        # "skip" (leave as-is). We no longer offer an "avoid" path because
-        # the BT885 doesn't honor avoid bits across power cycles.
-        self.encrypted_policy_var = tk.StringVar(value="delete")
-        # New encrypted TGs are excluded from the import by default. The
-        # "force include" override is remembered per-system so users who
-        # do want them (e.g., they're testing their own decoder) don't have
-        # to tick the box every time.
-        sys_key = system.system_id or system.name or ""
-        include_map = app._app_settings.get("rr_import_include_encrypted") or {}
-        self.include_encrypted_var = tk.BooleanVar(
-            value=bool(include_map.get(sys_key, False))
-        )
-
-        self._existing_by_tgid: Dict[int, FreqEntry] = {}
-        for group in system.groups:
-            for entry in group.entries:
-                if entry.entry_type != "TGID":
-                    continue
-                try:
-                    tgid_val = int(entry.record.get_field(5, ""))
-                except ValueError:
-                    continue
-                self._existing_by_tgid[tgid_val] = entry
-
-        self.top = tk.Toplevel(app.root)
-        self.top.title("Select Talkgroups to Import")
-        self.top.transient(app.root)
-        self.top.geometry("1020x620")
-        self.top.grab_set()
-
-        header = ttk.Frame(self.top, padding=8)
-        header.pack(fill=tk.X)
-        system_name = parsed.get("system_name", "RadioReference Trunk System")
-        self.summary_var = tk.StringVar()
-        ttk.Label(
-            header,
-            text=(
-                f"Source: {system_name}    Target trunk: '{system.name}'    "
-                "Click a row to toggle. Encrypted talkgroups are skipped by "
-                "default - the BearTracker 885 can't play them."
-            ),
-            wraplength=980, justify=tk.LEFT,
-        ).pack(side=tk.TOP, anchor=tk.W)
-
-        policy = ttk.Frame(self.top, padding=(8, 0, 8, 0))
-        policy.pack(fill=tk.X)
-        ttk.Label(policy, text="Update fields on existing entries:").pack(side=tk.LEFT)
-        ttk.Checkbutton(
-            policy, text="Mode (lock ambiguous talkgroups to DIGITAL or ANALOG)",
-            variable=self.update_mode_var, command=self._on_policy_changed,
-        ).pack(side=tk.LEFT, padx=4)
-        ttk.Checkbutton(
-            policy, text="Name (may overwrite user edits)",
-            variable=self.update_name_var, command=self._on_policy_changed,
-        ).pack(side=tk.LEFT, padx=4)
-        ttk.Checkbutton(
-            policy, text="Service type (changes which scanner button plays this channel)",
-            variable=self.update_service_var, command=self._on_policy_changed,
-        ).pack(side=tk.LEFT, padx=4)
-
-        policy2 = ttk.Frame(self.top, padding=(8, 0, 8, 0))
-        policy2.pack(fill=tk.X)
-        ttk.Label(
-            policy2,
-            text="Existing talkgroups RadioReference now lists as encrypted:",
-        ).pack(side=tk.LEFT)
-        for label, value in (
-            ("Delete from HPD (default)", "delete"),
-            ("Skip (leave as-is)", "skip"),
-        ):
-            ttk.Radiobutton(
-                policy2, text=label, value=value,
-                variable=self.encrypted_policy_var,
-                command=self._on_policy_changed,
-            ).pack(side=tk.LEFT, padx=4)
-
-        policy3 = ttk.Frame(self.top, padding=(8, 0, 8, 0))
-        policy3.pack(fill=tk.X)
-        ttk.Checkbutton(
-            policy3,
-            text="Include encrypted talkgroups in new entries (not recommended)",
-            variable=self.include_encrypted_var,
-            command=self._on_policy_changed,
-        ).pack(side=tk.LEFT)
-
-        tools = ttk.Frame(self.top, padding=(8, 0, 8, 0))
-        tools.pack(fill=tk.X)
-        ttk.Button(tools, text="Select All Unencrypted", command=self._on_select_unencrypted).pack(
-            side=tk.LEFT, padx=2
-        )
-        ttk.Button(tools, text="Select Updates Only", command=self._on_select_updates_only).pack(
-            side=tk.LEFT, padx=2
-        )
-        ttk.Button(tools, text="Select All", command=self._on_select_all).pack(side=tk.LEFT, padx=2)
-        ttk.Button(tools, text="Clear All", command=self._on_clear_all).pack(side=tk.LEFT, padx=2)
-        ttk.Label(tools, textvariable=self.summary_var, foreground="#333333").pack(side=tk.RIGHT)
-
-        tree_frame = ttk.Frame(self.top, padding=8)
-        tree_frame.pack(fill=tk.BOTH, expand=True)
-        columns = ("check", "action", "tgid", "name", "mode", "tag", "service", "crossref")
-        self.tree = ttk.Treeview(
-            tree_frame, columns=columns, show="tree headings", selectmode="browse"
-        )
-        self.tree.heading("#0", text="Category")
-        self.tree.column("#0", width=220, stretch=False)
-        for col, label, width, anchor in (
-            ("check", "", 34, tk.CENTER),
-            ("action", "Action", 130, tk.W),
-            ("tgid", "TGID", 70, tk.E),
-            ("name", "Name", 260, tk.W),
-            ("mode", "Mode", 70, tk.CENTER),
-            ("tag", "Tag", 130, tk.W),
-            ("service", "Service", 130, tk.W),
-            ("crossref", "Cross-ref", 180, tk.W),
-        ):
-            self.tree.heading(col, text=label)
-            self.tree.column(col, width=width, anchor=anchor)
-        self.tree.tag_configure("encrypted", foreground="#b22222")
-        self.tree.tag_configure("encrypted_action", foreground="#8b0000", background="#fff5f5")
-        self.tree.tag_configure("category", font=("TkDefaultFont", 9, "bold"))
-        self.tree.tag_configure("update_available", foreground="#b8860b")
-        self.tree.tag_configure("same", foreground="#808080")
-        self.tree.tag_configure("crossref_callsign", background="#eaf5ff")
-        self.tree.tag_configure("crossref_fuzzy", background="#fff8e1")
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        sb = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.tree.yview)
-        sb.pack(side=tk.LEFT, fill=tk.Y)
-        self.tree.configure(yscrollcommand=sb.set)
-        self.tree.bind("<Button-1>", self._on_click)
-
-        footer = ttk.Frame(self.top, padding=8)
-        footer.pack(fill=tk.X)
-        ttk.Button(footer, text="Import Selected", command=self._on_confirm).pack(side=tk.LEFT)
-        ttk.Button(footer, text="Cancel", command=self.top.destroy).pack(side=tk.RIGHT)
-
-        self._populate()
-        self._refresh_summary()
-        app.root.wait_window(self.top)
-
-    def _populate(self):
-        self._crossref_counts = {"callsign": 0, "fuzzy": 0}
-        system_name_hint = (self.parsed.get("system_name") or "").strip()
-        for cat in self.categories:
-            cat_name = cat.get("name") or "Imported"
-            cat_id = self.tree.insert(
-                "", tk.END, text=cat_name, values=(self.CHECK_ON, "", "", "", "", "", "", ""),
-                tags=("category",), open=True,
-            )
-            self._item_meta[cat_id] = {"type": "category"}
-            for tg in cat.get("talkgroups", []):
-                # Show RR's raw token alongside the HPD label so the user sees
-                # e.g. "T → DIGITAL (D / T TDMA)" intent at a glance.
-                rr_raw = (tg.get("mode_raw") or "").strip()
-                hpd_mode = tg.get("mode") or ""
-                hpd_label = tgid_mode_label(hpd_mode) if hpd_mode else ""
-                if rr_raw and hpd_label:
-                    mode_text = f"{rr_raw} → {hpd_label}"
-                else:
-                    mode_text = hpd_label or rr_raw
-                if tg.get("encrypted"):
-                    mode_text = f"{mode_text} (enc)"
-                service = tg.get("suggested_service_type")
-                service_label_text = service_label(service) if isinstance(service, int) else ""
-
-                tgid_val = tg.get("tgid")
-                existing = self._existing_by_tgid.get(int(tgid_val)) if tgid_val else None
-                raw_changes: Dict[str, Tuple[Any, Any]] = {}
-                changes: Dict[str, Tuple[Any, Any]] = {}
-                if existing is not None:
-                    raw_changes = diff_tgid_with_rr(
-                        existing.name,
-                        existing.record.get_field(6, ""),
-                        existing.service_type,
-                        tg.get("name") or tg.get("alpha") or "",
-                        tg.get("mode") or "",
-                        service if isinstance(service, int) else None,
-                    )
-                    changes = self._filter_changes_by_policy(raw_changes)
-                action = classify_rr_tg_import_action(
-                    is_encrypted=bool(tg.get("encrypted")),
-                    has_existing=existing is not None,
-                    has_update_diff=bool(changes),
-                    encrypted_policy=self.encrypted_policy_var.get(),
-                    include_encrypted=self.include_encrypted_var.get(),
-                )
-
-                if action == "new":
-                    checked = True
-                    action_text = "New"
-                    row_tags: Tuple[str, ...] = ()
-                elif action == "update":
-                    checked = True
-                    change_keys = sorted(changes.keys())
-                    change_text = ", ".join(
-                        f"{k}: {changes[k][0]!r}→{changes[k][1]!r}" for k in change_keys
-                    )
-                    action_text = f"Update ({change_text})"
-                    row_tags = ("update_available",)
-                elif action == "same":
-                    checked = False
-                    action_text = "Same (skip)"
-                    row_tags = ("same",)
-                elif action == "delete_encrypted":
-                    checked = True
-                    action_text = "Encrypted - DELETE"
-                    row_tags = ("encrypted_action",)
-                elif action == "same_encrypted":
-                    checked = False
-                    action_text = "Encrypted (skip, leave as-is)"
-                    row_tags = ("encrypted",)
-                else:
-                    checked = False
-                    action_text = "Encrypted (skip)"
-                    row_tags = ("encrypted",)
-
-                hint = self.app.crossref_hint_for_rr_row(
-                    tg,
-                    fallback_name=cat_name or system_name_hint,
-                ) if existing is None else None
-                crossref_text = hint["label"] if hint else ""
-                if hint is not None:
-                    kind = hint.get("kind")
-                    if kind == "callsign":
-                        self._crossref_counts["callsign"] += 1
-                        row_tags = row_tags + ("crossref_callsign",)
-                    elif kind == "fuzzy":
-                        self._crossref_counts["fuzzy"] += 1
-                        row_tags = row_tags + ("crossref_fuzzy",)
-                iid = self.tree.insert(
-                    cat_id, tk.END, text="",
-                    values=(
-                        self.CHECK_ON if checked else self.CHECK_OFF,
-                        action_text,
-                        tg["tgid"],
-                        tg.get("name") or tg.get("alpha") or f"TGID {tg['tgid']}",
-                        mode_text,
-                        tg.get("tag", ""),
-                        service_label_text,
-                        crossref_text,
-                    ),
-                    tags=row_tags,
-                )
-                self._item_meta[iid] = {
-                    "type": "tg",
-                    "parent": cat_id,
-                    "data": tg,
-                    "checked": checked,
-                    "action": action,
-                    "changes": changes,
-                    "raw_changes": raw_changes,
-                    "existing": existing,
-                    "crossref": hint,
-                }
-            self._refresh_category(cat_id)
-
-    def _filter_changes_by_policy(
-        self, raw: Dict[str, Tuple[Any, Any]]
-    ) -> Dict[str, Tuple[Any, Any]]:
-        result: Dict[str, Tuple[Any, Any]] = {}
-        if self.update_mode_var.get() and "mode" in raw:
-            result["mode"] = raw["mode"]
-        if self.update_name_var.get() and "name" in raw:
-            result["name"] = raw["name"]
-        if self.update_service_var.get() and "service_type" in raw:
-            result["service_type"] = raw["service_type"]
-        return result
-
-    def _on_policy_changed(self):
-        # Rebuild the tree with the new policy applied to all rows.
-        for iid in self.tree.get_children(""):
-            self.tree.delete(iid)
-        self._item_meta.clear()
-        self._populate()
-        self._refresh_summary()
-
-    def _refresh_category(self, cat_id: str):
-        children = self.tree.get_children(cat_id)
-        if not children:
-            self.tree.set(cat_id, "check", self.CHECK_OFF)
-            return
-        total = len(children)
-        checked = sum(1 for c in children if self._item_meta[c].get("checked"))
-        if checked == 0:
-            mark = self.CHECK_OFF
-        elif checked == total:
-            mark = self.CHECK_ON
-        else:
-            mark = "\u25A3"
-        self.tree.set(cat_id, "check", mark)
-
-    def _refresh_summary(self):
-        total = 0
-        new_sel = 0
-        update_sel = 0
-        delete_sel = 0
-        encrypted = 0
-        updates_available = 0
-        for meta in self._item_meta.values():
-            if meta.get("type") != "tg":
-                continue
-            total += 1
-            if meta["data"].get("encrypted"):
-                encrypted += 1
-            if meta.get("action") == "update":
-                updates_available += 1
-            if meta.get("checked"):
-                action = meta.get("action")
-                if action == "new":
-                    new_sel += 1
-                elif action == "update":
-                    update_sel += 1
-                elif action == "delete_encrypted":
-                    delete_sel += 1
-        xref = getattr(self, "_crossref_counts", {"callsign": 0, "fuzzy": 0})
-        extra = ""
-        if xref["callsign"] or xref["fuzzy"]:
-            extra = f"   |  xref: {xref['callsign']} callsign, {xref['fuzzy']} fuzzy"
-        self.summary_var.set(
-            f"{total} talkgroups; {new_sel} new, {update_sel}/{updates_available} updates, "
-            f"{delete_sel} delete-encrypted, "
-            f"{encrypted} total encrypted"
-            + extra
-        )
-
-    def _toggle_tg(self, iid: str, value: Optional[bool] = None):
-        meta = self._item_meta[iid]
-        if meta.get("type") != "tg":
-            return
-        new_val = value if value is not None else not meta.get("checked", False)
-        meta["checked"] = new_val
-        self.tree.set(iid, "check", self.CHECK_ON if new_val else self.CHECK_OFF)
-        self._refresh_category(meta["parent"])
-        self._refresh_summary()
-
-    def _toggle_category(self, cat_id: str, value: Optional[bool] = None):
-        children = self.tree.get_children(cat_id)
-        if not children:
-            return
-        if value is None:
-            current = self.tree.set(cat_id, "check")
-            new_val = current != self.CHECK_ON
-        else:
-            new_val = value
-        for c in children:
-            self._toggle_tg(c, new_val)
-
-    def _on_click(self, event):
-        iid = self.tree.identify_row(event.y)
-        if not iid:
-            return
-        meta = self._item_meta.get(iid)
-        if not meta:
-            return
-        if meta.get("type") == "category":
-            self._toggle_category(iid)
-        else:
-            self._toggle_tg(iid)
-
-    def _on_select_all(self):
-        for iid, meta in self._item_meta.items():
-            if meta.get("type") == "tg":
-                self._toggle_tg(iid, True)
-
-    def _on_select_unencrypted(self):
-        for iid, meta in self._item_meta.items():
-            if meta.get("type") != "tg":
-                continue
-            if meta["data"].get("encrypted", False):
-                self._toggle_tg(iid, False)
-            elif meta.get("action") in ("new", "update"):
-                self._toggle_tg(iid, True)
-            else:
-                self._toggle_tg(iid, False)
-
-    def _on_select_updates_only(self):
-        for iid, meta in self._item_meta.items():
-            if meta.get("type") != "tg":
-                continue
-            if meta.get("action") == "update" and not meta["data"].get("encrypted", False):
-                self._toggle_tg(iid, True)
-            else:
-                self._toggle_tg(iid, False)
-
-    def _on_clear_all(self):
-        for iid, meta in self._item_meta.items():
-            if meta.get("type") == "tg":
-                self._toggle_tg(iid, False)
-
-    def _on_confirm(self):
-        selection: List[Tuple[str, List[Dict[str, Any]]]] = []
-        new_count = 0
-        update_count = 0
-        delete_count = 0
-        for cat_id in self.tree.get_children(""):
-            cat_name = self.tree.item(cat_id, "text")
-            items: List[Dict[str, Any]] = []
-            for child in self.tree.get_children(cat_id):
-                meta = self._item_meta[child]
-                if not meta.get("checked"):
-                    continue
-                action = meta.get("action")
-                if action not in ("new", "update", "delete_encrypted"):
-                    continue
-                payload = dict(meta["data"])
-                payload["__action__"] = action
-                payload["__changes__"] = meta.get("changes", {})
-                payload["__existing__"] = meta.get("existing")
-                items.append(payload)
-                if action == "new":
-                    new_count += 1
-                elif action == "update":
-                    update_count += 1
-                elif action == "delete_encrypted":
-                    delete_count += 1
-            if items:
-                selection.append((cat_name, items))
-        if not selection:
-            messagebox.showinfo(
-                "Import", "No talkgroups selected.", parent=self.top
-            )
-            return
-        summary_parts = []
-        if new_count:
-            summary_parts.append(f"{new_count} new")
-        if update_count:
-            summary_parts.append(f"{update_count} updates")
-        if delete_count:
-            summary_parts.append(f"{delete_count} DELETE encrypted")
-        prompt = (
-            "Proceed with:\n  " + "\n  ".join(summary_parts)
-            + f"\nunder '{self.system.name}'?"
-        )
-        if delete_count:
-            prompt += "\n\nDeletion is permanent once you Save."
-        if not messagebox.askyesno("Import Selected", prompt, parent=self.top):
-            return
-        # Persist the per-system "include encrypted" preference so the
-        # next import for the same system remembers the user's choice.
-        sys_key = self.system.system_id or self.system.name or ""
-        if sys_key:
-            include_map = self.app._app_settings.setdefault(
-                "rr_import_include_encrypted", {}
-            )
-            include_map[sys_key] = bool(self.include_encrypted_var.get())
+    def _populate_cfreq_diff(self) -> Dict[str, int]:
+        added = removed = changed = same = 0
+        local_by_hz = local_cfreq_by_hz(self.group)
+        seen: Set[int] = set()
+        for rr in self._flatten_cfreq_rows():
             try:
-                self.app._save_app_settings()
+                hz = int(round(float(rr.get("mhz") or 0) * 1_000_000))
             except Exception:
-                pass
-        self.result = selection
-        self.top.destroy()
+                continue
+            if hz <= 0:
+                continue
+            seen.add(hz)
+            existing = local_by_hz.get(hz)
+            rr_name = rr.get("name") or rr.get("alpha") or ""
+            rr_mode_str = rr.get("mode") or ""
+            ident = f"{hz / 1_000_000:.4f} MHz"
+            if existing is None:
+                self.tree.insert(
+                    "", tk.END,
+                    values=(self.STATUS_ADDED, ident, "",
+                            f"{rr_name} / {rr_mode_str}", "New on RR"),
+                    tags=("added",),
+                )
+                added += 1
+                continue
+            changes = diff_cfreq_with_rr(
+                existing.name,
+                existing.record.get_field(6, ""),
+                existing.record.get_field(7, ""),
+                existing.service_type,
+                rr_name,
+                rr_mode_str,
+                rr.get("tone") or "",
+                rr.get("suggested_service_type")
+                if isinstance(rr.get("suggested_service_type"), int) else None,
+            )
+            if changes:
+                self.tree.insert(
+                    "", tk.END,
+                    values=(self.STATUS_CHANGED, ident,
+                            f"{existing.name} / {existing.record.get_field(6, '')}",
+                            f"{rr_name} / {rr_mode_str}",
+                            changes_detail(changes)),
+                    tags=("changed",),
+                )
+                changed += 1
+            else:
+                self.tree.insert(
+                    "", tk.END,
+                    values=(self.STATUS_SAME, ident, existing.name, rr_name, ""),
+                    tags=("same",),
+                )
+                same += 1
+        for hz, entry in local_by_hz.items():
+            if hz in seen:
+                continue
+            self.tree.insert(
+                "", tk.END,
+                values=(self.STATUS_REMOVED, f"{hz / 1_000_000:.4f} MHz",
+                        entry.name, "", "Missing on RR"),
+                tags=("removed",),
+            )
+            removed += 1
+        return {"added": added, "removed": removed, "changed": changed, "same": same}
+
+    def _populate_tgid_diff(self) -> Dict[str, int]:
+        added = removed = changed = same = 0
+        local_by_tgid = local_tgid_by_id(self.group)
+        seen_tgids: Set[int] = set()
+        for rr in self._flatten_tg_rows():
+            try:
+                tgid = int(rr.get("tgid") or 0)
+            except Exception:
+                continue
+            if tgid <= 0:
+                continue
+            seen_tgids.add(tgid)
+            existing = local_by_tgid.get(tgid)
+            rr_name = rr.get("name") or rr.get("alpha") or ""
+            rr_mode_str = rr.get("mode") or ""
+            ident = f"TGID {tgid}"
+            if existing is None:
+                status = self.STATUS_ADDED
+                detail = "Encrypted" if rr.get("encrypted") else "New on RR"
+                self.tree.insert(
+                    "", tk.END,
+                    values=(status, ident, "",
+                            f"{rr_name} / {tgid_mode_label(rr_mode_str) or rr_mode_str}",
+                            detail),
+                    tags=("added",),
+                )
+                added += 1
+                continue
+            changes = diff_tgid_with_rr(
+                existing.name,
+                existing.record.get_field(6, ""),
+                existing.service_type,
+                rr_name,
+                rr_mode_str,
+                rr.get("suggested_service_type")
+                if isinstance(rr.get("suggested_service_type"), int) else None,
+            )
+            if changes:
+                detail = changes_detail(changes)
+                if rr.get("encrypted"):
+                    detail = f"[enc] {detail}"
+                self.tree.insert(
+                    "", tk.END,
+                    values=(self.STATUS_CHANGED, ident,
+                            f"{existing.name} / "
+                            f"{tgid_mode_label(existing.record.get_field(6, '')) or ''}",
+                            f"{rr_name} / "
+                            f"{tgid_mode_label(rr_mode_str) or rr_mode_str}",
+                            detail),
+                    tags=("changed",),
+                )
+                changed += 1
+            else:
+                self.tree.insert(
+                    "", tk.END,
+                    values=(self.STATUS_SAME, ident, existing.name, rr_name, ""),
+                    tags=("same",),
+                )
+                same += 1
+        for tgid, entry in local_by_tgid.items():
+            if tgid in seen_tgids:
+                continue
+            self.tree.insert(
+                "", tk.END,
+                values=(self.STATUS_REMOVED, f"TGID {tgid}",
+                        entry.name, "", "Missing on RR"),
+                tags=("removed",),
+            )
+            removed += 1
+        return {"added": added, "removed": removed, "changed": changed, "same": same}
 
 
 class ModeBandAuditorDialog:
@@ -9047,7 +6795,7 @@ class BulkRemapDialog:
     def __init__(self, app: "ScannerManagerApp"):
         self.app = app
         self.top = tk.Toplevel(app.root)
-        self.top.title("Bulk Remap")
+        self.top.title(_LIT_BULK_REMAP)
         self.top.transient(app.root)
         self.top.geometry("680x520")
 
@@ -9175,13 +6923,13 @@ class BulkRemapDialog:
     def _on_apply(self):
         candidates = self._iter_candidates()
         if not candidates:
-            messagebox.showinfo("Bulk Remap", "No entries match the filter.", parent=self.top)
+            messagebox.showinfo(_LIT_BULK_REMAP, "No entries match the filter.", parent=self.top)
             return
         action = self.action_var.get()
         if action == "remap":
             stype_str = self.new_service_var.get()
             if not stype_str:
-                messagebox.showwarning("Bulk Remap", "Pick a service type first.", parent=self.top)
+                messagebox.showwarning(_LIT_BULK_REMAP, "Pick a service type first.", parent=self.top)
                 return
             new_type = int(stype_str.split(" - ")[0])
             desc = f"remap service type to {service_label(new_type)}"
@@ -9189,7 +6937,7 @@ class BulkRemapDialog:
             return
 
         if not messagebox.askyesno(
-            "Bulk Remap",
+            _LIT_BULK_REMAP,
             f"Apply '{desc}' to {len(candidates)} entries?",
             parent=self.top,
         ):
@@ -9266,7 +7014,7 @@ class AlertsViewerDialog:
         self.file_tree = ttk.Treeview(
             left,
             columns=("name", "size", "modified"),
-            show="tree headings",
+            show=_LIT_TREE_HEADINGS,
             selectmode="browse",
         )
         self.file_tree.heading("name", text="File")
@@ -9277,7 +7025,7 @@ class AlertsViewerDialog:
         self.file_tree.column("size", width=80, anchor=tk.E)
         self.file_tree.column("modified", width=160)
         self.file_tree.pack(fill=tk.BOTH, expand=True)
-        self.file_tree.bind("<<TreeviewSelect>>", self._on_select)
+        self.file_tree.bind(_LIT_TREEVIEW_SELECT, self._on_select)
 
         right = ttk.Frame(paned)
         paned.add(right, weight=2)
@@ -9386,7 +7134,7 @@ class AlertsViewerDialog:
         target = filedialog.asksaveasfilename(
             title="Export Alert File",
             initialfile=path.name,
-            filetypes=[("All Files", "*.*")],
+            filetypes=[(_LIT_ALL_FILES, "*.*")],
         )
         if not target:
             return
@@ -9443,7 +7191,7 @@ class TowerClusterDialog:
         tree = ttk.Treeview(
             body,
             columns=("detail",),
-            show="tree headings",
+            show=_LIT_TREE_HEADINGS,
             selectmode="browse",
         )
         tree.heading("#0", text="System / group")
@@ -9484,670 +7232,6 @@ class TowerClusterDialog:
                 )
 
 
-class CoverageHeatmapDialog:
-    """Coverage heatmap overlaid on real-world map tiles.
-
-    Each group/site with ``lat``/``lon``/``range_miles`` contributes a
-    coverage circle; overlapping circles raise the intensity of the
-    underlying grid cell. The grid is then drawn as a stack of small
-    filled polygons on top of an OSM / Google tile layer so the user can
-    see *where* the hotspots sit relative to real geography.
-
-    If ``tkintermapview`` is not installed, the dialog falls back to the
-    legacy pure-Tk canvas renderer so headless installs still work.
-    """
-
-    DEFAULT_SPAN_MI = 50.0
-    DEFAULT_GRID = 36
-    HEAT_BUCKETS = 6
-    LEGACY_GRID = 200
-
-    def __init__(self, app: "ScannerManagerApp"):
-        self.app = app
-        if app._active_coords is None:
-            messagebox.showinfo(
-                "Coverage Heatmap",
-                "Apply a ZIP or City location filter first so the heatmap "
-                "has a center point.",
-            )
-            return
-        self.center_lat, self.center_lon = app._active_coords
-        self._tile_mode = coverage_maps.have_map_support()
-        self._map_module = None
-        if self._tile_mode:
-            try:
-                import tkintermapview  # type: ignore
-
-                self._map_module = tkintermapview
-            except Exception:
-                self._tile_mode = False
-
-        self.top = tk.Toplevel(app.root)
-        self.top.title("Coverage Heatmap")
-        self.top.transient(app.root)
-        if self._tile_mode:
-            self.top.geometry("900x700")
-
-        header = ttk.Frame(self.top, padding=(8, 8, 8, 4))
-        header.pack(fill=tk.X)
-        ttk.Label(
-            header,
-            text=(
-                f"Center: {self.center_lat:.4f}, {self.center_lon:.4f}    "
-                "Span (mi):"
-            ),
-        ).pack(side=tk.LEFT)
-        self.span_var = tk.StringVar(value=str(int(self.DEFAULT_SPAN_MI)))
-        entry = ttk.Entry(header, textvariable=self.span_var, width=6)
-        entry.pack(side=tk.LEFT, padx=4)
-        entry.bind("<Return>", lambda _e: self._render())
-        entry.bind("<FocusOut>", lambda _e: self._render())
-
-        if self._tile_mode:
-            ttk.Label(header, text="Tile server:").pack(side=tk.LEFT, padx=(10, 2))
-            self.tile_var = tk.StringVar(value="OpenStreetMap")
-            tile_cb = ttk.Combobox(
-                header,
-                textvariable=self.tile_var,
-                width=22,
-                state="readonly",
-                values=tuple(coverage_maps.tile_provider_labels()),
-            )
-            tile_cb.pack(side=tk.LEFT)
-            tile_cb.bind(
-                "<<ComboboxSelected>>",
-                lambda _e: coverage_maps.apply_tile_server(
-                    self.map, self.tile_var.get()
-                ),
-            )
-
-            self.markers_var = tk.BooleanVar(value=True)
-            ttk.Checkbutton(
-                header,
-                text="Show tower markers",
-                variable=self.markers_var,
-                command=self._render,
-            ).pack(side=tk.LEFT, padx=8)
-
-            self.circles_var = tk.BooleanVar(value=False)
-            ttk.Checkbutton(
-                header,
-                text="Show coverage circles",
-                variable=self.circles_var,
-                command=self._render,
-            ).pack(side=tk.LEFT, padx=8)
-
-        ttk.Button(header, text="Render", command=self._render).pack(
-            side=tk.LEFT, padx=4
-        )
-        ttk.Button(header, text="Close", command=self.top.destroy).pack(
-            side=tk.RIGHT
-        )
-
-        if self._tile_mode:
-            # Second row: scanner button simulation + deleted-tower toggle.
-            # Defaults mirror whatever the main app currently has selected,
-            # so the heatmap opens showing "what the scanner sees" rather
-            # than dumping every raw tower on the user.
-            filters = ttk.Frame(self.top, padding=(8, 0, 8, 4))
-            filters.pack(fill=tk.X)
-            ttk.Label(filters, text="Scanner buttons:").pack(side=tk.LEFT)
-            self.btn_police = tk.BooleanVar(
-                value=bool(app._button_police.get())
-            )
-            self.btn_fire = tk.BooleanVar(value=bool(app._button_fire.get()))
-            self.btn_ems = tk.BooleanVar(value=bool(app._button_ems.get()))
-            self.btn_dot = tk.BooleanVar(value=bool(app._button_dot.get()))
-            self.btn_multi = tk.BooleanVar(
-                value=bool(app._button_multi.get())
-            )
-            self.btn_others = tk.BooleanVar(
-                value=bool(app._include_others.get())
-            )
-            for label, var in (
-                ("Police", self.btn_police),
-                ("Fire", self.btn_fire),
-                ("EMS", self.btn_ems),
-                ("DOT", self.btn_dot),
-                ("Multi (1/14)", self.btn_multi),
-                ("Other types", self.btn_others),
-            ):
-                ttk.Checkbutton(
-                    filters, text=label, variable=var, command=self._render
-                ).pack(side=tk.LEFT, padx=2)
-
-            # Deleted-tower visibility: off by default so the heatmap
-            # matches the live SD card. Turn on to see grayed-out ghosts
-            # of towers the user removed since the last baseline.
-            self.show_deleted_var = tk.BooleanVar(value=False)
-            ttk.Checkbutton(
-                filters,
-                text="Show removed towers (grayed)",
-                variable=self.show_deleted_var,
-                command=self._render,
-            ).pack(side=tk.LEFT, padx=(12, 2))
-
-        body = ttk.Frame(self.top)
-        body.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
-
-        if self._tile_mode:
-            self.map = self._map_module.TkinterMapView(
-                body, width=880, height=600, corner_radius=0
-            )
-            self.map.pack(fill=tk.BOTH, expand=True)
-            coverage_maps.apply_tile_server(self.map, "OpenStreetMap")
-            self.map.set_position(self.center_lat, self.center_lon)
-            self.map.set_zoom(9)
-            self._heat_polygons: List[Any] = []
-            self._coverage_polygons: List[Any] = []
-            self._markers: List[Any] = []
-        else:
-            ttk.Label(
-                body,
-                text=(
-                    "Install the optional 'tkintermapview' package to see the "
-                    "heatmap on real map tiles (pip install tkintermapview)."
-                ),
-                foreground="#888888",
-                wraplength=520,
-            ).pack(anchor=tk.W, pady=(0, 4))
-            self.canvas = tk.Canvas(
-                body,
-                width=self.LEGACY_GRID,
-                height=self.LEGACY_GRID,
-                background="#101010",
-                highlightthickness=0,
-            )
-            self.canvas.pack()
-
-        self.legend = ttk.Label(self.top, text="", padding=(8, 0, 8, 8))
-        self.legend.pack(fill=tk.X)
-
-        self._render()
-
-    def _iter_coverage_circles(self):
-        for (lat, lon, rng, _label) in coverage_maps.iter_coverage_circles(
-            self.app.hpd.systems
-        ):
-            yield lat, lon, rng
-
-    def _render(self):
-        try:
-            span = float(self.span_var.get())
-        except ValueError:
-            span = self.DEFAULT_SPAN_MI
-        span = max(5.0, min(span, 500.0))
-
-        circles = list(coverage_maps.iter_coverage_circles(self.app.hpd.systems))
-        if not circles:
-            self.legend.configure(text="No group/site has lat/lon + range.")
-            if self._tile_mode:
-                self._clear_overlays()
-            else:
-                self.canvas.delete("all")
-                self.canvas.create_text(
-                    self.LEGACY_GRID / 2,
-                    self.LEGACY_GRID / 2,
-                    text="No geo data",
-                    fill="#888888",
-                )
-            return
-
-        if self._tile_mode:
-            self._render_tiles(circles, span)
-        else:
-            self._render_canvas(circles, span)
-
-    def _clear_overlays(self) -> None:
-        for poly in getattr(self, "_heat_polygons", []):
-            try:
-                poly.delete()
-            except Exception:
-                pass
-        self._heat_polygons = []
-        for poly in getattr(self, "_coverage_polygons", []):
-            try:
-                poly.delete()
-            except Exception:
-                pass
-        self._coverage_polygons = []
-        for marker in getattr(self, "_markers", []):
-            try:
-                marker.delete()
-            except Exception:
-                pass
-        self._markers = []
-
-    def _session_snapshot_path(self) -> Optional[str]:
-        """Path to the session-snapshot copy of the currently-loaded HPD,
-        if one exists on disk. Used by the comprehensive deleted-tower
-        diff so the heatmap can tell the difference between "was there
-        at load time and removed since" vs "never existed"."""
-        hpd_path = getattr(self.app.hpd, "filepath", None)
-        if not hpd_path:
-            return None
-        try:
-            snap = session_snapshot_path(hpd_path)
-        except Exception:
-            return None
-        try:
-            if not snap.exists():
-                return None
-        except Exception:
-            return None
-        return str(snap)
-
-    def _active_button_types(self) -> Set[int]:
-        active: Set[int] = set()
-        if getattr(self, "btn_police", None) and self.btn_police.get():
-            active.add(2)
-        if getattr(self, "btn_fire", None) and self.btn_fire.get():
-            active.add(3)
-        if getattr(self, "btn_ems", None) and self.btn_ems.get():
-            active.add(4)
-        if getattr(self, "btn_dot", None) and self.btn_dot.get():
-            active.add(14)
-        if getattr(self, "btn_multi", None) and self.btn_multi.get():
-            active.add(1)
-        return active
-
-    def _render_tiles(self, circles, span: float) -> None:
-        self._clear_overlays()
-
-        # Build the full cluster list first, so both the heat grid and
-        # the marker/circle overlays use the exact same "in-scope" set.
-        # This is what lets the Span box actually reduce the number of
-        # tower icons the user sees (previously it only affected the
-        # heat grid).
-        include_deleted = bool(
-            getattr(self, "show_deleted_var", tk.BooleanVar(value=False)).get()
-        )
-        all_clusters = coverage_maps.cluster_tower_points(
-            self.app.hpd.systems,
-            metastore=getattr(self.app, "_meta", None),
-            include_deleted=include_deleted,
-            session_snapshot_path=self._session_snapshot_path(),
-        )
-        active_buttons = self._active_button_types()
-        include_others = bool(
-            getattr(self, "btn_others", tk.BooleanVar(value=True)).get()
-        )
-        scannable = set(ACTIVE_PROFILE.scannable_service_types())
-        filtered_clusters = [
-            c
-            for c in all_clusters
-            if coverage_maps.cluster_passes_button_filter(
-                c, active_buttons, include_others, scannable
-            )
-        ]
-        span_clusters = coverage_maps.clusters_within_span(
-            filtered_clusters, self.center_lat, self.center_lon, span
-        )
-
-        live_clusters = [c for c in span_clusters if not c.deleted]
-        deleted_clusters = [c for c in span_clusters if c.deleted]
-
-        # The heat grid only ever reflects *live* coverage; deleted
-        # towers are annotations, not part of what the scanner will
-        # actually scan tonight.
-        heat_source = []
-        for c in live_clusters:
-            for m in c.members:
-                heat_source.append((c.lat, c.lon, m.range_mi))
-
-        result = coverage_maps.heat_cells(
-            heat_source,
-            self.center_lat,
-            self.center_lon,
-            span,
-            grid=self.DEFAULT_GRID,
-        )
-        rectangles: List[coverage_maps.HeatRectangle] = []
-        if result.max_count > 0:
-            rectangles = coverage_maps.heat_rectangles(
-                result, buckets=self.HEAT_BUCKETS
-            )
-            for rect in rectangles:
-                pts = coverage_maps.rectangle_polygon(
-                    rect,
-                    self.center_lat,
-                    self.center_lon,
-                    span,
-                    result.grid,
-                )
-                try:
-                    poly = self.map.set_polygon(
-                        pts,
-                        outline_color=rect.color,
-                        fill_color=rect.color,
-                        border_width=0,
-                    )
-                    self._heat_polygons.append(poly)
-                except Exception:
-                    pass
-
-        # Per-tower coverage circles (optional - off by default since
-        # they clutter the view when there are many towers).
-        if (
-            getattr(self, "circles_var", None)
-            and self.circles_var.get()
-        ):
-            self._draw_coverage_circles(live_clusters, deleted=False)
-            if include_deleted:
-                self._draw_coverage_circles(deleted_clusters, deleted=True)
-
-        try:
-            you_marker = self.map.set_marker(
-                self.center_lat,
-                self.center_lon,
-                text="(you)",
-                marker_color_circle="red",
-            )
-            self._markers.append(you_marker)
-        except Exception:
-            pass
-        if getattr(self, "markers_var", None) and self.markers_var.get():
-            self._add_cluster_markers(live_clusters, deleted=False)
-            if include_deleted:
-                self._add_cluster_markers(deleted_clusters, deleted=True)
-
-        live_member_count = sum(c.size for c in live_clusters)
-        deleted_note = ""
-        if include_deleted:
-            deleted_note = (
-                f"    {len(deleted_clusters)} removed tower"
-                f"{'s' if len(deleted_clusters) != 1 else ''} shown in gray"
-            )
-        if result.max_count == 0:
-            self.legend.configure(
-                text=(
-                    "No coverage circles intersect this span. "
-                    f"{len(live_clusters)} tower(s) within +/-{span:.0f} mi."
-                    + deleted_note
-                )
-            )
-            return
-        self.legend.configure(
-            text=(
-                f"{result.circles_considered} coverage circles across "
-                f"{len(live_clusters)} tower site(s) "
-                f"({live_member_count} groups), "
-                f"{len(rectangles)} heat rectangles. "
-                f"Brightest = {result.max_count} overlapping systems. "
-                f"Span = {span:.0f} mi."
-                + deleted_note
-            )
-        )
-
-    def _draw_coverage_circles(
-        self,
-        clusters: List["coverage_maps.TowerCluster"],
-        *,
-        deleted: bool,
-    ) -> None:
-        """Outline each cluster's advertised coverage radius.
-
-        Deleted towers render in a muted gray so the user can see what
-        they've removed against the active footprint without the two
-        sets visually fighting each other.
-        """
-        if deleted:
-            outline = "#888888"
-            fill = "#cccccc"
-        else:
-            outline = "#0a84ff"
-            fill = "#0a84ff"
-        for cluster in clusters:
-            radius = cluster.max_range_mi
-            if not radius or radius <= 0:
-                continue
-            try:
-                pts = coverage_maps.miles_circle_polygon(
-                    cluster.lat, cluster.lon, float(radius), sides=48
-                )
-                poly = self.map.set_polygon(
-                    pts,
-                    outline_color=outline,
-                    fill_color=fill,
-                    border_width=1,
-                )
-                self._coverage_polygons.append(poly)
-            except Exception:
-                pass
-
-    def _add_cluster_markers(
-        self,
-        clusters: List["coverage_maps.TowerCluster"],
-        *,
-        deleted: bool = False,
-    ) -> None:
-        """Drop one map marker per unique tower location.
-
-        Co-located repeaters collapse into a single marker; the user
-        clicks through to :class:`TowerClusterDialog` to see the full
-        list of systems / groups at that site. Removed towers use a
-        gray marker circle so they read as "ghosts" on top of the live
-        heat.
-        """
-        for cluster in clusters:
-            label = cluster.short_label()
-            try:
-                kwargs: Dict[str, Any] = dict(
-                    text=label,
-                    command=self._make_cluster_click_handler(cluster),
-                )
-                if deleted:
-                    kwargs["marker_color_circle"] = "#888888"
-                    kwargs["marker_color_outside"] = "#bdbdbd"
-                    kwargs["text_color"] = "#707070"
-                marker = self.map.set_marker(
-                    cluster.lat, cluster.lon, **kwargs
-                )
-                self._markers.append(marker)
-            except Exception:
-                pass
-
-    def _make_cluster_click_handler(
-        self, cluster: "coverage_maps.TowerCluster"
-    ):
-        def _open(_marker=None, _cluster=cluster):
-            TowerClusterDialog(self.top, _cluster)
-        return _open
-
-    def _render_canvas(self, circles, span: float) -> None:
-        grid = self.LEGACY_GRID
-        result = coverage_maps.heat_cells(
-            ((lat, lon, rng) for (lat, lon, rng, _l) in circles),
-            self.center_lat,
-            self.center_lon,
-            span,
-            grid=grid,
-        )
-        self.canvas.delete("all")
-        if result.max_count == 0:
-            self.canvas.create_text(
-                grid / 2,
-                grid / 2,
-                text="(no coverage overlaps this span)",
-                fill="#888888",
-            )
-            self.legend.configure(
-                text="No coverage circles intersect this span."
-            )
-            return
-        img = tk.PhotoImage(width=grid, height=grid)
-        self._img = img
-        for r in range(grid):
-            row_colors: List[str] = []
-            for c in range(grid):
-                n = result.counts[r][c]
-                if n == 0:
-                    row_colors.append("#101010")
-                else:
-                    row_colors.append(
-                        coverage_maps.heat_color(n / result.max_count)
-                    )
-            img.put("{" + " ".join(row_colors) + "}", to=(0, r))
-        self.canvas.create_image(0, 0, anchor=tk.NW, image=img)
-        half_px = grid // 2
-        self.canvas.create_line(
-            half_px - 6, half_px, half_px + 6, half_px, fill="#ffffff"
-        )
-        self.canvas.create_line(
-            half_px, half_px - 6, half_px, half_px + 6, fill="#ffffff"
-        )
-        self.legend.configure(
-            text=(
-                f"{result.circles_considered} coverage circles — "
-                f"darkest = no overlap, brightest = {result.max_count} "
-                f"overlapping systems. Span = {span:.0f} mi on each axis."
-            )
-        )
-
-
-class CoverageMapDialog:
-    """Real-tile coverage map built on tkintermapview.
-
-    Optional: requires ``tkintermapview`` to be installed. The host will
-    pull tiles from OpenStreetMap by default; each group/site with
-    ``lat``/``lon``/``range_miles`` data is drawn as a circle (polygon
-    approximation) plus a labeled marker.
-    """
-
-    def __init__(self, app: "ScannerManagerApp"):
-        self.app = app
-        try:
-            import tkintermapview  # type: ignore
-        except Exception:
-            messagebox.showinfo(
-                "Coverage Map",
-                "Install the optional 'tkintermapview' package to use this "
-                "view (pip install tkintermapview). The pure-Python "
-                "'Heatmap...' dialog works without any extra dependency.",
-            )
-            return
-
-        self.top = tk.Toplevel(app.root)
-        self.top.title("Coverage Map")
-        self.top.transient(app.root)
-        self.top.geometry("900x650")
-
-        header = ttk.Frame(self.top, padding=6)
-        header.pack(fill=tk.X)
-        ttk.Label(header, text="Tile server:").pack(side=tk.LEFT)
-        self.tile_var = tk.StringVar(value="OpenStreetMap")
-        tile_cb = ttk.Combobox(
-            header, textvariable=self.tile_var, width=24, state="readonly",
-            values=tuple(coverage_maps.tile_provider_labels()),
-        )
-        tile_cb.pack(side=tk.LEFT, padx=4)
-        tile_cb.bind("<<ComboboxSelected>>", lambda _e: self._apply_tile())
-        ttk.Button(header, text="Refresh", command=self._redraw).pack(
-            side=tk.LEFT, padx=6
-        )
-        ttk.Button(header, text="Close", command=self.top.destroy).pack(
-            side=tk.RIGHT
-        )
-
-        self._map_module = tkintermapview
-        self.map = tkintermapview.TkinterMapView(
-            self.top, width=880, height=580, corner_radius=0
-        )
-        self.map.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
-        # The widget's constructor picks an uncustomised default tile URL;
-        # explicitly apply our chosen provider so what the combobox says
-        # matches what the user actually sees.
-        self._apply_tile()
-
-        center = self._pick_center()
-        self.map.set_position(center[0], center[1])
-        self.map.set_zoom(8)
-
-        self._polygons: List = []
-        self._markers: List = []
-        self._redraw()
-
-    def _pick_center(self) -> Tuple[float, float]:
-        candidates: List[Tuple[Optional[float], Optional[float]]] = []
-        for sys_node in self.app.hpd.systems:
-            for site in sys_node.sites:
-                candidates.append((site.lat, site.lon))
-            for group in sys_node.groups:
-                candidates.append((group.lat, group.lon))
-        return coverage_maps.pick_default_center(
-            self.app._active_coords, candidates
-        )
-
-    def _apply_tile(self):
-        coverage_maps.apply_tile_server(self.map, self.tile_var.get())
-
-    @staticmethod
-    def _circle_points(
-        lat: float, lon: float, range_miles: float, sides: int = 48
-    ) -> List[Tuple[float, float]]:
-        return coverage_maps.miles_circle_polygon(
-            lat, lon, float(range_miles), sides=sides
-        )
-
-    def _redraw(self):
-        for p in self._polygons:
-            try:
-                p.delete()
-            except Exception:
-                pass
-        for m in self._markers:
-            try:
-                m.delete()
-            except Exception:
-                pass
-        self._polygons.clear()
-        self._markers.clear()
-
-        clusters = coverage_maps.cluster_tower_points(self.app.hpd.systems)
-        drawn = 0
-        for cluster in clusters:
-            radius = cluster.max_range_mi
-            if radius and radius > 0:
-                pts = self._circle_points(cluster.lat, cluster.lon, float(radius))
-                poly = self.map.set_polygon(
-                    pts,
-                    outline_color="#0a84ff",
-                    fill_color="#0a84ff",
-                    border_width=1,
-                )
-                # tkintermapview polygons default to ~40% opacity fill.
-                self._polygons.append(poly)
-            try:
-                marker = self.map.set_marker(
-                    cluster.lat,
-                    cluster.lon,
-                    text=cluster.short_label(),
-                    command=self._make_cluster_click_handler(cluster),
-                )
-                self._markers.append(marker)
-            except Exception:
-                pass
-            drawn += cluster.size
-
-        if self.app._active_coords is not None:
-            clat, clon = self.app._active_coords
-            self._markers.append(
-                self.map.set_marker(clat, clon, text="(you)", marker_color_circle="red")
-            )
-
-        self.top.title(
-            f"Coverage Map - {drawn} coverage circles across "
-            f"{len(clusters)} unique towers"
-        )
-
-    def _make_cluster_click_handler(
-        self, cluster: "coverage_maps.TowerCluster"
-    ):
-        def _open(_marker=None, _cluster=cluster):
-            TowerClusterDialog(self.top, _cluster)
-        return _open
-
-
 class EntryEditDialog:
     """Edit name, freq/tgid, mode, tone for a FreqEntry."""
 
@@ -10164,13 +7248,13 @@ class EntryEditDialog:
         frame.pack(fill=tk.BOTH, expand=True)
 
         self.name_var = tk.StringVar(value=entry.name)
-        ttk.Label(frame, text="Name:").grid(row=0, column=0, sticky=tk.W, pady=2)
+        ttk.Label(frame, text=_LIT_NAME_COLON).grid(row=0, column=0, sticky=tk.W, pady=2)
         ttk.Entry(frame, textvariable=self.name_var, width=32).grid(row=0, column=1, sticky=tk.EW, padx=4)
 
         row = 1
         self.identity_var = tk.StringVar(value=rec.get_field(5, ""))
         if entry.entry_type == "C-Freq":
-            ttk.Label(frame, text="Frequency (MHz):").grid(row=row, column=0, sticky=tk.W, pady=2)
+            ttk.Label(frame, text=_LIT_FREQ_MHZ_COLON).grid(row=row, column=0, sticky=tk.W, pady=2)
             try:
                 freq_hz = int(self.identity_var.get())
                 self.identity_var.set(f"{freq_hz / 1_000_000:.4f}")
@@ -10190,7 +7274,7 @@ class EntryEditDialog:
             mode_values = MODE_CHOICES_TGID_LABELS
             self._mode_is_labeled = True
             self.mode_var = tk.StringVar(value=tgid_mode_label(raw_mode) if raw_mode else "")
-        ttk.Label(frame, text="Mode:").grid(row=row, column=0, sticky=tk.W, pady=2)
+        ttk.Label(frame, text=_LIT_MODE_COLON).grid(row=row, column=0, sticky=tk.W, pady=2)
         combo_width = 22 if entry.entry_type == "TGID" else 10
         ttk.Combobox(
             frame, textvariable=self.mode_var, values=mode_values, state="readonly",
@@ -10270,7 +7354,7 @@ class GroupEditDialog:
         )
 
         for i, (label, var) in enumerate(
-            (("Name:", self.name_var), ("Lat:", self.lat_var), ("Lon:", self.lon_var), ("Range (mi):", self.range_var))
+            ((_LIT_NAME_COLON, self.name_var), ("Lat:", self.lat_var), ("Lon:", self.lon_var), ("Range (mi):", self.range_var))
         ):
             ttk.Label(frame, text=label).grid(row=i, column=0, sticky=tk.W, pady=2)
             ttk.Entry(frame, textvariable=var, width=26).grid(row=i, column=1, sticky=tk.EW, padx=4)
@@ -10328,7 +7412,7 @@ class SystemEditDialog:
         frame.pack(fill=tk.BOTH, expand=True)
 
         self.name_var = tk.StringVar(value=system.name)
-        ttk.Label(frame, text="Name:").grid(row=0, column=0, sticky=tk.W, pady=2)
+        ttk.Label(frame, text=_LIT_NAME_COLON).grid(row=0, column=0, sticky=tk.W, pady=2)
         ttk.Entry(frame, textvariable=self.name_var, width=36).grid(
             row=0, column=1, sticky=tk.EW, padx=4
         )
@@ -10662,26 +7746,7 @@ def _format_rr_section(info: Dict[str, Any]) -> str:
 
 
 def _format_vsd_section(info: Dict[str, Any]) -> str:
-    profile = info.get("profile")
-    lines: List[str] = []
-    if profile is None:
-        lines.append("No workspace profile is active.")
-    else:
-        lines.append(f"Active profile: {profile.get('name') or profile.get('profile_id')}")
-        lines.append(f"Workspace: {profile.get('workspace_dir') or ''}")
-        last_sync = profile.get("last_sync_at") or "never"
-        lines.append(f"Last sync: {last_sync}")
-    pending = info.get("pending_events")
-    if pending is not None:
-        lines.append(f"Pending (uncommitted) events: {pending}")
-    card = info.get("card") or {}
-    lines.append(
-        "Card: " + (
-            f"connected ({card.get('target_model') or 'unknown'})"
-            if card.get("connected") else "detached"
-        )
-    )
-    return "\n".join(lines)
+    return format_vsd_section(info)
 
 
 class RadioReferencePullDialog:
@@ -11382,9 +8447,9 @@ class UnidenInstallerDownloadDialog:
         path = filedialog.askopenfilename(
             title="Select installer (setup.exe or .zip)",
             filetypes=[
-                ("Installer", "*.exe"),
+                ("Installer", _LIT_EXE_GLOB),
                 ("Zip archive", "*.zip"),
-                ("All Files", "*.*"),
+                (_LIT_ALL_FILES, "*.*"),
             ],
             parent=self.top,
         )
@@ -11553,7 +8618,7 @@ class UnidenToolsDialog:
     def _on_launch(self) -> None:
         tool = self._selected_tool()
         if tool is None:
-            messagebox.showinfo("Launch", "Select a tool first.", parent=self.top)
+            messagebox.showinfo("Launch", _LIT_SELECT_TOOL_FIRST, parent=self.top)
             return
         if not tool.installed:
             messagebox.showinfo(
@@ -11572,7 +8637,7 @@ class UnidenToolsDialog:
     def _on_launch_and_sync(self) -> None:
         tool = self._selected_tool()
         if tool is None:
-            messagebox.showinfo("Launch", "Select a tool first.", parent=self.top)
+            messagebox.showinfo("Launch", _LIT_SELECT_TOOL_FIRST, parent=self.top)
             return
         if not tool.installed:
             messagebox.showinfo(
@@ -11587,7 +8652,7 @@ class UnidenToolsDialog:
     def _on_install(self) -> None:
         tool = self._selected_tool()
         if tool is None:
-            messagebox.showinfo("Install", "Select a tool first.", parent=self.top)
+            messagebox.showinfo("Install", _LIT_SELECT_TOOL_FIRST, parent=self.top)
             return
         # Prefer a cached / local copy if we already have one; otherwise
         # route the user through the download dialog which will fetch,
@@ -11630,12 +8695,12 @@ class UnidenToolsDialog:
         tool = self._selected_tool()
         if tool is None:
             messagebox.showinfo(
-                "Override", "Select a tool first.", parent=self.top
+                "Override", _LIT_SELECT_TOOL_FIRST, parent=self.top
             )
             return
         path = filedialog.askopenfilename(
             title=f"Select {tool.display_name} executable",
-            filetypes=[("Executable", "*.exe"), ("All Files", "*.*")],
+            filetypes=[("Executable", _LIT_EXE_GLOB), (_LIT_ALL_FILES, "*.*")],
             parent=self.top,
         )
         if not path:
@@ -11650,7 +8715,7 @@ class UnidenToolsDialog:
         tool = self._selected_tool()
         if tool is None:
             messagebox.showinfo(
-                "Open", "Select a tool first.", parent=self.top
+                "Open", _LIT_SELECT_TOOL_FIRST, parent=self.top
             )
             return
         target = tool.data_dir or (
@@ -12290,7 +9355,7 @@ class ChangesPanelDialog:
         sb = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=self.tree.yview)
         sb.pack(side=tk.LEFT, fill=tk.Y)
         self.tree.configure(yscrollcommand=sb.set)
-        self.tree.bind("<<TreeviewSelect>>", lambda e: self._refresh_details())
+        self.tree.bind(_LIT_TREEVIEW_SELECT, lambda e: self._refresh_details())
 
         # -- details drawer --
         details_frame = ttk.LabelFrame(self.top, text="Details", padding=6)
@@ -12475,7 +9540,7 @@ class ChangesPanelDialog:
         events = self._selected_events()
         if len(events) != 1:
             messagebox.showinfo(
-                "Revert to point",
+                _LIT_REVERT_TO_POINT,
                 "Select exactly one change. Everything AFTER it will be reverted.",
                 parent=self.top,
             )
@@ -12494,7 +9559,7 @@ class ChangesPanelDialog:
             status_msg="Reverted to point; save to write to SD card."
         )
         self._refresh()
-        messagebox.showinfo("Revert to point", msg, parent=self.top)
+        messagebox.showinfo(_LIT_REVERT_TO_POINT, msg, parent=self.top)
 
 
 class CityManagerDialog:
@@ -12545,7 +9610,7 @@ class CityManagerDialog:
         self.new_name = tk.StringVar()
         self.new_lat = tk.StringVar()
         self.new_lon = tk.StringVar()
-        ttk.Label(add_frame, text="Name:").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(add_frame, text=_LIT_NAME_COLON).grid(row=0, column=0, sticky=tk.W)
         ttk.Entry(add_frame, textvariable=self.new_name, width=24).grid(row=0, column=1, padx=4)
         ttk.Label(add_frame, text="Lat:").grid(row=0, column=2, sticky=tk.W)
         ttk.Entry(add_frame, textvariable=self.new_lat, width=10).grid(row=0, column=3, padx=4)

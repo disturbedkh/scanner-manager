@@ -51,6 +51,48 @@ def find_word_refs(fw: bytes, target_addr: int, *, only_aligned: bool = False) -
     return out
 
 
+def _load_analysis_funcs(dump_path: Path) -> list:
+    if not dump_path.exists():
+        print(f"# (no analysis dump at {dump_path} - function names suppressed)")
+        return []
+    data = json.loads(dump_path.read_text(encoding="utf-8"))
+    return data.get("functions", [])
+
+
+def _addr_to_func(funcs: list, addr: int) -> str:
+    for f in funcs:
+        body_min = int(f.get("addr"), 16)
+        body_max = body_min + f.get("size", 0)
+        if body_min <= addr < body_max:
+            return f"{f['addr']} {f['name']} (size={f['size']})"
+    return f"<unknown> at 0x{addr:08X}"
+
+
+def _print_target_refs(fw: bytes, funcs: list, tgt: int, label: str) -> None:
+    print(f"=== References to '{label}' (target 0x{tgt:08X}) ===")
+    refs = find_word_refs(fw, tgt, only_aligned=False)
+    if not refs:
+        print("  (no references found)")
+        return
+    for r in refs:
+        ref_addr = BASE + r
+        aligned = "aligned" if r % 4 == 0 else "UNALIGNED"
+        print(f"  literal-pool entry at 0x{ref_addr:08X} ({aligned}) -> in {_addr_to_func(funcs, ref_addr)}")
+    print()
+
+
+def _print_value_refs(fw: bytes, funcs: list, value: int) -> None:
+    for r in find_word_refs(fw, value, only_aligned=True):
+        ref_addr = BASE + r
+        print(f"  0x{value:08X} referenced at 0x{ref_addr:08X} in {_addr_to_func(funcs, ref_addr)}")
+
+
+def _print_scan_range_refs(fw: bytes, funcs: list, start: int, end: int) -> None:
+    print(f"=== Any 32-bit value in 0x{start:08X}..0x{end:08X} referenced from firmware ===")
+    for v in range(start, end, 4):
+        _print_value_refs(fw, funcs, v)
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     _c.add_firmware_arg(p)
@@ -76,40 +118,13 @@ def main() -> int:
     fw = fw_path.read_bytes()
     print(f"# Scanning {fw_path.relative_to(_c.REPO_ROOT)}  ({len(fw):,} bytes)")
 
-    if args.analysis_dump.exists():
-        data = json.loads(args.analysis_dump.read_text(encoding="utf-8"))
-        funcs = data.get("functions", [])
-    else:
-        print(f"# (no analysis dump at {args.analysis_dump} - function names suppressed)")
-        funcs = []
-
-    def addr_to_func(addr: int) -> str:
-        for f in funcs:
-            body_min = int(f.get("addr"), 16)
-            body_max = body_min + f.get("size", 0)
-            if body_min <= addr < body_max:
-                return f"{f['addr']} {f['name']} (size={f['size']})"
-        return f"<unknown> at 0x{addr:08X}"
+    funcs = _load_analysis_funcs(args.analysis_dump)
 
     for tgt, label in DEFAULT_TARGETS.items():
-        print(f"=== References to '{label}' (target 0x{tgt:08X}) ===")
-        refs = find_word_refs(fw, tgt, only_aligned=False)
-        if not refs:
-            print("  (no references found)")
-            continue
-        for r in refs:
-            ref_addr = BASE + r
-            aligned = "aligned" if r % 4 == 0 else "UNALIGNED"
-            print(f"  literal-pool entry at 0x{ref_addr:08X} ({aligned}) -> in {addr_to_func(ref_addr)}")
-        print()
+        _print_target_refs(fw, funcs, tgt, label)
 
     start, end = args.scan_range
-    print(f"=== Any 32-bit value in 0x{start:08X}..0x{end:08X} referenced from firmware ===")
-    for v in range(start, end, 4):
-        refs = find_word_refs(fw, v, only_aligned=True)
-        if refs:
-            for r in refs:
-                print(f"  0x{v:08X} referenced at 0x{BASE + r:08X} in {addr_to_func(BASE + r)}")
+    _print_scan_range_refs(fw, funcs, start, end)
     return 0
 
 

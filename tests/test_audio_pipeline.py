@@ -15,7 +15,7 @@ from audio.encoder import (  # noqa: E402
 
 def _make_sounddevice_fake(input_stream):
     """Build a fake sounddevice module; InputStream mirrors the production API."""
-    fake = type("_FakeSD", (), {"input_stream": classmethod(input_stream), "last_stream": None})
+    fake = type("_fake_sd", (), {"input_stream": classmethod(input_stream), "last_stream": None})
     setattr(fake, "InputStream", fake.input_stream)
     return fake
 
@@ -103,7 +103,7 @@ def test_list_input_devices_when_sounddevice_missing(monkeypatch):
 def test_list_input_devices_when_query_hostapis_raises(monkeypatch):
     from audio import capture as cap
 
-    class _FakeSD:
+    class _fake_sd:
         @staticmethod
         def query_hostapis():
             raise RuntimeError("host API unavailable")
@@ -119,7 +119,7 @@ def test_list_input_devices_when_query_hostapis_raises(monkeypatch):
                 },
             ]
 
-    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _fake_sd())
     devices = cap.list_input_devices()
     assert len(devices) == 1
     assert devices[0].name == "Mic"
@@ -129,7 +129,7 @@ def test_list_input_devices_when_query_hostapis_raises(monkeypatch):
 def test_list_input_devices_resolves_host_api_name(monkeypatch):
     from audio import capture as cap
 
-    class _FakeSD:
+    class _fake_sd:
         @staticmethod
         def query_hostapis():
             return [{"name": "DirectSound"}]
@@ -145,7 +145,7 @@ def test_list_input_devices_resolves_host_api_name(monkeypatch):
                 },
             ]
 
-    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _fake_sd())
     devices = cap.list_input_devices()
     assert devices[0].host_api == "DirectSound"
     assert devices[0].index == 0
@@ -154,7 +154,7 @@ def test_list_input_devices_resolves_host_api_name(monkeypatch):
 def test_list_input_devices_uses_fallback_name(monkeypatch):
     from audio import capture as cap
 
-    class _FakeSD:
+    class _fake_sd:
         @staticmethod
         def query_hostapis():
             return []
@@ -163,7 +163,7 @@ def test_list_input_devices_uses_fallback_name(monkeypatch):
         def query_devices():
             return [{"max_input_channels": 1, "default_samplerate": 48000.0}]
 
-    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _fake_sd())
     devices = cap.list_input_devices()
     assert devices[0].name == "Input 0"
 
@@ -172,7 +172,7 @@ def test_list_input_devices_when_query_devices_raises(monkeypatch):
     """query_devices failure must not crash list enumeration."""
     from audio import capture as cap
 
-    class _FakeSD:
+    class _fake_sd:
         @staticmethod
         def query_hostapis():
             return [{"name": "Fake API"}]
@@ -181,14 +181,14 @@ def test_list_input_devices_when_query_devices_raises(monkeypatch):
         def query_devices():
             raise RuntimeError("no audio backend")
 
-    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _fake_sd())
     assert cap.list_input_devices() == []
 
 
 def test_list_input_devices_skips_output_only_devices(monkeypatch):
     from audio import capture as cap
 
-    class _FakeSD:
+    class _fake_sd:
         @staticmethod
         def query_hostapis():
             return [{"name": "WASAPI"}]
@@ -205,7 +205,7 @@ def test_list_input_devices_skips_output_only_devices(monkeypatch):
                 },
             ]
 
-    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _fake_sd())
     devices = cap.list_input_devices()
     assert len(devices) == 1
     assert devices[0].name == "Mic"
@@ -265,8 +265,8 @@ def test_audio_capture_start_raises_without_numpy(monkeypatch):
     def _input_stream_raises(_cls, **_kwargs):
         raise AssertionError("should not open stream without numpy")
 
-    _FakeSD = _make_sounddevice_fake(_input_stream_raises)
-    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD)
+    _fake_sd = _make_sounddevice_fake(_input_stream_raises)
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _fake_sd)
     monkeypatch.setattr(cap, "_safe_import_numpy", lambda: None)
     ac = cap.AudioCapture()
     with pytest.raises(RuntimeError, match="numpy not installed"):
@@ -295,8 +295,8 @@ def test_audio_capture_start_stop_with_mock_stream(monkeypatch):
         cls.last_stream = stream
         return stream
 
-    _FakeSD = _make_sounddevice_fake(_open_stream)
-    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD)
+    _fake_sd = _make_sounddevice_fake(_open_stream)
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _fake_sd)
     ac = cap.AudioCapture(sample_rate=48000, channels=1, block_size=4)
     assert not ac.is_running
     ac.start()
@@ -320,15 +320,15 @@ def test_audio_capture_callback_receives_frame(monkeypatch):
         cls.last_stream = stream
         return stream
 
-    _FakeSD = _make_sounddevice_fake(_open_stream)
-    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD)
+    _fake_sd = _make_sounddevice_fake(_open_stream)
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _fake_sd)
     received = []
     ac = cap.AudioCapture(sample_rate=48000, channels=1, block_size=4)
     ac.set_callback(received.append)
     ac.start()
     block = np.array([[0.5], [-0.5], [0.25], [-0.25]], dtype=np.float32)
-    assert _FakeSD.last_stream is not None
-    _FakeSD.last_stream.invoke(block)
+    assert _fake_sd.last_stream is not None
+    _fake_sd.last_stream.invoke(block)
     assert len(received) == 1
     frame = received[0]
     assert frame.sample_rate == 48000
@@ -355,13 +355,13 @@ def test_audio_capture_logs_stream_status(monkeypatch, caplog):
         cls.last_stream = stream
         return stream
 
-    _FakeSD = _make_sounddevice_fake(_open_stream)
-    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD)
+    _fake_sd = _make_sounddevice_fake(_open_stream)
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _fake_sd)
     ac = cap.AudioCapture(sample_rate=48000, channels=1, block_size=2)
     ac.start()
     block = np.zeros((2, 1), dtype=np.float32)
     with caplog.at_level(logging.DEBUG, logger="audio.capture"):
-        _FakeSD.last_stream.invoke(block, "input overflow")
+        _fake_sd.last_stream.invoke(block, "input overflow")
     assert "input overflow" in caplog.text
     ac.stop()
 
@@ -383,18 +383,18 @@ def test_audio_capture_callback_exception_is_logged(monkeypatch, caplog):
         cls.last_stream = stream
         return stream
 
-    _FakeSD = _make_sounddevice_fake(_open_stream)
+    _fake_sd = _make_sounddevice_fake(_open_stream)
 
     def _boom(_frame):
         raise ValueError("subscriber failed")
 
-    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD)
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _fake_sd)
     ac = cap.AudioCapture(sample_rate=48000, channels=1, block_size=2)
     ac.set_callback(_boom)
     ac.start()
     with caplog.at_level(logging.ERROR, logger="audio.capture"):
         block = np.array([[0.1], [0.2]], dtype=np.float32)
-        _FakeSD.last_stream.invoke(block)
+        _fake_sd.last_stream.invoke(block)
     assert "Audio callback raised" in caplog.text
     ac.stop()
 
@@ -415,8 +415,8 @@ def test_audio_capture_stop_swallows_stream_errors(monkeypatch):
     def _open_stream(_cls, **kwargs):
         return _BadStream(kwargs.get("callback"))
 
-    _FakeSD = _make_sounddevice_fake(_open_stream)
-    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD)
+    _fake_sd = _make_sounddevice_fake(_open_stream)
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _fake_sd)
     ac = cap.AudioCapture()
     ac.start()
     assert ac.is_running
@@ -448,13 +448,13 @@ def test_audio_capture_set_callback_none(monkeypatch):
         cls.last_stream = stream
         return stream
 
-    _FakeSD = _make_sounddevice_fake(_open_stream)
-    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD)
+    _fake_sd = _make_sounddevice_fake(_open_stream)
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _fake_sd)
     ac = cap.AudioCapture(sample_rate=48000, channels=1, block_size=2)
     ac.set_callback(None)
     ac.start()
     block = np.array([[0.3], [0.4]], dtype=np.float32)
-    _FakeSD.last_stream.invoke(block)
+    _fake_sd.last_stream.invoke(block)
     ac.stop()
 
 
@@ -467,8 +467,8 @@ def test_audio_capture_start_is_idempotent(monkeypatch):
         created.append(kwargs)
         return _SdStreamNoop()
 
-    _FakeSD = _make_sounddevice_fake(_open_stream)
-    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD)
+    _fake_sd = _make_sounddevice_fake(_open_stream)
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _fake_sd)
     ac = cap.AudioCapture()
     ac.start()
     ac.start()

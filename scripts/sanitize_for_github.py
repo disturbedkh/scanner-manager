@@ -10,6 +10,11 @@ import re
 import sys
 from pathlib import Path
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_REPO_ROOT))
+
+from core.path_utils import PathTraversalError, safe_resolve_path  # noqa: E402
+
 try:
     import yaml
 except ImportError as exc:  # pragma: no cover
@@ -23,12 +28,24 @@ _WIN_USER_PATH = re.compile(r"[A-Za-z]:\\Users\\[^\\/\s\"']+", re.IGNORECASE)
 _WIN_DRIVE_REPO = re.compile(r"[A-Za-z]:\\scanner-manager", re.IGNORECASE)
 _KNOWN_HOSTS = re.compile(r"\b(?:MAINGAMINGPC|MINILAPTOP)\b", re.IGNORECASE)
 _KHUTT = re.compile(r"\bkhutt\b", re.IGNORECASE)
-
 _JSONL_KEYS = ("host", "hostname", "output", "output_path", "repo_root", "path")
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    return _REPO_ROOT
+
+
+def _safe_path_under(repo_root: Path, path: Path) -> Path | None:
+    """Return ``path`` when it resolves under ``repo_root``; else ``None``."""
+    root = repo_root.resolve(strict=False)
+    try:
+        rel = path.resolve(strict=False).relative_to(root)
+    except ValueError:
+        return None
+    try:
+        return safe_resolve_path(root, rel)
+    except PathTraversalError:
+        return None
 
 
 def _safe_repo_root(user_root: Path) -> Path:
@@ -56,7 +73,7 @@ def _safe_repo_root(user_root: Path) -> Path:
 def load_rules(rules_path: Path | None, repo_root: Path) -> dict:
     anchor = _repo_root()
     if rules_path is not None:
-        path = rules_path
+        path = safe_resolve_path(repo_root, rules_path)
     elif (anchor / "scripts" / _RULES_NAME).is_file():
         # publish_github.ps1 sanitizes a temp clone; rules live in source checkout.
         path = anchor / "scripts" / _RULES_NAME
@@ -72,11 +89,21 @@ def _glob_matches(rel: str, pattern: str) -> bool:
 
 def _collect_rglob(repo_root: Path, pattern: str) -> list[Path]:
     norm = pattern.replace("\\", "/").lstrip("/")
-    return [
-        candidate
-        for candidate in repo_root.rglob(norm)
-        if candidate.is_file() and _glob_matches(candidate.relative_to(repo_root).as_posix(), pattern)
-    ]
+    root = repo_root.resolve(strict=False)
+    out: list[Path] = []
+    for candidate in root.rglob(norm.split("/")[-1] if "**" not in norm else norm.replace("**/", "")):
+        if not candidate.is_file():
+            continue
+        try:
+            safe = _safe_path_under(root, candidate)
+        except OSError:
+            continue
+        if safe is None:
+            continue
+        rel = candidate.relative_to(root).as_posix()
+        if _glob_matches(rel, pattern):
+            out.append(candidate)
+    return out
 
 
 def _matching_files(repo_root: Path, globs: list[str]) -> list[Path]:
@@ -87,8 +114,11 @@ def _matching_files(repo_root: Path, globs: list[str]) -> list[Path]:
             out.extend(_collect_rglob(repo_root, norm))
         else:
             for candidate in repo_root.glob(norm):
-                if candidate.is_file():
-                    out.append(candidate)
+                if not candidate.is_file():
+                    continue
+                safe = _safe_path_under(repo_root, candidate)
+                if safe is not None:
+                    out.append(safe)
     return sorted(set(out))
 
 
@@ -174,11 +204,18 @@ def _file_matches_pattern(path: Path, repo_root: Path, pattern: str) -> str | No
 
 def audit_repo(repo_root: Path, patterns: list[str]) -> list[str]:
     hits: list[str] = []
+    root = repo_root.resolve(strict=False)
     for pat in patterns:
-        for path in repo_root.rglob("*"):
+        for path in root.rglob("*"):
             if not path.is_file():
                 continue
-            hit = _file_matches_pattern(path, repo_root, pat)
+            try:
+                safe = _safe_path_under(root, path)
+            except OSError:
+                continue
+            if safe is None:
+                continue
+            hit = _file_matches_pattern(safe, repo_root, pat)
             if hit:
                 hits.append(hit)
     return hits

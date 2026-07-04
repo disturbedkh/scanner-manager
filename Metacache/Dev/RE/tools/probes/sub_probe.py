@@ -449,6 +449,156 @@ def gen_alphabet(stages: list[str]) -> list[str]:
     return out
 
 
+def _resolve_stages(args) -> list[str]:
+    if args.only_targeted2:
+        return ["targeted2"]
+    if args.only_targeted:
+        return ["targeted"]
+    stages: list[str] = []
+    if not args.skip_1letter:
+        stages.append("1")
+    if not args.skip_2letter:
+        stages.append("2")
+    if not args.skip_targeted:
+        stages.append("targeted")
+    if args.include_targeted2:
+        stages.append("targeted2")
+    return stages
+
+
+def _maybe_log_progress(
+    i: int,
+    total: int,
+    *,
+    hits: int,
+    errs: int,
+    unrec_count: int,
+    timeout_count: int,
+    last_progress_t: float,
+    log,
+) -> float:
+    now = time.monotonic()
+    if now - last_progress_t < 5.0:
+        return last_progress_t
+    msg = (
+        f"# progress {i}/{total}  "
+        f"hits={hits}  errs={errs}  "
+        f"unrec={unrec_count}  to={timeout_count}"
+    )
+    print(msg, flush=True)
+    log.write(msg + "\n")
+    return now
+
+
+def _drain_binary_stream(port: serial.Serial) -> None:
+    time.sleep(0.2)
+    drain_until = time.monotonic() + 0.1
+    while time.monotonic() < drain_until:
+        if port.in_waiting:
+            port.read(port.in_waiting)
+            drain_until = time.monotonic() + 0.05
+        else:
+            time.sleep(0.005)
+
+
+def _write_probe_summary(
+    summary_path: Path,
+    *,
+    port_dev: str,
+    anchor_resp: bytes,
+    candidates: list[str],
+    hits: list,
+    errs: list,
+    unrec_count: int,
+    timeout_count: int,
+    forbidden_skipped: list[str],
+) -> None:
+    with open(summary_path, "w", encoding="utf-8", errors="replace") as s:
+        s.write("# SDS100 SUB-port probe - hits summary\n\n")
+        s.write(f"- Port: `{port_dev}`\n")
+        s.write(f"- Anchor: `{ANCHOR_CMD}` -> `{first_response_line(anchor_resp)}`\n")
+        s.write(f"- Total candidates: {len(candidates)}\n")
+        s.write(f"- HITS: **{len(hits)}**\n")
+        s.write(f"- ERR:  {len(errs)}\n")
+        s.write(f"- Unrecognised (buffer-echo): {unrec_count}\n")
+        s.write(f"- Timeouts: {timeout_count}\n")
+        s.write(f"- Forbidden-skipped: {len(forbidden_skipped)}\n\n")
+        s.write("## Hits (response differs from anchor and is not ERR)\n\n")
+        s.write("| Cmd | Bytes | First line | Raw (escaped) |\n")
+        s.write("| --- | ---: | --- | --- |\n")
+        for cmd, resp, _ms in hits:
+            first = first_response_line(resp).replace("|", "\\|")[:80]
+            raw = show(resp).replace("|", "\\|")[:120]
+            s.write(f"| `{cmd}` | {len(resp)} | `{first}` | `{raw}` |\n")
+        s.write("\n## ERRs (recognised but invalid form)\n\n")
+        for cmd, _ms in errs[:200]:
+            s.write(f"- `{cmd}`\n")
+        if len(errs) > 200:
+            s.write(f"- ... and {len(errs) - 200} more\n")
+
+
+def _is_binary_response(response: bytes) -> bool:
+    return any(b > 0x7e or b < 0x09 for b in response)
+
+
+def _log_probe_result(
+    log,
+    i: int,
+    total: int,
+    cmd: str,
+    cls: str,
+    response: bytes,
+    elapsed_ms: float,
+) -> None:
+    if cls == "hit":
+        log.write(
+            f"[{i:5d}/{total:5d}]  HIT      {cmd:8s}  "
+            f"{len(response):4d}B in {elapsed_ms:6.1f} ms  "
+            f"| {show(response)}\n"
+        )
+        return
+    if cls == "err":
+        log.write(
+            f"[{i:5d}/{total:5d}]  err      {cmd:8s}  "
+            f"{len(response):4d}B in {elapsed_ms:6.1f} ms\n"
+        )
+
+
+def _try_qform(
+    port: serial.Serial,
+    log,
+    cmd: str,
+    anchor_resp: bytes,
+    *,
+    qform_on_hit: bool,
+) -> None:
+    if not (qform_on_hit and "," not in cmd):
+        return
+    qf = cmd + ",?"
+    if is_forbidden(qf):
+        return
+    qresp, qms = send_and_read(port, qf)
+    qcls = classify(qresp, anchor_resp)
+    log.write(
+        f"            qform   {qf:8s}  "
+        f"{len(qresp):4d}B in {qms:6.1f} ms  cls={qcls}  "
+        f"| {show(qresp)}\n"
+    )
+
+
+def _maybe_refresh_anchor(
+    port: serial.Serial,
+    anchor_resp: bytes,
+    cls: str,
+) -> bytes:
+    if cls not in ("hit", "err"):
+        return anchor_resp
+    new_anchor, _ = send_and_read(port, ANCHOR_CMD)
+    if new_anchor.startswith(ANCHOR_EXPECTED_PREFIX.encode()):
+        return new_anchor
+    return anchor_resp
+
+
 def probe(
     port_dev: str,
     candidates: list[str],
@@ -497,74 +647,33 @@ def probe(
             response, elapsed_ms = send_and_read(p, cmd)
             cls = classify(response, anchor_resp)
 
-            # Periodic progress so the user sees the probe is alive.
-            now = time.monotonic()
-            if now - last_progress_t >= 5.0:
-                msg = (
-                    f"# progress {i}/{len(candidates)}  "
-                    f"hits={len(hits)}  errs={len(errs)}  "
-                    f"unrec={unrec_count}  to={timeout_count}"
-                )
-                print(msg, flush=True)
-                log.write(msg + "\n")
-                last_progress_t = now
+            last_progress_t = _maybe_log_progress(
+                i, len(candidates),
+                hits=len(hits), errs=len(errs),
+                unrec_count=unrec_count, timeout_count=timeout_count,
+                last_progress_t=last_progress_t, log=log,
+            )
 
             if cls == "hit":
                 hits.append((cmd, response, elapsed_ms))
-                log.write(
-                    f"[{i:5d}/{len(candidates):5d}]  HIT      {cmd:8s}  "
-                    f"{len(response):4d}B in {elapsed_ms:6.1f} ms  "
-                    f"| {show(response)}\n"
-                )
             elif cls == "err":
                 errs.append((cmd, elapsed_ms))
-                log.write(
-                    f"[{i:5d}/{len(candidates):5d}]  err      {cmd:8s}  "
-                    f"{len(response):4d}B in {elapsed_ms:6.1f} ms\n"
-                )
             elif cls == "timeout":
                 timeout_count += 1
             else:
                 unrec_count += 1
 
-            # If response is non-ASCII binary, the SUB may still be
-            # streaming bytes for a long time. Pause heavily and skip
-            # both qform and re-anchor to avoid hanging the probe on
-            # leftover buffered bytes.
-            response_is_binary = any(b > 0x7e or b < 0x09 for b in response)
-            if response_is_binary:
-                time.sleep(0.2)
-                # Drain any stragglers.
-                drain_until = time.monotonic() + 0.1
-                while time.monotonic() < drain_until:
-                    if p.in_waiting:
-                        p.read(p.in_waiting)
-                        drain_until = time.monotonic() + 0.05
-                    else:
-                        time.sleep(0.005)
-                continue  # next candidate without qform / re-anchor
-
-            if cls == "hit" and qform_on_hit and "," not in cmd:
-                qf = cmd + ",?"
-                if not is_forbidden(qf):
-                    qresp, qms = send_and_read(p, qf)
-                    qcls = classify(qresp, anchor_resp)
-                    log.write(
-                        f"            qform   {qf:8s}  "
-                        f"{len(qresp):4d}B in {qms:6.1f} ms  cls={qcls}  "
-                        f"| {show(qresp)}\n"
-                    )
-
-            # Re-anchor after any non-timeout event so buffer drift
-            # doesn't bleed a previous hit's response into the next
-            # unrecognised candidate's classification.
             if cls in ("hit", "err"):
-                new_anchor, _ = send_and_read(p, ANCHOR_CMD)
-                # Only update anchor if it looks valid; otherwise keep the
-                # original to avoid lock-step misclassification on weird
-                # SUB states.
-                if new_anchor.startswith(ANCHOR_EXPECTED_PREFIX.encode()):
-                    anchor_resp = new_anchor
+                _log_probe_result(
+                    log, i, len(candidates), cmd, cls, response, elapsed_ms,
+                )
+
+            if _is_binary_response(response):
+                _drain_binary_stream(p)
+                continue
+
+            _try_qform(p, log, cmd, anchor_resp, qform_on_hit=qform_on_hit)
+            anchor_resp = _maybe_refresh_anchor(p, anchor_resp, cls)
 
         log.write(
             f"\n# Done. {len(hits)} HIT, {len(errs)} err, "
@@ -576,29 +685,17 @@ def probe(
         p.close()
         log.close()
 
-    # Summary file
-    with open(summary_path, "w", encoding="utf-8", errors="replace") as s:
-        s.write("# SDS100 SUB-port probe - hits summary\n\n")
-        s.write(f"- Port: `{port_dev}`\n")
-        s.write(f"- Anchor: `{ANCHOR_CMD}` -> `{first_response_line(anchor_resp)}`\n")
-        s.write(f"- Total candidates: {len(candidates)}\n")
-        s.write(f"- HITS: **{len(hits)}**\n")
-        s.write(f"- ERR:  {len(errs)}\n")
-        s.write(f"- Unrecognised (buffer-echo): {unrec_count}\n")
-        s.write(f"- Timeouts: {timeout_count}\n")
-        s.write(f"- Forbidden-skipped: {len(forbidden_skipped)}\n\n")
-        s.write("## Hits (response differs from anchor and is not ERR)\n\n")
-        s.write("| Cmd | Bytes | First line | Raw (escaped) |\n")
-        s.write("| --- | ---: | --- | --- |\n")
-        for cmd, resp, _ms in hits:
-            first = first_response_line(resp).replace("|", "\\|")[:80]
-            raw = show(resp).replace("|", "\\|")[:120]
-            s.write(f"| `{cmd}` | {len(resp)} | `{first}` | `{raw}` |\n")
-        s.write("\n## ERRs (recognised but invalid form)\n\n")
-        for cmd, _ms in errs[:200]:
-            s.write(f"- `{cmd}`\n")
-        if len(errs) > 200:
-            s.write(f"- ... and {len(errs) - 200} more\n")
+    _write_probe_summary(
+        summary_path,
+        port_dev=port_dev,
+        anchor_resp=anchor_resp,
+        candidates=candidates,
+        hits=hits,
+        errs=errs,
+        unrec_count=unrec_count,
+        timeout_count=timeout_count,
+        forbidden_skipped=forbidden_skipped,
+    )
 
     return {
         "hits": hits,
@@ -638,21 +735,7 @@ def main() -> None:
         )
         sys.exit(1)
 
-    if args.only_targeted2:
-        stages = ["targeted2"]
-    elif args.only_targeted:
-        stages = ["targeted"]
-    else:
-        stages = []
-        if not args.skip_1letter:
-            stages.append("1")
-        if not args.skip_2letter:
-            stages.append("2")
-        if not args.skip_targeted:
-            stages.append("targeted")
-        if args.include_targeted2:
-            stages.append("targeted2")
-
+    stages = _resolve_stages(args)
     candidates = gen_alphabet(stages)
     print(f"# stages={stages}  candidates={len(candidates)}  port={port}")
 

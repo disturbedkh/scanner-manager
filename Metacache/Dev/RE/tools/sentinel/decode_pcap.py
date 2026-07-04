@@ -119,7 +119,7 @@ class DeviceState:
 
 def _find_tshark(explicit: str | None) -> str:
     if explicit:
-        return explicit
+        return str(_c.validate_executable(explicit, label="tshark"))
     which = shutil.which("tshark")
     if which:
         return which
@@ -128,7 +128,7 @@ def _find_tshark(explicit: str | None) -> str:
         r"C:\Program Files (x86)\Wireshark\tshark.exe",
     ]
     for c in candidates:
-        if Path(c).exists():
+        if Path(c).is_file():
             return c
     raise FileNotFoundError(
         "tshark.exe not found. Install Wireshark, or pass --tshark "
@@ -136,48 +136,54 @@ def _find_tshark(explicit: str | None) -> str:
     )
 
 
+_TSHARK_FIELDS = [
+    "frame.time_relative",
+    "usb.bus_id",
+    "usb.device_address",
+    "usb.idVendor",
+    "usb.idProduct",
+    "usb.transfer_type",
+    "usb.endpoint_address.direction",
+    "usb.capdata",
+]
+
+
+def _parse_tshark_line(line: str) -> dict | None:
+    parts = line.split("|")
+    if len(parts) != len(_TSHARK_FIELDS):
+        return None
+    ts, bus, addr, vid, pid, xtype, ep_dir, capdata = parts
+    if xtype != "0x03" or not capdata:
+        return None
+    return {
+        "ts": float(ts) if ts else 0.0,
+        "bus": bus or "",
+        "addr": addr or "",
+        "vid": vid or "",
+        "pid": pid or "",
+        "ep_dir": ep_dir or "",
+        "data": capdata.replace(":", ""),
+    }
+
+
 def _run_tshark(tshark: str, pcap: Path) -> list[dict]:
     """Return list of {timestamp, src, dst, vid, pid, ep_dir, payload} dicts."""
-    fields = [
-        "frame.time_relative",
-        "usb.bus_id",
-        "usb.device_address",
-        "usb.idVendor",
-        "usb.idProduct",
-        "usb.transfer_type",
-        "usb.endpoint_address",
-        "usb.endpoint_address.direction",
-        "usb.capdata",
-    ]
-    cmd = [tshark, "-r", str(pcap), "-T", "fields"]
-    for f in fields:
+    tshark_path = _c.validate_executable(tshark, label="tshark")
+    cmd = [str(tshark_path), "-r", str(pcap), "-T", "fields"]
+    for f in _TSHARK_FIELDS:
         cmd.extend(["-e", f])
     cmd.extend(["-E", "separator=|", "-E", "occurrence=f"])
 
-    res = subprocess.run(cmd, capture_output=True, text=True)
+    res = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if res.returncode != 0:
         raise RuntimeError(
             f"tshark failed for {pcap}: {res.stderr.strip()}"
         )
     out: list[dict] = []
     for line in res.stdout.splitlines():
-        parts = line.split("|")
-        if len(parts) != len(fields):
-            continue
-        ts, bus, addr, vid, pid, xtype, ep, ep_dir, capdata = parts
-        if xtype != "0x03":  # only Bulk
-            continue
-        if not capdata:
-            continue
-        out.append({
-            "ts": float(ts) if ts else 0.0,
-            "bus": bus or "",
-            "addr": addr or "",
-            "vid": vid or "",
-            "pid": pid or "",
-            "ep_dir": ep_dir or "",   # 0 = OUT, 1 = IN
-            "data": capdata.replace(":", ""),
-        })
+        rec = _parse_tshark_line(line)
+        if rec is not None:
+            out.append(rec)
     return out
 
 
@@ -194,6 +200,19 @@ def _is_sds100(rec: dict) -> bool:
     )
 
 
+def _append_stream_lines(st: DeviceState, ts: float, payload: bytes, *, outbound: bool) -> None:
+    buf = st.out_buf if outbound else st.in_buf
+    lines = st.out_lines if outbound else st.in_lines
+    buf.extend(payload)
+    while b"\r" in buf:
+        line, _, rest = buf.partition(b"\r")
+        if outbound:
+            st.out_buf = bytearray(rest)
+        else:
+            st.in_buf = bytearray(rest)
+        lines.append((ts, line.decode("ascii", "replace")))
+
+
 def reassemble(records: list[dict]) -> dict[str, DeviceState]:
     states: dict[str, DeviceState] = defaultdict(DeviceState)
     for rec in records:
@@ -204,20 +223,23 @@ def reassemble(records: list[dict]) -> dict[str, DeviceState]:
         except ValueError:
             continue
         st = states[_device_key(rec)]
-        ts = rec["ts"]
-        if rec["ep_dir"] == "0":   # OUT (host -> device)
-            st.out_buf.extend(payload)
-            while b"\r" in st.out_buf:
-                line, _, rest = st.out_buf.partition(b"\r")
-                st.out_buf = bytearray(rest)
-                st.out_lines.append((ts, line.decode("ascii", "replace")))
-        else:                       # IN (device -> host)
-            st.in_buf.extend(payload)
-            while b"\r" in st.in_buf:
-                line, _, rest = st.in_buf.partition(b"\r")
-                st.in_buf = bytearray(rest)
-                st.in_lines.append((ts, line.decode("ascii", "replace")))
+        outbound = rec["ep_dir"] == "0"
+        _append_stream_lines(st, rec["ts"], payload, outbound=outbound)
     return states
+
+
+def _match_response(
+    ins: list[tuple[float, str]],
+    cts: float,
+    pair_window_s: float,
+) -> tuple[int | None, str | None, float | None]:
+    for i, (its, iline) in enumerate(ins):
+        if its < cts:
+            continue
+        if its - cts > pair_window_s:
+            break
+        return i, iline, (its - cts) * 1000.0
+    return None, None, None
 
 
 def pair_lines(
@@ -231,21 +253,9 @@ def pair_lines(
             if not cline.strip():
                 continue
             head = cline.split(",", 1)[0].upper().strip()
-            # Find the first IN line at or after cts within window.
-            chosen_idx = None
-            for i, (its, _iline) in enumerate(ins):
-                if its < cts:
-                    continue
-                if its - cts > pair_window_s:
-                    break
-                chosen_idx = i
-                break
-            response = None
-            response_delay_ms = None
-            if chosen_idx is not None:
-                its, iline = ins.pop(chosen_idx)
-                response = iline
-                response_delay_ms = (its - cts) * 1000.0
+            idx, response, response_delay_ms = _match_response(ins, cts, pair_window_s)
+            if idx is not None:
+                ins.pop(idx)
             pairs.append(CommandResponse(
                 timestamp=cts,
                 device_key=dkey,
@@ -290,6 +300,22 @@ def _write_device_breakdown(f, by_dev: dict[str, list[CommandResponse]]) -> None
         f.write("\n")
 
 
+def _write_novel_mnemonics(f, pairs: list[CommandResponse], head_counts: Counter[str]) -> None:
+    novel = sorted(h for h in head_counts if h and h not in KNOWN_HEADS)
+    f.write("## Novel mnemonics (not in any known spec or probe)\n\n")
+    if not novel:
+        f.write("_None._\n")
+        return
+    for h in novel:
+        samples = [p for p in pairs if p.head == h][:3]
+        f.write(f"- `{h}` ({head_counts[h]} occurrences)\n")
+        for s in samples:
+            f.write(
+                f"    - cmd=`{s.command}`  "
+                f"resp=`{(s.response or '<none>')[:120]}`\n"
+            )
+
+
 def write_summary(
     pairs: list[CommandResponse],
     src_pcap: Path,
@@ -300,7 +326,6 @@ def write_summary(
         by_dev[p.device_key].append(p)
 
     head_counts: Counter[str] = Counter(p.head for p in pairs)
-    novel = sorted(h for h in head_counts if h and h not in KNOWN_HEADS)
 
     with open(path, "w", encoding="utf-8") as f:
         f.write(f"# Decoded summary - {src_pcap.name}\n\n")
@@ -309,21 +334,7 @@ def write_summary(
         f.write(f"- Devices observed: {len(by_dev)}\n\n")
 
         _write_device_breakdown(f, by_dev)
-
-        f.write("## Novel mnemonics (not in any known spec or probe)\n\n")
-        if not novel:
-            f.write("_None._\n")
-        else:
-            for h in novel:
-                samples = [
-                    p for p in pairs if p.head == h
-                ][:3]
-                f.write(f"- `{h}` ({head_counts[h]} occurrences)\n")
-                for s in samples:
-                    f.write(
-                        f"    - cmd=`{s.command}`  "
-                        f"resp=`{(s.response or '<none>')[:120]}`\n"
-                    )
+        _write_novel_mnemonics(f, pairs, head_counts)
 
         f.write("\n## Slowest responses\n\n")
         slow = [p for p in pairs if p.response_delay_ms is not None]

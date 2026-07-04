@@ -1,9 +1,11 @@
-name: CI (secondary mirror)
+name: CI (GitHub mirror + SonarCloud)
 
-# GitLab (.gitlab-ci.yml) is the primary CI gate. Run this workflow
-# manually when validating the public GitHub mirror.
+# GitLab (.gitlab-ci.yml) is the primary dev gate. This workflow validates the
+# public GitHub mirror and uploads coverage to SonarCloud on main.
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -62,3 +64,48 @@ jobs:
         run: |
           python -c "import gui.app; import core.metastore, core.uniden_tools; print('import ok')"
           python -c "import legacy_tk.scanner_manager; print('legacy tk ok')"
+
+  sonarcloud:
+    name: SonarCloud (main)
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[full,dev]"
+
+      - name: Install headless X helpers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb python3-tk
+
+      - name: Run tests with coverage
+        run: xvfb-run -a pytest -m "not requires_serial and not slow" --cov --cov-report=xml:coverage.xml --cov-fail-under=85 -q
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.organization=disturbedkh
+            -Dsonar.projectKey=disturbedkh_scanner-manager
+            -Dsonar.python.coverage.reportPaths=coverage.xml
+            -Dsonar.qualitygate.wait=true

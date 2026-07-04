@@ -15,9 +15,29 @@ _SUB_HIT_RE = re.compile(
     r"HIT\s+(\S+)\s+\d+B\s+in\s+[\d.]+\s+ms\s+\|\s+(.+)",
     re.MULTILINE,
 )
-_FMT_SPEC_RE = re.compile(
-    r"%([-+ #0]*)(\d+)?(\.\d+)?([hljztL]*)([diouxXeEfgGsc])"
-)
+_FMT_CONV_CHARS = frozenset("diouxXeEfgGsc")
+_FMT_FLAG_CHARS = frozenset("-+ #0")
+_FMT_LEN_CHARS = frozenset("hljztL")
+
+
+def _parse_fmt_spec(fmt: str, start: int) -> tuple[str, int] | None:
+    """Parse ``%...`` conversion at ``fmt[start:]``; return ``(conv, end_index)``."""
+    if start >= len(fmt) or fmt[start] != "%":
+        return None
+    i = start + 1
+    while i < len(fmt) and fmt[i] in _FMT_FLAG_CHARS:
+        i += 1
+    while i < len(fmt) and fmt[i].isdigit():
+        i += 1
+    if i < len(fmt) and fmt[i] == ".":
+        i += 1
+        while i < len(fmt) and fmt[i].isdigit():
+            i += 1
+    while i < len(fmt) and fmt[i] in _FMT_LEN_CHARS:
+        i += 1
+    if i >= len(fmt) or fmt[i] not in _FMT_CONV_CHARS:
+        return None
+    return fmt[i], i + 1
 
 
 def collect_sub_hits() -> list[tuple[str, str]]:
@@ -71,14 +91,14 @@ def fmt_to_regex(fmt: str) -> re.Pattern | None:
                 parts.append("%")
                 i += 2
                 continue
-            m = _FMT_SPEC_RE.match(fmt[i:])
-            if not m:
+            parsed = _parse_fmt_spec(fmt, i)
+            if not parsed:
                 parts.append(re.escape(c))
                 i += 1
                 continue
             has_spec = True
-            parts.append(_conversion_pattern(m.group(5)))
-            i += m.end()
+            conv, i = parsed
+            parts.append(_conversion_pattern(conv))
         else:
             parts.append(re.escape(c))
             i += 1

@@ -600,20 +600,17 @@ class HpdbTreeWidget(QWidget):
         info = group_coverage_info(group, state.coords, tolerance)
         return info["status"] == "out_range"
 
+    def _iter_child_items(self, parent, *, col: int = 0):
+        for row in range(parent.rowCount()):
+            item = parent.child(row, col)
+            if item is not None:
+                yield item
+
     def _iter_group_items(self):
         """Yield (sys_item, grp_item, grp_payload) for every group row."""
-        for state_row in range(self._model.rowCount()):
-            file_item = self._model.item(state_row, 0)
-            if file_item is None:
-                continue
-            for sys_row in range(file_item.rowCount()):
-                sys_item = file_item.child(sys_row, 0)
-                if sys_item is None:
-                    continue
-                for grp_row in range(sys_item.rowCount()):
-                    grp_item = sys_item.child(grp_row, 0)
-                    if grp_item is None:
-                        continue
+        for file_item in self._iter_child_items(self._model):
+            for sys_item in self._iter_child_items(file_item):
+                for grp_item in self._iter_child_items(sys_item):
                     grp_payload = grp_item.data(Qt.UserRole)
                     if not isinstance(grp_payload, dict) or grp_payload.get("kind") != "group":
                         continue

@@ -119,7 +119,7 @@ test:coverage:
   image: python:3.12
   needs: ["test:unit", "test:qt", "test:integration"]
   script:
-    - pytest -m "not requires_serial and not slow" --cov --cov-report=xml:coverage.xml --cov-fail-under=75 -q
+    - pytest -m "not requires_serial and not slow" --cov --cov-report=xml:coverage.xml --cov-fail-under=88 -q
   artifacts:
     paths:
       - coverage.xml

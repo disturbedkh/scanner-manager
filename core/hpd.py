@@ -627,11 +627,7 @@ class HpdFile:
                 entry.system_name = name
         self.has_changes = True
 
-    def _records_owned_by_system(
-        self, system: SystemNode
-    ) -> List["HpdRecord"]:
-        """Every HpdRecord that belongs to the given system, in the order
-        they appear in ``self.records``. Used by delete_system + revert."""
+    def _collect_system_record_ids(self, system: SystemNode) -> Set[int]:
         owned_ids: Set[int] = {id(system.record)}
         for rec in system.area_records:
             owned_ids.add(id(rec))
@@ -639,26 +635,35 @@ class HpdFile:
             owned_ids.add(id(site.record))
             for freq_rec in site.freqs:
                 owned_ids.add(id(freq_rec))
-        group_keys: Set[Tuple[str, str]] = set()
         for group in system.groups:
             owned_ids.add(id(group.record))
-            group_keys.add((group.group_type, group.group_id))
             for entry in group.entries:
                 owned_ids.add(id(entry.record))
-        for rec in self.records:
-            if rec.record_type != _REC_RECTANGLE:
+        return owned_ids
+
+    @staticmethod
+    def _rectangle_group_ref(rec: "HpdRecord") -> Optional[Tuple[str, str]]:
+        if rec.record_type != _REC_RECTANGLE:
+            return None
+        for field_str in rec.fields[1:]:
+            if "=" not in field_str:
                 continue
-            ref: Optional[Tuple[str, str]] = None
-            for field_str in rec.fields[1:]:
-                if "=" not in field_str:
-                    continue
-                key, value = field_str.split("=", 1)
-                if key == "CGroupId":
-                    ref = (_REC_CGROUP, value)
-                    break
-                if key == "TGroupId":
-                    ref = (_REC_TGROUP, value)
-                    break
+            key, value = field_str.split("=", 1)
+            if key == "CGroupId":
+                return (_REC_CGROUP, value)
+            if key == "TGroupId":
+                return (_REC_TGROUP, value)
+        return None
+
+    def _records_owned_by_system(
+        self, system: SystemNode
+    ) -> List["HpdRecord"]:
+        """Every HpdRecord that belongs to the given system, in the order
+        they appear in ``self.records``. Used by delete_system + revert."""
+        owned_ids = self._collect_system_record_ids(system)
+        group_keys = {(g.group_type, g.group_id) for g in system.groups}
+        for rec in self.records:
+            ref = self._rectangle_group_ref(rec)
             if ref is not None and ref in group_keys:
                 owned_ids.add(id(rec))
         return [r for r in self.records if id(r) in owned_ids]
@@ -774,6 +779,17 @@ class HpdFile:
                     )
         return snapshot
 
+    def _lookup_custom_entry(
+        self,
+        custom: EntryCustomization,
+        entry_map: Dict[Tuple[str, str, str, str], FreqEntry],
+        fallback_map: Dict[Tuple[str, str, str, str], FreqEntry],
+    ) -> Optional[FreqEntry]:
+        entry = entry_map.get(self._custom_key(custom))
+        if entry is not None:
+            return entry
+        return fallback_map.get(self._custom_fallback_key(custom))
+
     def apply_customizations(self, snapshot: List[EntryCustomization]) -> Dict[str, int]:
         entry_map: Dict[Tuple[str, str, str, str], FreqEntry] = {}
         fallback_map: Dict[Tuple[str, str, str, str], FreqEntry] = {}
@@ -788,11 +804,7 @@ class HpdFile:
         inserted = 0
 
         for custom in snapshot:
-            key = self._custom_key(custom)
-            entry = entry_map.get(key)
-            if entry is None:
-                fallback_key = self._custom_fallback_key(custom)
-                entry = fallback_map.get(fallback_key)
+            entry = self._lookup_custom_entry(custom, entry_map, fallback_map)
 
             if entry is not None:
                 changed = False
@@ -803,10 +815,9 @@ class HpdFile:
                     reapplied += 1
                 continue
 
-            if custom.is_user_added:
-                if self._reinsert_custom_entry(custom):
-                    inserted += 1
-                    continue
+            if custom.is_user_added and self._reinsert_custom_entry(custom):
+                inserted += 1
+                continue
             unresolved += 1
 
         return {
@@ -845,12 +856,15 @@ class HpdFile:
             logger.exception("Failed to reinsert custom entry %r", custom.name)
             return False
 
-    def _find_group(self, custom: EntryCustomization) -> Optional[GroupNode]:
+    def _find_group_by_ids(self, custom: EntryCustomization) -> Optional[GroupNode]:
         for sys_node in self.systems:
             if custom.system_id and sys_node.system_id == custom.system_id:
                 for group in sys_node.groups:
                     if custom.group_id and group.group_id == custom.group_id:
                         return group
+        return None
+
+    def _find_group_by_names(self, custom: EntryCustomization) -> Optional[GroupNode]:
         for sys_node in self.systems:
             if self._norm(sys_node.name) != self._norm(custom.system_name):
                 continue
@@ -858,6 +872,12 @@ class HpdFile:
                 if self._norm(group.name) == self._norm(custom.group_name):
                     return group
         return None
+
+    def _find_group(self, custom: EntryCustomization) -> Optional[GroupNode]:
+        by_id = self._find_group_by_ids(custom)
+        if by_id is not None:
+            return by_id
+        return self._find_group_by_names(custom)
 
     def _entry_key(self, entry: FreqEntry) -> Tuple[str, str, str, str]:
         return (
@@ -930,11 +950,14 @@ class HpdFile:
         state_id = None
         county_id = None
         for field_value in fields:
-            for name, raw_value in re.findall(r"([A-Za-z]+Id)=(-?\d+)", field_value):
-                if name == "StateId":
-                    state_id = HpdFile._parse_int(raw_value)
-                elif name == "CountyId":
-                    county_id = HpdFile._parse_int(raw_value)
+            if "StateId=" in field_value:
+                match = re.search(r"StateId=(-?\d+)", field_value)
+                if match:
+                    state_id = HpdFile._parse_int(match.group(1))
+            if "CountyId=" in field_value:
+                match = re.search(r"CountyId=(-?\d+)", field_value)
+                if match:
+                    county_id = HpdFile._parse_int(match.group(1))
         return state_id, county_id
 
     @staticmethod
@@ -988,6 +1011,27 @@ def rectangle_contains_point(
     return lat_min <= lat <= lat_max and lon_min <= lon <= lon_max
 
 
+def _geo_point_coverage(
+    lat: float,
+    lon: float,
+    point_lat: Optional[float],
+    point_lon: Optional[float],
+    range_miles: Optional[float],
+    best_delta: float,
+    covered: bool,
+) -> Tuple[bool, float]:
+    if point_lat is None or point_lon is None:
+        return covered, best_delta
+    d = haversine_miles(lat, lon, point_lat, point_lon)
+    rng = range_miles or 0.0
+    delta = d - rng
+    if delta < best_delta:
+        best_delta = delta
+    if rng > 0 and d <= rng:
+        covered = True
+    return covered, best_delta
+
+
 def system_covers_point(sys_node: "SystemNode", lat: float, lon: float) -> Tuple[bool, float]:
     """Return (covered, best_delta_miles). best_delta is min(distance - range)."""
     best_delta = float("inf")
@@ -997,25 +1041,13 @@ def system_covers_point(sys_node: "SystemNode", lat: float, lon: float) -> Tuple
             if rectangle_contains_point(rect, lat, lon):
                 covered = True
                 best_delta = min(best_delta, 0.0)
-        if group.lat is None or group.lon is None:
-            continue
-        d = haversine_miles(lat, lon, group.lat, group.lon)
-        rng = group.range_miles or 0.0
-        delta = d - rng
-        if delta < best_delta:
-            best_delta = delta
-        if rng > 0 and d <= rng:
-            covered = True
+        covered, best_delta = _geo_point_coverage(
+            lat, lon, group.lat, group.lon, group.range_miles, best_delta, covered
+        )
     for site in sys_node.sites:
-        if site.lat is None or site.lon is None:
-            continue
-        d = haversine_miles(lat, lon, site.lat, site.lon)
-        rng = site.range_miles or 0.0
-        delta = d - rng
-        if delta < best_delta:
-            best_delta = delta
-        if rng > 0 and d <= rng:
-            covered = True
+        covered, best_delta = _geo_point_coverage(
+            lat, lon, site.lat, site.lon, site.range_miles, best_delta, covered
+        )
     return covered, best_delta
 
 
@@ -1057,6 +1089,24 @@ class HpdConfig:
         self.counties: Dict[int, Tuple[str, int]] = {}
         self.state_files: Dict[int, str] = {}
 
+    def _register_state_file(self, sid: int, hpdb_dir: str) -> None:
+        hpd_file = os.path.join(hpdb_dir, f"s_{sid:06d}.hpd")
+        if os.path.exists(hpd_file):
+            self.state_files[sid] = hpd_file
+
+    def _parse_state_info(self, fields: List[str], hpdb_dir: str) -> None:
+        sid = self._extract_int(fields[1])
+        name = fields[3] if len(fields) > 3 else ""
+        abbrev = fields[4] if len(fields) > 4 else ""
+        self.states[sid] = (name, abbrev)
+        self._register_state_file(sid, hpdb_dir)
+
+    def _parse_county_info(self, fields: List[str]) -> None:
+        cid = self._extract_int(fields[1])
+        sid = self._extract_int(fields[2])
+        name = fields[3] if len(fields) > 3 else ""
+        self.counties[cid] = (name, sid)
+
     def load(self, cfg_path: str):
         self.states.clear()
         self.counties.clear()
@@ -1071,21 +1121,9 @@ class HpdConfig:
                     continue
 
                 if fields[0] == "StateInfo":
-                    sid = self._extract_int(fields[1])
-                    name = fields[3] if len(fields) > 3 else ""
-                    abbrev = fields[4] if len(fields) > 4 else ""
-                    self.states[sid] = (name, abbrev)
-                    hpd_file = os.path.join(
-                        hpdb_dir, f"s_{sid:06d}.hpd"
-                    )
-                    if os.path.exists(hpd_file):
-                        self.state_files[sid] = hpd_file
-
+                    self._parse_state_info(fields, hpdb_dir)
                 elif fields[0] == "CountyInfo":
-                    cid = self._extract_int(fields[1])
-                    sid = self._extract_int(fields[2])
-                    name = fields[3] if len(fields) > 3 else ""
-                    self.counties[cid] = (name, sid)
+                    self._parse_county_info(fields)
 
     def get_state_name(self, sid: int) -> str:
         name, abbrev = self.states.get(sid, (_UNKNOWN, ""))

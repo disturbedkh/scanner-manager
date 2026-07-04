@@ -231,6 +231,34 @@ def run_one_port(
             pass
 
 
+def _append_hex_previews(md: list[str], results: list[ProbeResult]) -> None:
+    md.append("## Hex previews (first 128 bytes)")
+    md.append("")
+    for r in results:
+        if r.classification in ("HIT", "ERR"):
+            md.append(f"- `{r.spec.send}`: `{r.hex_preview(128)}` ({len(r.raw)} B)")
+    md.append("")
+
+
+def _append_full_responses(md: list[str], results: list[ProbeResult]) -> None:
+    md.append("## Full responses (decoded as ASCII, first 16 lines per command)")
+    md.append("")
+    for r in results:
+        if r.classification != "HIT" or not r.raw:
+            continue
+        txt = r.raw.decode("ascii", errors="replace")
+        lines = txt.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        md.append(f"### `{r.spec.send}` ({len(r.raw)} B, {len(lines)} lines)")
+        md.append("")
+        md.append("```")
+        for ln in lines[:16]:
+            md.append(ln)
+        if len(lines) > 16:
+            md.append(f"...({len(lines) - 16} more lines truncated)")
+        md.append("```")
+        md.append("")
+
+
 def write_report(results: list[ProbeResult], tag: str, baud: int) -> tuple[Path, Path]:
     ts = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
@@ -258,28 +286,8 @@ def write_report(results: list[ProbeResult], tag: str, baud: int) -> tuple[Path,
             f"{r.spec.label} | {r.spec.args_hint or '-'} | "
             f"{r.elapsed_ms:.0f} | `{r.first_line}` |"
         )
-    md.append("")
-    md.append("## Hex previews (first 128 bytes)")
-    md.append("")
-    for r in results:
-        if r.classification in ("HIT", "ERR"):
-            md.append(f"- `{r.spec.send}`: `{r.hex_preview(128)}` ({len(r.raw)} B)")
-    md.append("")
-    md.append("## Full responses (decoded as ASCII, first 16 lines per command)")
-    md.append("")
-    for r in results:
-        if r.classification == "HIT" and r.raw:
-            txt = r.raw.decode("ascii", errors="replace")
-            lines = txt.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-            md.append(f"### `{r.spec.send}` ({len(r.raw)} B, {len(lines)} lines)")
-            md.append("")
-            md.append("```")
-            for ln in lines[:16]:
-                md.append(ln)
-            if len(lines) > 16:
-                md.append(f"...({len(lines) - 16} more lines truncated)")
-            md.append("```")
-            md.append("")
+    _append_hex_previews(md, results)
+    _append_full_responses(md, results)
 
     md_path.write_text("\n".join(md) + "\n", encoding="utf-8")
 

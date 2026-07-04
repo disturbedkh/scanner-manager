@@ -27,9 +27,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
+from core.path_utils import safe_resolve_path  # noqa: E402
 from core.uniden_tools import sha256_of_file  # noqa: E402  (after sys.path tweak)
 
-MANIFEST_PATH = REPO_ROOT / "data" / "uniden_installers.json"
+MANIFEST_PATH = safe_resolve_path(REPO_ROOT, REPO_ROOT / "data" / "uniden_installers.json")
 USER_AGENT = "scanner-manager/pin-uniden-hashes (+https://github.com/disturbedkh/scanner-manager)"
 
 
@@ -65,6 +66,27 @@ def _download(url: str, dest: Path) -> int:
     return bytes_seen
 
 
+def _pin_tool_entry(key: str, entry: dict) -> tuple[str, bool]:
+    """Download, hash, and update one manifest tool entry."""
+    url = entry["download_url"]
+    print(f"[{key}] {entry['display_name']} v{entry['version']}")
+    print(f"  URL: {url}")
+    with tempfile.TemporaryDirectory(prefix="pin-uniden-") as tmpdir:
+        tmp_path = Path(tmpdir) / f"{key}.bin"
+        size = _download(url, tmp_path)
+        digest = sha256_of_file(tmp_path)
+    old_sha = entry.get("sha256") or ""
+    old_size = int(entry.get("size_bytes") or 0)
+    changed = old_sha != digest or old_size != size
+    if changed:
+        entry["sha256"] = digest
+        entry["size_bytes"] = size
+    print(f"  sha256: {digest}")
+    print(f"  size_bytes: {size}")
+    line = f"- `{key}` v{entry['version']}: sha256 `{digest}`, {size} bytes"
+    return line, changed
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Pin real SHA-256 into the Uniden installer manifest.")
     parser.add_argument("--tool", help="Only process a single tool key from the manifest.")
@@ -89,25 +111,9 @@ def main() -> int:
     changed = False
 
     for key in target_keys:
-        entry = tools[key]
-        url = entry["download_url"]
-        print(f"[{key}] {entry['display_name']} v{entry['version']}")
-        print(f"  URL: {url}")
-        with tempfile.TemporaryDirectory(prefix="pin-uniden-") as tmpdir:
-            tmp_path = Path(tmpdir) / f"{key}.bin"
-            size = _download(url, tmp_path)
-            digest = sha256_of_file(tmp_path)
-        old_sha = entry.get("sha256") or ""
-        old_size = int(entry.get("size_bytes") or 0)
-        if old_sha != digest or old_size != size:
-            entry["sha256"] = digest
-            entry["size_bytes"] = size
-            changed = True
-        print(f"  sha256: {digest}")
-        print(f"  size_bytes: {size}")
-        verification_lines.append(
-            f"- `{key}` v{entry['version']}: sha256 `{digest}`, {size} bytes"
-        )
+        line, entry_changed = _pin_tool_entry(key, tools[key])
+        verification_lines.append(line)
+        changed = changed or entry_changed
 
     if changed and not args.dry_run:
         manifest["manifest_version"] = int(manifest.get("manifest_version") or 1) + 1

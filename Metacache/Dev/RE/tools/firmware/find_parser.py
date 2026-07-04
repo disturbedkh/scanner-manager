@@ -42,20 +42,19 @@ def main() -> int:
     return _do_scan(fw, data)
 
 
-def _do_scan(fw: bytes, data: dict) -> int:
+def _find_all(fw: bytes, needle: bytes) -> list[int]:
+    out: list[int] = []
+    i = 0
+    while True:
+        idx = fw.find(needle, i)
+        if idx < 0:
+            break
+        out.append(idx)
+        i = idx + 1
+    return out
 
 
-    def find_all(needle: bytes) -> list[int]:
-        out: list[int] = []
-        i = 0
-        while True:
-            idx = fw.find(needle, i)
-            if idx < 0:
-                break
-            out.append(idx)
-            i = idx + 1
-        return out
-
+def _print_mnemonic_search(fw: bytes) -> None:
     print("=== Mnemonic byte-pattern search (raw firmware bytes) ===")
     for needle, label in [
         (b"MDL\0",   "MDL\\0 (null-terminated)"),
@@ -74,15 +73,17 @@ def _do_scan(fw: bytes, data: dict) -> int:
         (b"\0M\0D\0L\0", "MDL UTF-16"),
         (b"M\0D\0L",     "MDL UTF-16-no-null"),
     ]:
-        hits = find_all(needle)
+        hits = _find_all(fw, needle)
         print(f"  {label:30s} -> {len(hits)} hit(s)" + (f" at {[hex(BASE+h) for h in hits[:6]]}" if hits else ""))
 
     print()
     print("=== Context around 'MDL' bytes (any) ===")
-    for idx in find_all(b"MDL"):
+    for idx in _find_all(fw, b"MDL"):
         ctx = fw[max(0, idx - 8):idx + 16]
         print(f"  +0x{idx:06X} (0x{BASE + idx:08X}): {ctx!r}")
 
+
+def _print_short_mnemonics(data: dict) -> None:
     print()
     print("=== Short ASCII-mnemonic strings (3-6 chars, all uppercase A-Z) ===")
     mnem_strings = []
@@ -95,6 +96,8 @@ def _do_scan(fw: bytes, data: dict) -> int:
         print(f"  {addr}  {v:6s}  xrefs={nx}")
     print(f"  total {len(mnem_strings)} short ASCII-mnemonic strings")
 
+
+def _print_zero_caller_candidates(data: dict) -> None:
     print()
     print("=== Functions with 0 callers, sorted by size (parser candidates) ===")
     zc = [f for f in data.get("functions", []) if not f.get("callers")]
@@ -104,6 +107,12 @@ def _do_scan(fw: bytes, data: dict) -> int:
             f"  {f['addr']}  {f['name']:25s}  size={f['size']:>5}  "
             f"callees={len(f.get('callees', []))}  periph={','.join(f.get('peripheral_accesses', [])) or '-'}"
         )
+
+
+def _do_scan(fw: bytes, data: dict) -> int:
+    _print_mnemonic_search(fw)
+    _print_short_mnemonics(data)
+    _print_zero_caller_candidates(data)
     return 0
 
 

@@ -619,18 +619,34 @@ def maybe_decode(result: CaptureResult, do_decode: bool) -> None:
         print(f"[!] Decoder error: {e}")
 
 
+def _run_decode_only() -> int:
+    existing = sorted(list(PCAP_DIR.glob("*.pcap")) + list(PCAP_DIR.glob("*.pcapng")))
+    if not existing:
+        print(f"[!] No pcaps under {PCAP_DIR} to decode.")
+        return 1
+    for p in existing:
+        print(f"[*] Decoding {p.name}")
+        subprocess.call([sys.executable, str(DECODER), str(p)])
+    return 0
+
+
+def _resolve_capture_interface(args, tool: Path) -> tuple[str | None, str]:
+    interface = args.interface
+    source = "user" if interface else "none"
+    if not interface:
+        interface, source = auto_select_interface(tool)
+    if not interface:
+        print()
+        interface = manual_select_interface(tool)
+        source = "manual" if interface else "none"
+    return interface, source
+
+
 def run_session(args: argparse.Namespace) -> int:
     PCAP_DIR.mkdir(parents=True, exist_ok=True)
 
     if args.decode_only:
-        existing = sorted(list(PCAP_DIR.glob("*.pcap")) + list(PCAP_DIR.glob("*.pcapng")))
-        if not existing:
-            print(f"[!] No pcaps under {PCAP_DIR} to decode.")
-            return 1
-        for p in existing:
-            print(f"[*] Decoding {p.name}")
-            subprocess.call([sys.executable, str(DECODER), str(p)])
-        return 0
+        return _run_decode_only()
 
     tool = find_capture_tool()
     if not tool:
@@ -640,27 +656,12 @@ def run_session(args: argparse.Namespace) -> int:
         return 1
     print(f"[+] Capture tool: {tool}  ({'USBPcapCMD' if is_usbpcapcmd(tool) else 'dumpcap'})")
 
-    interface = args.interface
-    source = "user" if interface else "none"
-    if not interface:
-        interface, source = auto_select_interface(tool)
-    if not interface:
-        print()
-        interface = manual_select_interface(tool)
-        source = "manual" if interface else "none"
+    interface, source = _resolve_capture_interface(args, tool)
     if not interface:
         print("[X] No interface selected. Aborting.")
         return 1
 
-    # Final guard: confirm the chosen interface actually carries SDS100
-    # traffic before running captures against the wrong bus. Only run
-    # this when selection confidence is low, i.e. the traffic-volume
-    # heuristic was the deciding strategy. PnP / VID-descriptor / single-
-    # interface / explicit-flag / manual selections are already trusted.
-    needs_verify = (
-        source == "traffic"
-        and not args.no_verify_interface
-    )
+    needs_verify = source == "traffic" and not args.no_verify_interface
     if needs_verify and not verify_interface_or_warn(tool, interface):
         print("[X] Aborting at user request.")
         return 1

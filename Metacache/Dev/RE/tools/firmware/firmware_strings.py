@@ -129,6 +129,47 @@ def scan_command_tokens(strings: set[str]) -> dict[str, list[str]]:
     return candidates
 
 
+def _spec_presence(tok: str) -> tuple[str, str, str]:
+    v102 = "yes" if tok in V102_SPEC_COMMANDS else ""
+    v200 = "yes" if tok in V200_NEW else ""
+    inh = "yes" if tok in INHERITED_BCDX36HP else ""
+    return v102, v200, inh
+
+
+def _append_known_rows(
+    lines: list[str],
+    cands: dict[str, list[str]],
+    known_seen: dict[str, str],
+    unknown: list[tuple[str, list[str]]],
+) -> None:
+    for tok in sorted(cands):
+        ctxs = cands[tok]
+        ctx0 = ctxs[0][:60].replace("|", "\\|")
+        v102, v200, inh = _spec_presence(tok)
+        if tok in ALL_KNOWN:
+            known_seen[tok] = ctx0
+            lines.append(f"| `{tok}` | {v102} | {v200} | {inh} | `{ctx0}` |")
+        else:
+            unknown.append((tok, ctxs))
+
+
+def _append_unknown_rows(lines: list[str], unknown: list[tuple[str, list[str]]]) -> None:
+    lines.append("")
+    lines.append("## Unknown 3-6 char uppercase tokens (raw firmware strings)")
+    lines.append("")
+    lines.append("Most are noise (variable names, bitmask labels, file-format")
+    lines.append("type tags). The interesting ones are 3-letter standalone")
+    lines.append("tokens that don't decode to anything obvious from English.")
+    lines.append("")
+    lines.append("| Token | hits | First 3 contexts |")
+    lines.append("| --- | --- | --- |")
+    for tok, ctxs in sorted(unknown, key=lambda kv: (-len(kv[1]), kv[0])):
+        if len(tok) > 6:
+            continue
+        ctxs_str = " // ".join(c[:50].replace("|", "\\|") for c in ctxs[:3])
+        lines.append(f"| `{tok}` | {len(ctxs)} | `{ctxs_str}` |")
+
+
 def write_command_report(sets: dict[str, set[str]]) -> None:
     """Cross-reference all-caps tokens in firmware vs known spec commands."""
     main_new = sets.get("main_1.26.01", set())
@@ -149,40 +190,8 @@ def write_command_report(sets: dict[str, set[str]]) -> None:
     ]
     known_seen: dict[str, str] = {}
     unknown: list[tuple[str, list[str]]] = []
-    for tok in sorted(cands):
-        ctxs = cands[tok]
-        ctx0 = ctxs[0][:60].replace("|", "\\|")
-        if tok in V102_SPEC_COMMANDS:
-            v102 = "yes"
-        else:
-            v102 = ""
-        if tok in V200_NEW:
-            v200 = "yes"
-        else:
-            v200 = ""
-        if tok in INHERITED_BCDX36HP:
-            inh = "yes"
-        else:
-            inh = ""
-        if tok in ALL_KNOWN:
-            known_seen[tok] = ctx0
-            lines.append(f"| `{tok}` | {v102} | {v200} | {inh} | `{ctx0}` |")
-        else:
-            unknown.append((tok, ctxs))
-    lines.append("")
-    lines.append("## Unknown 3-6 char uppercase tokens (raw firmware strings)")
-    lines.append("")
-    lines.append("Most are noise (variable names, bitmask labels, file-format")
-    lines.append("type tags). The interesting ones are 3-letter standalone")
-    lines.append("tokens that don't decode to anything obvious from English.")
-    lines.append("")
-    lines.append("| Token | hits | First 3 contexts |")
-    lines.append("| --- | --- | --- |")
-    for tok, ctxs in sorted(unknown, key=lambda kv: (-len(kv[1]), kv[0])):
-        if len(tok) > 6:
-            continue
-        ctxs_str = " // ".join(c[:50].replace("|", "\\|") for c in ctxs[:3])
-        lines.append(f"| `{tok}` | {len(ctxs)} | `{ctxs_str}` |")
+    _append_known_rows(lines, cands, known_seen, unknown)
+    _append_unknown_rows(lines, unknown)
     lines.append("")
     lines.append("## Known commands NOT seen as standalone tokens")
     lines.append("")

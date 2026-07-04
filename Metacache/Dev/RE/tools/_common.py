@@ -110,7 +110,7 @@ def validate_drive_root(drive: str) -> Path:
 
 def validate_capture_devices(devices: str) -> str:
     """Allow only comma-separated decimal USB device addresses."""
-    if not re.fullmatch(r"[0-9]+(?:,[0-9]+)*", devices.strip()):
+    if not re.fullmatch(r"\d+(?:,\d+)*", devices.strip()):
         raise ValueError(f"Invalid --devices value: {devices!r}")
     return devices.strip()
 
@@ -273,7 +273,6 @@ def add_firmware_arg(
     parser: argparse.ArgumentParser,
     *,
     flag: str = "--firmware",
-    finder=find_latest_sub_firmware,
     help_text: str = "Path to firmware blob to analyse. Default: most-recent inflated SUB blob in Metacache/Dev/RE/firmware/.",
 ) -> None:
     """Standardised ``--firmware`` flag for tools that consume a
