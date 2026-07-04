@@ -305,7 +305,7 @@ def _gather_checked_import_items(
     include_freq_hz: bool = False,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     items: List[Dict[str, Any]] = []
-    counts = {action: 0 for action in allowed_actions}
+    counts = dict.fromkeys(allowed_actions, 0)
     for meta in item_meta.values():
         if meta.get("type") != item_type or meta.get("parent") != cat_id:
             continue
@@ -1917,6 +1917,29 @@ BACKUP_SUFFIX_PATTERN = re.compile(
 )
 
 
+def _backup_file_key(path: Path) -> str:
+    try:
+        return str(path.resolve())
+    except Exception:
+        return str(path)
+
+
+def _register_backup_file(
+    path: Path,
+    groups: Dict[str, List[Path]],
+    seen_files: Set[str],
+) -> None:
+    match = BACKUP_SUFFIX_PATTERN.match(path.name)
+    if not match:
+        return
+    key = _backup_file_key(path)
+    if key in seen_files:
+        return
+    seen_files.add(key)
+    source_path = str(path.parent / match.group("base"))
+    groups.setdefault(source_path, []).append(path)
+
+
 def discover_backups(search_roots: List[Path]) -> Dict[str, List[Path]]:
     """Walk directories and group backup files by their source path."""
     groups: Dict[str, List[Path]] = {}
@@ -1924,22 +1947,9 @@ def discover_backups(search_roots: List[Path]) -> Dict[str, List[Path]]:
     for root in search_roots:
         if not root or not root.exists():
             continue
-        for p in root.rglob("*.backup_*"):
-            if not p.is_file():
-                continue
-            m = BACKUP_SUFFIX_PATTERN.match(p.name)
-            if not m:
-                continue
-            try:
-                key = str(p.resolve())
-            except Exception:
-                key = str(p)
-            if key in seen_files:
-                continue
-            seen_files.add(key)
-            source_name = m.group("base")
-            source_path = str(p.parent / source_name)
-            groups.setdefault(source_path, []).append(p)
+        for path in root.rglob("*.backup_*"):
+            if path.is_file():
+                _register_backup_file(path, groups, seen_files)
     for source in groups:
         groups[source].sort(key=lambda p: p.stat().st_mtime)
     return groups
@@ -1951,31 +1961,80 @@ def replay_norm(text: str) -> str:
     return " ".join((text or "").strip().lower().split())
 
 
+def _replay_snap_entry_keys(
+    snap: Dict[str, Any],
+    norm: Callable[[str], str],
+) -> Optional[Tuple[str, str, str, str]]:
+    if not snap:
+        return None
+    entry_type = (snap.get("entry_type") or "").upper()
+    identity = str(snap.get("identity_value") or "")
+    sys_name = norm(snap.get("system_name", ""))
+    grp_name = norm(snap.get("group_name", ""))
+    if not (entry_type and identity and sys_name and grp_name):
+        return None
+    return entry_type, identity, sys_name, grp_name
+
+
+def _entry_matches_replay_identity(
+    entry: "FreqEntry",
+    entry_type: str,
+    identity: str,
+) -> bool:
+    return (
+        entry.entry_type.upper() == entry_type
+        and entry.record.get_field(5, "") == identity
+    )
+
+
+def _find_entry_in_replay_group(
+    group: "GroupNode",
+    entry_type: str,
+    identity: str,
+    grp_name: str,
+    norm: Callable[[str], str],
+) -> Optional["FreqEntry"]:
+    if norm(group.name) != grp_name:
+        return None
+    for entry in group.entries:
+        if _entry_matches_replay_identity(entry, entry_type, identity):
+            return entry
+    return None
+
+
 def _match_entry_from_replay_snap(
     systems: List["SystemNode"],
     snap: Dict[str, Any],
     norm: Callable[[str], str],
 ) -> Optional["FreqEntry"]:
-    if not snap:
+    keys = _replay_snap_entry_keys(snap, norm)
+    if keys is None:
         return None
-    et = (snap.get("entry_type") or "").upper()
-    identity = str(snap.get("identity_value") or "")
-    sys_name = norm(snap.get("system_name", ""))
-    grp_name = norm(snap.get("group_name", ""))
-    if not (et and identity and sys_name and grp_name):
-        return None
+    entry_type, identity, sys_name, grp_name = keys
     for sys_node in systems:
         if norm(sys_node.name) != sys_name:
             continue
         for group in sys_node.groups:
-            if norm(group.name) != grp_name:
-                continue
-            for entry in group.entries:
-                if entry.entry_type.upper() != et:
-                    continue
-                if entry.record.get_field(5, "") == identity:
-                    return entry
+            hit = _find_entry_in_replay_group(
+                group, entry_type, identity, grp_name, norm
+            )
+            if hit is not None:
+                return hit
     return None
+
+
+def _entry_replay_snaps_from_event(
+    event: Any,
+    baseline_for: Callable[[str], Any],
+) -> List[Dict[str, Any]]:
+    snaps: List[Dict[str, Any]] = []
+    baseline = baseline_for(event.target_id or "")
+    if baseline is not None:
+        snaps.append(baseline.snapshot or {})
+    payload = event.payload or {}
+    for key in ("snapshot", "after"):
+        snaps.append(payload.get(key) or {})
+    return snaps
 
 
 def find_entry_after_update(
@@ -1989,14 +2048,8 @@ def find_entry_after_update(
     hit = find_by_id(event.target_id or "")
     if hit is not None:
         return hit
-    baseline = baseline_for(event.target_id or "")
-    if baseline is not None:
-        hit = _match_entry_from_replay_snap(systems, baseline.snapshot or {}, norm)
-        if hit is not None:
-            return hit
-    payload = event.payload or {}
-    for key in ("snapshot", "after"):
-        hit = _match_entry_from_replay_snap(systems, payload.get(key) or {}, norm)
+    for snap in _entry_replay_snaps_from_event(event, baseline_for):
+        hit = _match_entry_from_replay_snap(systems, snap, norm)
         if hit is not None:
             return hit
     return None
@@ -2022,6 +2075,28 @@ def _match_group_from_replay_snap(
     return None
 
 
+def _find_node_after_update(
+    event: Any,
+    *,
+    find_by_key: Callable[[str], Optional[Any]],
+    baseline_for: Callable[[str], Any],
+    match_from_snap: Callable[[List["SystemNode"], Dict[str, Any], Callable[[str], str]], Optional[Any]],
+    systems: List["SystemNode"],
+    norm: Callable[[str], str],
+    payload_snap_key: str = "snapshot",
+) -> Optional[Any]:
+    hit = find_by_key(event.target_id or "")
+    if hit is not None:
+        return hit
+    baseline = baseline_for(event.target_id or "")
+    if baseline is not None:
+        hit = match_from_snap(systems, baseline.snapshot or {}, norm)
+        if hit is not None:
+            return hit
+    payload = event.payload or {}
+    return match_from_snap(systems, payload.get(payload_snap_key) or {}, norm)
+
+
 def find_group_after_update(
     systems: List["SystemNode"],
     event: Any,
@@ -2030,16 +2105,44 @@ def find_group_after_update(
     baseline_for: Callable[[str], Any],
     norm: Callable[[str], str],
 ) -> Optional["GroupNode"]:
-    hit = find_by_key(event.target_id or "")
-    if hit is not None:
-        return hit
+    return _find_node_after_update(
+        event,
+        find_by_key=find_by_key,
+        baseline_for=baseline_for,
+        match_from_snap=_match_group_from_replay_snap,
+        systems=systems,
+        norm=norm,
+    )
+
+
+def _system_name_candidates_from_event(
+    event: Any,
+    baseline_for: Callable[[str], Any],
+) -> List[str]:
+    names: List[str] = []
     baseline = baseline_for(event.target_id or "")
     if baseline is not None:
-        hit = _match_group_from_replay_snap(systems, baseline.snapshot or {}, norm)
-        if hit is not None:
-            return hit
+        names.append(baseline.snapshot.get("name", ""))
     payload = event.payload or {}
-    return _match_group_from_replay_snap(systems, payload.get("snapshot") or {}, norm)
+    for snap_key in ("snapshot", "before", "after"):
+        snap = payload.get(snap_key) or {}
+        names.append(snap.get("name", ""))
+    return names
+
+
+def _find_system_by_normalized_names(
+    systems: List["SystemNode"],
+    norm: Callable[[str], str],
+    raw_names: List[str],
+) -> Optional["SystemNode"]:
+    for raw in raw_names:
+        target = norm(raw)
+        if not target:
+            continue
+        for sys_node in systems:
+            if norm(sys_node.name) == target:
+                return sys_node
+    return None
 
 
 def find_system_after_update(
@@ -2053,20 +2156,27 @@ def find_system_after_update(
     hit = find_by_key(event.target_id or "")
     if hit is not None:
         return hit
-    name_candidates: List[str] = []
-    baseline = baseline_for(event.target_id or "")
-    if baseline is not None:
-        name_candidates.append(baseline.snapshot.get("name", ""))
-    payload = event.payload or {}
-    for snap_key in ("snapshot", "before", "after"):
-        snap = payload.get(snap_key) or {}
-        name_candidates.append(snap.get("name", ""))
-    for raw in name_candidates:
-        target = norm(raw)
-        if not target:
-            continue
-        for sys_node in systems:
-            if norm(sys_node.name) == target:
+    names = _system_name_candidates_from_event(event, baseline_for)
+    return _find_system_by_normalized_names(systems, norm, names)
+
+
+def _system_holding_group(
+    systems: List["SystemNode"],
+    group: "GroupNode",
+) -> Optional["SystemNode"]:
+    for sys_node in systems:
+        if group in sys_node.groups:
+            return sys_node
+    return None
+
+
+def _system_holding_entry(
+    systems: List["SystemNode"],
+    entry: "FreqEntry",
+) -> Optional["SystemNode"]:
+    for sys_node in systems:
+        for group in sys_node.groups:
+            if entry in group.entries:
                 return sys_node
     return None
 
@@ -2080,18 +2190,38 @@ def resolve_target_system(
     if selected_system is not None:
         return selected_system
     if selected_group is not None:
-        for sys_node in systems:
-            if selected_group in sys_node.groups:
-                return sys_node
+        return _system_holding_group(systems, selected_group)
     if selected_entry is not None:
-        for sys_node in systems:
-            for group in sys_node.groups:
-                if selected_entry in group.entries:
-                    return sys_node
+        return _system_holding_entry(systems, selected_entry)
     return None
 
 
 # ---- RR candidate / crossref helpers ------------------------------------
+
+def _append_fuzzy_licensee_entry_refs(
+    candidates: List[Dict[str, Any]],
+    seen: Set[str],
+    key: str,
+    score: float,
+    entry_id: str,
+    meta: Any,
+    append_fn: Callable[..., None],
+) -> None:
+    other_ref = meta.ref_for(entry_id) or {}
+    for url in other_ref.get("source_urls") or []:
+        append_fn(
+            candidates, seen, url, "fuzzy-licensee", 0.7 * score,
+            f"Fuzzy licensee match ({int(score * 100)}%) to {key}",
+        )
+    callsign = other_ref.get("fcc_callsign")
+    if callsign:
+        append_fn(
+            candidates, seen,
+            f"https://www.radioreference.com/db/fcc/callsign/{callsign}",
+            "fuzzy-licensee", 0.65 * score,
+            f"Fuzzy match -> CS {callsign}",
+        )
+
 
 def append_fuzzy_licensee_rr_candidates(
     candidates: List[Dict[str, Any]],
@@ -2103,58 +2233,42 @@ def append_fuzzy_licensee_rr_candidates(
 ) -> None:
     for licensee in licensees:
         for key, score, ids in gm.fuzzy_licensee_candidates(licensee, min_score=0.8):
-            for eid in ids:
-                other_ref = meta.ref_for(eid) or {}
-                for url in other_ref.get("source_urls") or []:
-                    append_fn(
-                        candidates, seen, url, "fuzzy-licensee", 0.7 * score,
-                        f"Fuzzy licensee match ({int(score * 100)}%) to {key}",
-                    )
-                cs = other_ref.get("fcc_callsign")
-                if cs:
-                    append_fn(
-                        candidates, seen,
-                        f"https://www.radioreference.com/db/fcc/callsign/{cs}",
-                        "fuzzy-licensee", 0.65 * score,
-                        f"Fuzzy match -> CS {cs}",
-                    )
+            for entry_id in ids:
+                _append_fuzzy_licensee_entry_refs(
+                    candidates, seen, key, score, entry_id, meta, append_fn
+                )
 
 
-def crossref_hint_for_rr_row(
+def _crossref_hint_from_callsign(
     gm: Any,
-    rr_row: Dict[str, Any],
+    callsign: str,
+    entry_for_id_fn: Callable[[str], Tuple[Optional["FreqEntry"], str]],
+) -> Optional[Dict[str, Any]]:
+    ids = gm.callsign_lookup(callsign)
+    if not ids:
+        return None
+    entry, group_name = entry_for_id_fn(ids[0])
+    matched = entry.name if entry else ""
+    label = f"CS {callsign}"
+    if matched:
+        label = f"{label} -> {matched}"
+    return {
+        "kind": "callsign",
+        "score": 1.0,
+        "label": label,
+        "entry_ids": list(ids),
+        "matched_entry": entry,
+        "matched_group": group_name,
+    }
+
+
+def _crossref_hint_from_licensee(
+    gm: Any,
+    licensee: str,
     entry_for_id_fn: Callable[[str], Tuple[Optional["FreqEntry"], str]],
     *,
-    fallback_name: str = "",
-    fuzzy_threshold: float = 0.85,
+    fuzzy_threshold: float,
 ) -> Optional[Dict[str, Any]]:
-    if gm is None:
-        return None
-
-    callsign = (rr_row.get("fcc_callsign") or "").strip().upper()
-    if callsign:
-        ids = gm.callsign_lookup(callsign)
-        if ids:
-            entry, group_name = entry_for_id_fn(ids[0])
-            matched = entry.name if entry else ""
-            label = f"CS {callsign}"
-            if matched:
-                label = f"{label} -> {matched}"
-            return {
-                "kind": "callsign",
-                "score": 1.0,
-                "label": label,
-                "entry_ids": list(ids),
-                "matched_entry": entry,
-                "matched_group": group_name,
-            }
-
-    licensee = (rr_row.get("licensee") or rr_row.get("licensee_text") or "").strip()
-    if not licensee:
-        licensee = (fallback_name or "").strip()
-    if not licensee:
-        return None
-
     candidates = gm.fuzzy_licensee_candidates(licensee, min_score=fuzzy_threshold)
     if not candidates:
         return None
@@ -2177,6 +2291,42 @@ def crossref_hint_for_rr_row(
     }
 
 
+def _rr_row_licensee_text(
+    rr_row: Dict[str, Any],
+    *,
+    fallback_name: str,
+) -> str:
+    licensee = (rr_row.get("licensee") or rr_row.get("licensee_text") or "").strip()
+    if licensee:
+        return licensee
+    return (fallback_name or "").strip()
+
+
+def crossref_hint_for_rr_row(
+    gm: Any,
+    rr_row: Dict[str, Any],
+    entry_for_id_fn: Callable[[str], Tuple[Optional["FreqEntry"], str]],
+    *,
+    fallback_name: str = "",
+    fuzzy_threshold: float = 0.85,
+) -> Optional[Dict[str, Any]]:
+    if gm is None:
+        return None
+
+    callsign = (rr_row.get("fcc_callsign") or "").strip().upper()
+    if callsign:
+        hint = _crossref_hint_from_callsign(gm, callsign, entry_for_id_fn)
+        if hint is not None:
+            return hint
+
+    licensee = _rr_row_licensee_text(rr_row, fallback_name=fallback_name)
+    if not licensee:
+        return None
+    return _crossref_hint_from_licensee(
+        gm, licensee, entry_for_id_fn, fuzzy_threshold=fuzzy_threshold
+    )
+
+
 # ---- Pipeline / card state display --------------------------------------
 
 def select_installed_uniden_tool(
@@ -2191,6 +2341,132 @@ def select_installed_uniden_tool(
         if tool.installed:
             return tool
     return None
+
+
+def hpd_path_inside_workspace(ws_dir: str, hpd_path: str) -> bool:
+    """True when ``hpd_path`` resolves under ``ws_dir`` (pipeline/updater pull)."""
+    if not ws_dir:
+        return False
+    try:
+        return (
+            os.path.commonpath(
+                [os.path.abspath(ws_dir), os.path.abspath(hpd_path)]
+            )
+            == os.path.abspath(ws_dir)
+        )
+    except ValueError:
+        return False
+
+
+def updater_reconcile_abort_reason(
+    exit_code: int,
+    target_hpd_path: str,
+) -> Optional[str]:
+    """User-facing abort message after the Uniden updater exits, or None to continue."""
+    if exit_code != 0:
+        return f"Updater exited with code {exit_code}. No merge was applied."
+    if not os.path.exists(target_hpd_path):
+        return "Updated HPD file was not found after updater completion."
+    return None
+
+
+def merge_reconcile_report_message(report: Optional[Dict[str, Any]]) -> str:
+    """Format the post-updater reconcile dialog body."""
+    data = report or {}
+    return (
+        "Event replay:\n"
+        f"  Replayed: {data.get('replayed', 0)}\n"
+        f"  Missed:   {data.get('missed', 0)}\n"
+        f"    deletions={data.get('deletions', 0)}, "
+        f"services={data.get('services', 0)}, "
+        f"edits={data.get('edits', 0)}, "
+        f"additions={data.get('additions', 0)}\n\n"
+        "Safety-net pass:\n"
+        f"  Reapplied edits:        {data.get('reapplied', 0)}\n"
+        f"  Reinserted user entries:{data.get('inserted', 0)}\n"
+        f"  Unresolved entries:     {data.get('unresolved', 0)}"
+    )
+
+
+def run_updater_reconcile_sequence(
+    updater_path: str,
+    target_hpd_path: str,
+    *,
+    wait_for_updater: Callable[[str], int],
+    reconcile_after_reload: Callable[[], Dict[str, Any]],
+) -> Tuple[Optional[Tuple[str, str]], Dict[str, Any]]:
+    """Wait for updater, reconcile HPD. Returns ((title, msg), {}) on abort else (None, report)."""
+    exit_code = wait_for_updater(updater_path)
+    abort = updater_reconcile_abort_reason(exit_code, target_hpd_path)
+    if abort:
+        title = "Updater Failed" if exit_code != 0 else "Update Error"
+        return (title, abort), {}
+    return None, reconcile_after_reload()
+
+
+def pipeline_sync_pull_summary(
+    profile: Optional[Dict[str, Any]],
+    card_root: Optional[str],
+    *,
+    get_baseline: Callable[[Dict[str, Any]], Any],
+    sync_pull: Callable[..., Tuple[Any, Any]],
+) -> Tuple[Dict[str, Any], Any, Any]:
+    """Pull card → workspace when pipeline stage 3 applies; else empty summary."""
+    if not profile or not card_root:
+        return {}, None, None
+    baseline = get_baseline(profile)
+    pull_report, pull_diffs = sync_pull(
+        card_root=card_root,
+        workspace_root=profile["workspace_dir"],
+        baseline=baseline,
+    )
+    return pull_stage_summary(pull_report), pull_report, pull_diffs
+
+
+def pipeline_tool_abort_reason(
+    exit_code: int,
+    tool_display_name: str,
+    target_hpd_path: str,
+) -> Optional[str]:
+    """User-facing abort message after a pipeline tool exits, or None to continue."""
+    if exit_code != 0:
+        return (
+            f"{tool_display_name} exited with code {exit_code}."
+            " No merge was applied."
+        )
+    if not os.path.exists(target_hpd_path):
+        return "Updated HPD file was not found after the tool exited."
+    return None
+
+
+def pipeline_push_stage(
+    profile: Dict[str, Any],
+    *,
+    prompt_card: Callable[[Dict[str, Any]], Optional[str]],
+    get_baseline: Callable[[Dict[str, Any]], Any],
+    sync_push: Callable[..., Tuple[Any, Any]],
+    ask_continue_on_conflicts: Callable[[int], bool],
+    update_baseline: Callable[[Dict[str, Any], str], None],
+    save_global: Callable[[], None],
+) -> Tuple[Optional[str], Any, bool]:
+    """Stage 1 push. Returns ``(card_root, push_report, abort_pipeline)``."""
+    card_root = prompt_card(profile)
+    if not card_root:
+        return None, None, False
+    baseline = get_baseline(profile)
+    push_report, _ = sync_push(
+        card_root=card_root,
+        workspace_root=profile["workspace_dir"],
+        baseline=baseline,
+    )
+    if push_report.conflicts and not ask_continue_on_conflicts(
+        len(push_report.conflicts)
+    ):
+        return card_root, push_report, True
+    if not push_report.conflicts:
+        update_baseline(profile, profile["workspace_dir"])
+        save_global()
+    return card_root, push_report, False
 
 
 def pipeline_report_lines(
@@ -2243,6 +2519,34 @@ def pull_stage_summary(pull_report: Any) -> Dict[str, Any]:
     }
 
 
+def _card_folder_state_display(folder: str, card_identity: Any) -> str:
+    if not folder or not os.path.isdir(folder):
+        return ""
+    if card_identity.has_any_id():
+        model = card_identity.target_model or "unknown"
+        return f"Card: connected ({model})"
+    return "Card: folder loaded"
+
+
+def _workspace_profile_matches_card(
+    profile: Dict[str, Any],
+    folder: str,
+    card_identity: Any,
+) -> bool:
+    ws_dir = profile.get("workspace_dir") or ""
+    if not folder or not os.path.isdir(folder) or folder == ws_dir:
+        return False
+    serial_match = (
+        card_identity.volume_serial
+        and card_identity.volume_serial == profile.get("card_volume_serial")
+    )
+    fingerprint_match = (
+        card_identity.content_fingerprint
+        and card_identity.content_fingerprint == profile.get("content_fingerprint")
+    )
+    return bool(serial_match or fingerprint_match)
+
+
 def card_state_display(
     profile: Optional[Dict[str, Any]],
     folder: str,
@@ -2250,20 +2554,9 @@ def card_state_display(
     pending_count: int,
 ) -> str:
     if profile is None:
-        if folder and os.path.isdir(folder):
-            if card_identity.has_any_id():
-                model = card_identity.target_model or "unknown"
-                return f"Card: connected ({model})"
-            return "Card: folder loaded"
-        return ""
+        return _card_folder_state_display(folder, card_identity)
     name = profile.get("name") or "workspace"
-    ws_dir = profile.get("workspace_dir") or ""
-    card_match = False
-    if folder and os.path.isdir(folder) and folder != ws_dir:
-        card_match = bool(
-            (card_identity.volume_serial and card_identity.volume_serial == profile.get("card_volume_serial"))
-            or (card_identity.content_fingerprint and card_identity.content_fingerprint == profile.get("content_fingerprint"))
-        )
+    card_match = _workspace_profile_matches_card(profile, folder, card_identity)
     bits = [f"Workspace: {name}"]
     bits.append("card connected" if card_match else "card detached")
     if pending_count:
@@ -2272,6 +2565,85 @@ def card_state_display(
 
 
 # ---- Revert import / bulk revert helpers --------------------------------
+
+def _revert_import_remove_added(
+    added: List[Dict[str, Any]],
+    *,
+    find_entry: Callable[[str], Optional["FreqEntry"]],
+    delete_entry: Callable[["FreqEntry"], None],
+) -> Tuple[int, int]:
+    removed = failed = 0
+    for add in added:
+        target = find_entry(add.get("id") or "")
+        if target is None:
+            continue
+        try:
+            delete_entry(target)
+            removed += 1
+        except Exception:
+            failed += 1
+    return removed, failed
+
+
+def _revert_import_revert_updated(
+    updated: List[Dict[str, Any]],
+    *,
+    find_entry: Callable[[str], Optional["FreqEntry"]],
+    apply_snapshot: Callable[["FreqEntry", Dict[str, Any]], None],
+) -> Tuple[int, int]:
+    reverted = failed = 0
+    for upd in updated:
+        target = find_entry(upd.get("id") or "")
+        if target is None:
+            failed += 1
+            continue
+        try:
+            apply_snapshot(target, upd.get("before") or {})
+            reverted += 1
+        except Exception:
+            failed += 1
+    return reverted, failed
+
+
+def _revert_import_restore_deleted(
+    deleted: List[Dict[str, Any]],
+    *,
+    find_group: Callable[[str], Optional["GroupNode"]],
+    restore_deleted: Callable[["GroupNode", Dict[str, Any]], bool],
+) -> Tuple[int, int]:
+    restored = failed = 0
+    for dl in deleted:
+        try:
+            group = find_group(dl.get("group_key") or "")
+            if group is None:
+                failed += 1
+                continue
+            if restore_deleted(group, dl):
+                restored += 1
+            else:
+                failed += 1
+        except Exception:
+            failed += 1
+    return restored, failed
+
+
+def _revert_import_remove_empty_groups(
+    groups_created: List[str],
+    *,
+    find_group: Callable[[str], Optional["GroupNode"]],
+    delete_group: Callable[["GroupNode"], None],
+) -> int:
+    group_removed = 0
+    for gkey in groups_created:
+        grp = find_group(gkey)
+        if grp is not None and not grp.entries:
+            try:
+                delete_group(grp)
+                group_removed += 1
+            except Exception:
+                pass
+    return group_removed
+
 
 def apply_revert_import_payload(
     payload: Dict[str, Any],
@@ -2284,50 +2656,27 @@ def apply_revert_import_payload(
     delete_group: Callable[["GroupNode"], None],
 ) -> Tuple[int, int, int, int, int]:
     """Return (removed, reverted, restored, group_removed, failed)."""
-    removed = 0
-    reverted = 0
-    restored = 0
-    failed = 0
-    for add in payload.get("added") or []:
-        target = find_entry(add.get("id") or "")
-        if target is None:
-            continue
-        try:
-            delete_entry(target)
-            removed += 1
-        except Exception:
-            failed += 1
-    for upd in payload.get("updated") or []:
-        target = find_entry(upd.get("id") or "")
-        if target is None:
-            failed += 1
-            continue
-        try:
-            apply_snapshot(target, upd.get("before") or {})
-            reverted += 1
-        except Exception:
-            failed += 1
-    for dl in payload.get("deleted") or []:
-        try:
-            group = find_group(dl.get("group_key") or "")
-            if group is None:
-                failed += 1
-                continue
-            if restore_deleted(group, dl):
-                restored += 1
-            else:
-                failed += 1
-        except Exception:
-            failed += 1
-    group_removed = 0
-    for gkey in payload.get("groups_created") or []:
-        grp = find_group(gkey)
-        if grp is not None and not grp.entries:
-            try:
-                delete_group(grp)
-                group_removed += 1
-            except Exception:
-                pass
+    removed, failed_added = _revert_import_remove_added(
+        payload.get("added") or [],
+        find_entry=find_entry,
+        delete_entry=delete_entry,
+    )
+    reverted, failed_updated = _revert_import_revert_updated(
+        payload.get("updated") or [],
+        find_entry=find_entry,
+        apply_snapshot=apply_snapshot,
+    )
+    restored, failed_deleted = _revert_import_restore_deleted(
+        payload.get("deleted") or [],
+        find_group=find_group,
+        restore_deleted=restore_deleted,
+    )
+    group_removed = _revert_import_remove_empty_groups(
+        payload.get("groups_created") or [],
+        find_group=find_group,
+        delete_group=delete_group,
+    )
+    failed = failed_added + failed_updated + failed_deleted
     return removed, reverted, restored, group_removed, failed
 
 

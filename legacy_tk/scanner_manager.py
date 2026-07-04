@@ -149,15 +149,19 @@ from legacy_tk.sm_helpers import (  # noqa: F401 — many symbols re-exported fo
     group_geo_strings,
     group_tower_members_by_system,
     group_tree_label,
+    hpd_path_inside_workspace,
     iter_bulk_remap_candidates,
     local_cfreq_by_hz,
     local_tgid_by_id,
     location_scope_label,
+    merge_reconcile_report_message,
     parse_rr_import_freq_hz,
     pipeline_health_color,
+    pipeline_push_stage,
     pipeline_report_lines,
+    pipeline_sync_pull_summary,
+    pipeline_tool_abort_reason,
     pipeline_tools_info,
-    pull_stage_summary,
     qr_code_matrix,
     replay_entry_type_and_identity,
     replay_norm,
@@ -169,6 +173,7 @@ from legacy_tk.sm_helpers import (  # noqa: F401 — many symbols re-exported fo
     rr_fetch_display_name,
     rr_pull_entry_row,
     rr_recent_url_candidates,
+    run_updater_reconcile_sequence,
     select_installed_uniden_tool,
     service_choice_for_type,
     sort_rr_candidates,
@@ -2423,7 +2428,7 @@ class ScannerManagerApp:
                 result["skipped"] = 1
         elif action == "update":
             result["updated"] = self._cfreq_import_update_freq(
-                freq, source, import_txn, source_url, updated_records,
+                freq, source_url, updated_records,
             )
             if result["updated"] == 0:
                 result["skipped"] = 1
@@ -2469,8 +2474,6 @@ class ScannerManagerApp:
     def _cfreq_import_update_freq(
         self,
         freq: Dict[str, Any],
-        source: str,
-        import_txn: Optional[str],
         source_url: str,
         updated_records: List[Dict[str, Any]],
     ) -> int:
@@ -2772,7 +2775,7 @@ class ScannerManagerApp:
                 result["skipped"] = 1
         elif action == "update":
             result["updated"] = self._trs_import_update_tgid(
-                tg, source, import_txn, updated_records
+                tg, updated_records,
             )
             if result["updated"] == 0:
                 result["skipped"] = 1
@@ -2824,8 +2827,6 @@ class ScannerManagerApp:
     def _trs_import_update_tgid(
         self,
         tg: Dict[str, Any],
-        source: str,
-        import_txn: Optional[str],
         updated_records: List[Dict[str, Any]],
     ) -> int:
         existing = tg.get("__existing__")
@@ -3508,57 +3509,36 @@ class ScannerManagerApp:
 
         def worker():
             try:
-                proc = subprocess.Popen([updater_path], shell=False)
-                exit_code = proc.wait()
-                if exit_code != 0:
-                    self.root.after(
-                        0,
-                        lambda: messagebox.showerror(
-                            "Updater Failed",
-                            f"Updater exited with code {exit_code}. No merge was applied.",
-                        ),
-                    )
-                    return
-                if not os.path.exists(target_hpd_path):
-                    self.root.after(
-                        0,
-                        lambda: messagebox.showerror(
-                            "Update Error",
-                            "Updated HPD file was not found after updater completion.",
-                        ),
-                    )
-                    return
-                self._merge_report = self._batch_reconcile_after_reload(
+                err, self._merge_report = run_updater_reconcile_sequence(
+                    updater_path,
                     target_hpd_path,
-                    snapshot,
-                    source="updater",
-                    target_id=f"updater::{int(time.time())}",
-                    target_name=os.path.basename(updater_path),
-                    payload_extra={"updater_path": updater_path},
+                    wait_for_updater=lambda path: subprocess.Popen(
+                        [path], shell=False
+                    ).wait(),
+                    reconcile_after_reload=lambda: self._batch_reconcile_after_reload(
+                        target_hpd_path,
+                        snapshot,
+                        source="updater",
+                        target_id=f"updater::{int(time.time())}",
+                        target_name=os.path.basename(updater_path),
+                        payload_extra={"updater_path": updater_path},
+                    ),
                 )
+                if err:
+                    title, msg = err
+                    self.root.after(
+                        0,
+                        lambda t=title, m=msg: messagebox.showerror(t, m),
+                    )
+                    return
                 self.root.after(0, self._populate_tree)
                 self.root.after(0, self._show_merge_report)
                 self.root.after(0, self._refresh_sd_space)
-                # If a workspace profile is active and the loaded HPD
-                # lives inside the workspace, pull card-side firmware /
-                # ancillary updates back into the workspace so the
-                # "virtual SD" stays current. HPD itself was already
-                # replaced above via apply_customizations.
                 profile = self._active_profile()
-                if profile:
-                    ws_dir = profile.get("workspace_dir") or ""
-                    try:
-                        hpd_inside_ws = (
-                            ws_dir
-                            and os.path.commonpath(
-                                [os.path.abspath(ws_dir),
-                                 os.path.abspath(target_hpd_path)]
-                            ) == os.path.abspath(ws_dir)
-                        )
-                    except ValueError:
-                        hpd_inside_ws = False
-                    if hpd_inside_ws:
-                        self.root.after(0, self._post_updater_pull, profile)
+                if profile and hpd_path_inside_workspace(
+                    profile.get("workspace_dir") or "", target_hpd_path
+                ):
+                    self.root.after(0, self._post_updater_pull, profile)
             except Exception as exc:
                 err_msg = f"Update/reconcile failed:\n{exc}"
                 self.root.after(0, lambda: messagebox.showerror("Update Error", err_msg))
@@ -3568,22 +3548,11 @@ class ScannerManagerApp:
         threading.Thread(target=worker, daemon=True).start()
 
     def _show_merge_report(self):
-        report = self._merge_report or {}
-        msg = (
-            "Event replay:\n"
-            f"  Replayed: {report.get('replayed', 0)}\n"
-            f"  Missed:   {report.get('missed', 0)}\n"
-            f"    deletions={report.get('deletions', 0)}, "
-            f"services={report.get('services', 0)}, "
-            f"edits={report.get('edits', 0)}, "
-            f"additions={report.get('additions', 0)}\n\n"
-            "Safety-net pass:\n"
-            f"  Reapplied edits:        {report.get('reapplied', 0)}\n"
-            f"  Reinserted user entries:{report.get('inserted', 0)}\n"
-            f"  Unresolved entries:     {report.get('unresolved', 0)}"
-        )
         self._set_status("Update and reconcile complete.")
-        messagebox.showinfo("Reconcile Report", msg)
+        messagebox.showinfo(
+            "Reconcile Report",
+            merge_reconcile_report_message(self._merge_report),
+        )
 
     def _batch_reconcile_after_reload(
         self,
@@ -3675,31 +3644,25 @@ class ScannerManagerApp:
         profile = self._active_profile()
         push_report: Optional["sdcard.SyncReport"] = None
         card_root: Optional[str] = None
-        # Stage 1 — push (only when there's a workspace + card)
         if profile:
-            card_root = self._prompt_card_for_sync(profile)
-            if card_root:
-                baseline = self._profile_baseline(profile)
-                push_report, _ = sdcard.sync_push(
-                    card_root=card_root,
-                    workspace_root=profile["workspace_dir"],
-                    baseline=baseline,
-                )
-                if push_report.conflicts and not messagebox.askyesno(
-                        "Pipeline — conflicts on card",
-                        (
-                            f"{len(push_report.conflicts)} file(s) on the "
-                            "card diverged from the last sync. Continue "
-                            "launching the Uniden tool anyway? "
-                            "(Your changes will not be pushed until resolved.)"
-                        ),
-                    ):
-                    return
-                if not push_report.conflicts:
-                    self._update_profile_baseline(
-                        profile, profile["workspace_dir"]
-                    )
-                    self._global_meta.save()
+            card_root, push_report, abort = pipeline_push_stage(
+                profile,
+                prompt_card=self._prompt_card_for_sync,
+                get_baseline=self._profile_baseline,
+                sync_push=sdcard.sync_push,
+                ask_continue_on_conflicts=lambda n: messagebox.askyesno(
+                    "Pipeline — conflicts on card",
+                    (
+                        f"{n} file(s) on the card diverged from the last sync. "
+                        "Continue launching the Uniden tool anyway? "
+                        "(Your changes will not be pushed until resolved.)"
+                    ),
+                ),
+                update_baseline=self._update_profile_baseline,
+                save_global=self._global_meta.save,
+            )
+            if abort:
+                return
 
         snapshot = self.hpd.snapshot_customizations()
         target_hpd_path = self.hpd.filepath
@@ -3712,27 +3675,16 @@ class ScannerManagerApp:
             stage = "launch"
             try:
                 exit_code = uniden_tools.run_tool(selected, wait=True)
-                if exit_code != 0:
-                    err_code = exit_code
+                abort = pipeline_tool_abort_reason(
+                    exit_code, selected.display_name, target_hpd_path
+                )
+                if abort:
                     self.root.after(
                         0,
-                        lambda: messagebox.showerror(
-                            "Pipeline",
-                            f"{selected.display_name} exited with code {err_code}."
-                            " No merge was applied.",
-                        ),
+                        lambda msg=abort: messagebox.showerror("Pipeline", msg),
                     )
                     return
                 stage = "reconcile"
-                if not os.path.exists(target_hpd_path):
-                    self.root.after(
-                        0,
-                        lambda: messagebox.showerror(
-                            "Pipeline",
-                            "Updated HPD file was not found after the tool exited.",
-                        ),
-                    )
-                    return
                 self._merge_report = self._batch_reconcile_after_reload(
                     target_hpd_path,
                     snapshot,
@@ -3747,15 +3699,13 @@ class ScannerManagerApp:
                 self.root.after(0, self._populate_tree)
                 self.root.after(0, self._refresh_sd_space)
                 stage = "pull"
-                pull_summary: Dict[str, Any] = {}
-                if profile and card_root:
-                    baseline = self._profile_baseline(profile)
-                    pull_report, pull_diffs = sdcard.sync_pull(
-                        card_root=card_root,
-                        workspace_root=profile["workspace_dir"],
-                        baseline=baseline,
-                    )
-                    pull_summary = pull_stage_summary(pull_report)
+                pull_summary, pull_report, pull_diffs = pipeline_sync_pull_summary(
+                    profile,
+                    card_root,
+                    get_baseline=self._profile_baseline,
+                    sync_pull=sdcard.sync_pull,
+                )
+                if pull_report is not None:
                     self.root.after(
                         0,
                         lambda: self._handle_sync_result(
@@ -7756,8 +7706,10 @@ class UnidenInstallerDownloadDialog:
             return
         p = Path(path)
         expected = (self.descriptor.get("sha256") or "").strip().lower()
-        if expected and not uniden_tools.verify_installer(p, expected):
-            if not messagebox.askyesno(
+        if (
+            expected
+            and not uniden_tools.verify_installer(p, expected)
+            and not messagebox.askyesno(
                 "Hash mismatch",
                 (
                     "The selected file's SHA-256 does not match the value "
@@ -7765,8 +7717,9 @@ class UnidenInstallerDownloadDialog:
                     "Only say Yes if you trust the source."
                 ),
                 parent=self.top,
-            ):
-                return
+            )
+        ):
+            return
         self.result = str(p)
         self.top.destroy()
 

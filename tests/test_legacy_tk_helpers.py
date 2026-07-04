@@ -495,7 +495,7 @@ def test_sm_helpers_config_and_sync(tmp_path) -> None:
 
 
 @pytest.mark.unit
-def test_sm_helpers_tree_and_vsd_labels() -> None:
+def test_sm_helpers_tree_and_vsd_labels(tmp_path) -> None:
     from core.hpd import GroupNode, HpdRecord, SystemNode
     from legacy_tk.sm_helpers import (
         entry_identity_display,
@@ -560,12 +560,14 @@ def test_sm_helpers_tree_and_vsd_labels() -> None:
         system_type="Conventional",
         group_id="10",
     )
-    ident, mode, tone = entry_identity_display(entry, lambda s: int(s))
+    ident, mode, _ = entry_identity_display(entry, lambda s: int(s))
     assert ident.endswith("MHz")
     assert mode == "NFM"
+    ws_dir = tmp_path / "ws"
+    ws_dir.mkdir()
     section = format_vsd_section(
         {
-            "profile": {"name": "Test", "workspace_dir": "/tmp/ws", "last_sync_at": None},
+            "profile": {"name": "Test", "workspace_dir": str(ws_dir), "last_sync_at": None},
             "pending_events": 2,
             "card": {"connected": True, "target_model": "BT885"},
         }
@@ -676,7 +678,7 @@ def test_sm_helpers_location_and_geo_helpers() -> None:
         lon=-82.39,
         range_miles=50.0,
     )
-    lat, lon, rng = group_geo_strings(group)
+    lat, _, rng = group_geo_strings(group)
     assert lat.startswith("29.")
     assert rng == "50.00"
     sys_node = SystemNode(
@@ -819,3 +821,232 @@ def test_rr_html_parsers_extended() -> None:
 
     by_url = parse_rr_html_by_url(cat_html, "https://www.radioreference.com/db/aid/12345")
     assert by_url is not None
+
+
+@pytest.mark.unit
+def test_discover_backups_tmp_path(tmp_path) -> None:
+    from legacy_tk.sm_helpers import discover_backups
+
+    src = tmp_path / "s_000001.hpd"
+    src.write_text("data", encoding="utf-8")
+    older = tmp_path / "s_000001.hpd.backup_20260401_120000"
+    newer = tmp_path / "s_000001.hpd.backup_20260402_120000_prerestore"
+    older.write_text("old", encoding="utf-8")
+    newer.write_text("new", encoding="utf-8")
+    (tmp_path / "ignore.txt").write_text("x", encoding="utf-8")
+
+    groups = discover_backups([tmp_path])
+    key = str(src)
+    assert key in groups
+    assert len(groups[key]) == 2
+    assert groups[key][0].name == older.name
+    assert groups[key][1].name == newer.name
+
+
+@pytest.mark.unit
+def test_apply_revert_import_payload_counts() -> None:
+    from core.hpd import FreqEntry, GroupNode, HpdRecord
+    from legacy_tk.sm_helpers import apply_revert_import_payload
+
+    entry = FreqEntry(
+        record=HpdRecord(
+            0, "C-Freq", "Disp", ["C-Freq", "1", "10", "Disp", "On", "154280000", "NFM", "", "2"]
+        ),
+        entry_type="C-Freq",
+        name="Disp",
+        service_type=2,
+        system_id="1",
+        system_type="Conventional",
+        group_id="10",
+    )
+    empty_group = GroupNode(
+        record=HpdRecord(0, "", "C-Group", []),
+        name="Empty",
+        group_type="C-Group",
+        group_id="99",
+        parent_id="1",
+        system_id="1",
+        system_type="Conventional",
+        system_name="S",
+        entries=[],
+    )
+    deleted: list[FreqEntry] = []
+    snapshots: list[dict] = []
+    restored: list[dict] = []
+    removed_groups: list[GroupNode] = []
+
+    def _find_entry(entry_id: str):
+        if entry_id == "e1":
+            return entry
+        return None
+
+    def _find_group(group_key: str):
+        if group_key == "g-empty":
+            return empty_group
+        if group_key == "g1":
+            return empty_group
+        return None
+
+    payload = {
+        "added": [{"id": "e1"}, {"id": "missing"}],
+        "updated": [{"id": "e1", "before": {"name": "Old"}}, {"id": "bad"}],
+        "deleted": [{"group_key": "g1", "name": "Restored"}],
+        "groups_created": ["g-empty", "g-missing"],
+    }
+
+    removed, reverted, restored_n, group_removed, failed = apply_revert_import_payload(
+        payload,
+        find_entry=_find_entry,
+        find_group=_find_group,
+        delete_entry=lambda e: deleted.append(e),
+        apply_snapshot=lambda _e, snap: snapshots.append(snap),
+        restore_deleted=lambda _g, dl: restored.append(dl) or True,
+        delete_group=lambda g: removed_groups.append(g),
+    )
+    assert removed == 1 and deleted == [entry]
+    assert reverted == 1 and snapshots == [{"name": "Old"}]
+    assert restored_n == 1
+    assert group_removed == 1 and removed_groups == [empty_group]
+    assert failed == 1
+
+
+@pytest.mark.unit
+def test_crossref_hint_for_rr_row_callsign_and_fuzzy() -> None:
+    from core.hpd import FreqEntry, HpdRecord
+    from legacy_tk.sm_helpers import crossref_hint_for_rr_row
+
+    entry = FreqEntry(
+        record=HpdRecord(
+            0, "C-Freq", "County", ["C-Freq", "1", "10", "County", "On", "154280000", "NFM", "", "2"]
+        ),
+        entry_type="C-Freq",
+        name="County",
+        service_type=2,
+        system_id="1",
+        system_type="Conventional",
+        group_id="10",
+    )
+
+    class _GM:
+        def callsign_lookup(self, callsign: str):
+            return ["id1"] if callsign == "W1ABC" else []
+
+        def fuzzy_licensee_candidates(self, licensee: str, *, min_score: float):
+            if licensee == "Alachua County":
+                return [("Alachua Co", 0.9, ["id2"])]
+            return []
+
+    def _entry_for_id(entry_id: str):
+        if entry_id == "id1":
+            return entry, "Fire"
+        if entry_id == "id2":
+            return entry, "Law"
+        return None, ""
+
+    cs_hint = crossref_hint_for_rr_row(
+        _GM(), {"fcc_callsign": "w1abc"}, _entry_for_id
+    )
+    assert cs_hint is not None
+    assert cs_hint["kind"] == "callsign"
+    assert cs_hint["score"] == 1.0
+    assert "W1ABC" in cs_hint["label"]
+
+    fuzzy_hint = crossref_hint_for_rr_row(
+        _GM(), {"licensee_text": "Alachua County"}, _entry_for_id
+    )
+    assert fuzzy_hint is not None
+    assert fuzzy_hint["kind"] == "fuzzy"
+    assert fuzzy_hint["matched_group"] == "Law"
+
+
+@pytest.mark.unit
+def test_find_after_update_helpers() -> None:
+    from core.hpd import FreqEntry, GroupNode, HpdRecord, SystemNode
+    from legacy_tk.sm_helpers import (
+        find_entry_after_update,
+        find_group_after_update,
+        find_system_after_update,
+        replay_norm,
+    )
+
+    entry = FreqEntry(
+        record=HpdRecord(
+            0, "C-Freq", "Disp", ["C-Freq", "1", "10", "Disp", "On", "154280000", "NFM", "1", "2"]
+        ),
+        entry_type="C-Freq",
+        name="Disp",
+        service_type=2,
+        system_id="1",
+        system_type="Conventional",
+        group_id="10",
+    )
+    group = GroupNode(
+        record=HpdRecord(0, "", "C-Group", []),
+        name="Dispatch",
+        group_type="C-Group",
+        group_id="10",
+        parent_id="1",
+        system_id="1",
+        system_type="Conventional",
+        system_name="County",
+        entries=[entry],
+    )
+    system = SystemNode(
+        record=HpdRecord(0, "", "Conventional", []),
+        system_type="Conventional",
+        system_id="1",
+        name="County",
+        groups=[group],
+        sites=[],
+        area_records=[],
+    )
+    norm = replay_norm
+
+    class _Ev:
+        target_id = "e1"
+        payload = {
+            "snapshot": {
+                "entry_type": "C-FREQ",
+                "identity_value": "154280000",
+                "system_name": "County",
+                "group_name": "Dispatch",
+            }
+        }
+
+    class _Baseline:
+        snapshot = _Ev.payload["snapshot"]
+
+    hit = find_entry_after_update(
+        [system],
+        _Ev(),
+        find_by_id=lambda _x: None,
+        baseline_for=lambda _x: _Baseline(),
+        norm=norm,
+    )
+    assert hit is entry
+
+    class _GrpEv:
+        target_id = "g1"
+        payload = {"snapshot": {"system_name": "County", "name": "Dispatch"}}
+
+    grp_hit = find_group_after_update(
+        [system],
+        _GrpEv(),
+        find_by_key=lambda _x: None,
+        baseline_for=lambda _x: None,
+        norm=norm,
+    )
+    assert grp_hit is group
+
+    class _SysEv:
+        target_id = "s1"
+        payload = {"after": {"name": "County"}}
+
+    sys_hit = find_system_after_update(
+        [system],
+        _SysEv(),
+        find_by_key=lambda _x: None,
+        baseline_for=lambda _x: None,
+        norm=norm,
+    )
+    assert sys_hit is system

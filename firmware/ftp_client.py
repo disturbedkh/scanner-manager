@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Callable, FrozenSet, List, Optional
 
 from core.path_utils import PathTraversalError, safe_resolve_path
+from firmware.vendor_ftp_transport import connect_vendor_ftp
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +121,7 @@ class VendorFtpTransport:
 
     @staticmethod
     def connect(host: str, timeout: float) -> ftplib.FTP:
-        return ftplib.FTP(host, timeout=timeout)
+        return connect_vendor_ftp(host, timeout=timeout)
 
 
 class UnidenFtpClient:
@@ -155,7 +156,14 @@ class UnidenFtpClient:
                     size = ftp.size(name) or 0
                 except ftplib.error_perm:
                     pass
-                out.append(FtpEntry(name=name, size_bytes=size, modified=None))
+                modified = None
+                try:
+                    resp = ftp.sendcmd(f"MDTM {name}")
+                    ts = resp.split(None, 1)[-1] if resp else ""
+                    modified = self._parse_mdtm(ts)
+                except ftplib.error_perm:
+                    pass
+                out.append(FtpEntry(name=name, size_bytes=size, modified=modified))
             return out
 
     def download(

@@ -53,6 +53,7 @@ import string
 import sys
 import time
 from pathlib import Path
+from typing import Callable
 
 try:
     import serial
@@ -411,6 +412,42 @@ def first_response_line(response: bytes) -> str:
     return txt.strip()
 
 
+def _make_alphabet_adder(
+    out: list[str],
+    seen: set[str],
+) -> Callable[..., None]:
+    def add(c: str, *, preserve_case: bool = False) -> None:
+        if not preserve_case:
+            c = c.upper()
+        if c in seen:
+            return
+        seen.add(c)
+        out.append(c)
+
+    return add
+
+
+def _alphabet_append_stage(
+    add: Callable[..., None],
+    stage: str,
+) -> None:
+    if stage == "1":
+        for c in string.ascii_uppercase:
+            add(c)
+        return
+    if stage == "2":
+        for a, b in itertools.product(string.ascii_uppercase, repeat=2):
+            add(a + b)
+        return
+    if stage == "targeted":
+        for c in TARGETED_COMBOS:
+            add(c)
+        return
+    if stage == "targeted2":
+        for c in TARGETED_COMBOS_V2:
+            add(c, preserve_case=True)
+
+
 def gen_alphabet(stages: list[str]) -> list[str]:
     """Build the candidate command list for the requested stages.
 
@@ -425,27 +462,9 @@ def gen_alphabet(stages: list[str]) -> list[str]:
     """
     out: list[str] = []
     seen: set[str] = set()
-
-    def add(c: str, *, preserve_case: bool = False) -> None:
-        if not preserve_case:
-            c = c.upper()
-        if c in seen:
-            return
-        seen.add(c)
-        out.append(c)
-
-    if "1" in stages:
-        for c in string.ascii_uppercase:
-            add(c)
-    if "2" in stages:
-        for a, b in itertools.product(string.ascii_uppercase, repeat=2):
-            add(a + b)
-    if "targeted" in stages:
-        for c in TARGETED_COMBOS:
-            add(c)
-    if "targeted2" in stages:
-        for c in TARGETED_COMBOS_V2:
-            add(c, preserve_case=True)
+    add = _make_alphabet_adder(out, seen)
+    for stage in stages:
+        _alphabet_append_stage(add, stage)
     return out
 
 
@@ -621,6 +640,52 @@ def _record_probe_classification(
     return unrec_count, timeout_count
 
 
+def _process_probe_candidate(
+    port: serial.Serial,
+    log,
+    i: int,
+    total: int,
+    cmd: str,
+    anchor_resp: bytes,
+    *,
+    qform_on_hit: bool,
+    hits: list[tuple[str, bytes, float]],
+    errs: list[tuple[str, float]],
+    unrec_count: int,
+    timeout_count: int,
+    last_progress_t: float,
+) -> tuple[bytes, int, int, float]:
+    """Run one alphabet candidate; return updated anchor + counters + progress time."""
+    response, elapsed_ms = send_and_read(port, cmd)
+    cls = classify(response, anchor_resp)
+
+    last_progress_t = _maybe_log_progress(
+        i, total,
+        hits=len(hits), errs=len(errs),
+        unrec_count=unrec_count, timeout_count=timeout_count,
+        last_progress_t=last_progress_t, log=log,
+    )
+
+    unrec_count, timeout_count = _record_probe_classification(
+        cls, cmd, response, elapsed_ms,
+        hits=hits, errs=errs,
+        unrec_count=unrec_count, timeout_count=timeout_count,
+    )
+
+    if cls in ("hit", "err"):
+        _log_probe_result(
+            log, i, total, cmd, cls, response, elapsed_ms,
+        )
+
+    if _is_binary_response(response):
+        _drain_binary_stream(port)
+        return anchor_resp, unrec_count, timeout_count, last_progress_t
+
+    _try_qform(port, log, cmd, anchor_resp, qform_on_hit=qform_on_hit)
+    anchor_resp = _maybe_refresh_anchor(port, anchor_resp, cls)
+    return anchor_resp, unrec_count, timeout_count, last_progress_t
+
+
 def probe(
     port_dev: str,
     candidates: list[str],
@@ -666,33 +731,15 @@ def probe(
                 forbidden_skipped.append(cmd)
                 continue
 
-            response, elapsed_ms = send_and_read(p, cmd)
-            cls = classify(response, anchor_resp)
-
-            last_progress_t = _maybe_log_progress(
-                i, len(candidates),
-                hits=len(hits), errs=len(errs),
-                unrec_count=unrec_count, timeout_count=timeout_count,
-                last_progress_t=last_progress_t, log=log,
-            )
-
-            unrec_count, timeout_count = _record_probe_classification(
-                cls, cmd, response, elapsed_ms,
-                hits=hits, errs=errs,
-                unrec_count=unrec_count, timeout_count=timeout_count,
-            )
-
-            if cls in ("hit", "err"):
-                _log_probe_result(
-                    log, i, len(candidates), cmd, cls, response, elapsed_ms,
+            anchor_resp, unrec_count, timeout_count, last_progress_t = (
+                _process_probe_candidate(
+                    p, log, i, len(candidates), cmd, anchor_resp,
+                    qform_on_hit=qform_on_hit,
+                    hits=hits, errs=errs,
+                    unrec_count=unrec_count, timeout_count=timeout_count,
+                    last_progress_t=last_progress_t,
                 )
-
-            if _is_binary_response(response):
-                _drain_binary_stream(p)
-                continue
-
-            _try_qform(p, log, cmd, anchor_resp, qform_on_hit=qform_on_hit)
-            anchor_resp = _maybe_refresh_anchor(p, anchor_resp, cls)
+            )
 
         log.write(
             f"\n# Done. {len(hits)} HIT, {len(errs)} err, "

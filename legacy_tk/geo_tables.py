@@ -618,7 +618,8 @@ class ScannerCityIndex:
     _ADMIN_SUFFIX_RE = re.compile(
         r"\b(?:County|Parish|Borough)\b", flags=re.IGNORECASE
     )
-    _NAME_SPLIT_RE = re.compile(r"\s*[-:]\s*")
+    _NAME_SPLIT_DASH_RE = re.compile(r"\s*-\s*")
+    _NAME_SPLIT_COLON_RE = re.compile(r"\s*:\s*")
 
     def __init__(self):
         self.by_state_name: Dict[Tuple[int, str], Tuple[float, float]] = {}
@@ -643,10 +644,21 @@ class ScannerCityIndex:
         return self.by_state_name.get((state_id, self._norm(city_name)))
 
     @classmethod
+    def _split_group_name(cls, group_name: str) -> List[str]:
+        parts: List[str] = []
+        for segment in cls._NAME_SPLIT_DASH_RE.split(group_name):
+            parts.extend(
+                p.strip()
+                for p in cls._NAME_SPLIT_COLON_RE.split(segment)
+                if p.strip()
+            )
+        return parts
+
+    @classmethod
     def _extract_city_tokens(cls, group_name: str) -> List[str]:
         if not group_name:
             return []
-        parts = [p.strip() for p in cls._NAME_SPLIT_RE.split(group_name) if p.strip()]
+        parts = cls._split_group_name(group_name)
         candidates: List[str] = []
         for part in parts:
             cleaned = cls._PAREN_SUFFIX_RE.sub("", part).strip()

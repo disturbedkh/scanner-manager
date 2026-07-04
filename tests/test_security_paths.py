@@ -12,7 +12,12 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-from core.path_utils import PathTraversalError, safe_resolve_path, safe_write_text
+from core.path_utils import (
+    PathTraversalError,
+    safe_resolve_path,
+    safe_write_bytes,
+    safe_write_text,
+)
 from firmware.ftp_client import _MANIFEST_PATH, BT885_FTP, SENTINEL_FTP, UnidenFtpClient
 
 
@@ -164,8 +169,9 @@ def test_find_mdl_handler_rejects_traversal_dump(tmp_path: Path) -> None:
 def test_safe_write_text_rejects_escape(tmp_path: Path) -> None:
     base = tmp_path / "repo"
     base.mkdir()
+    escape = Path("../escape.txt")
     with pytest.raises(PathTraversalError):
-        safe_write_text(base, Path("../escape.txt"), "nope")
+        safe_write_text(base, escape, "nope")
 
 
 @pytest.mark.unit
@@ -174,6 +180,33 @@ def test_safe_write_text_writes_under_base(tmp_path: Path) -> None:
     base.mkdir()
     target = safe_write_text(base, Path("nested/out.txt"), "hello")
     assert target.read_text(encoding="utf-8") == "hello"
+
+
+@pytest.mark.unit
+def test_safe_write_text_creates_nested_parent(tmp_path: Path) -> None:
+    base = tmp_path / "repo"
+    base.mkdir()
+    target = safe_write_text(base, Path("deep/nested/out.txt"), "nested")
+    assert target.parent.is_dir()
+    assert target.read_text(encoding="utf-8") == "nested"
+
+
+@pytest.mark.unit
+def test_safe_write_bytes_writes_under_base(tmp_path: Path) -> None:
+    base = tmp_path / "repo"
+    base.mkdir()
+    payload = b"\x00\x01\x02"
+    target = safe_write_bytes(base, Path("bin/data.bin"), payload)
+    assert target.read_bytes() == payload
+
+
+@pytest.mark.unit
+def test_safe_write_bytes_rejects_escape(tmp_path: Path) -> None:
+    base = tmp_path / "repo"
+    base.mkdir()
+    escape = Path("../escape.bin")
+    with pytest.raises(PathTraversalError):
+        safe_write_bytes(base, escape, b"nope")
 
 
 @pytest.mark.unit

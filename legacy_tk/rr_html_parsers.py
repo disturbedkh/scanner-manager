@@ -39,10 +39,9 @@ _RE_LICENSEE_ANCHOR = re.compile(
 )
 _RE_PAGE_TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.DOTALL | re.IGNORECASE)
 _RE_H12 = re.compile(r"<h[12][^>]*>(.*?)</h[12]>", re.DOTALL | re.IGNORECASE)
-_RE_H5_CATEGORY = re.compile(
-    r"<h5[^>]*>(?P<title>[^<]*)</h5>(?P<after>.+?)(?=<h5\b|<footer|$)",
-    re.DOTALL | re.IGNORECASE,
-)
+_RE_H5_OPEN = re.compile(r"<h5\b[^>]*>", re.IGNORECASE)
+_RE_H5_CLOSE = re.compile(r"</h5>", re.IGNORECASE)
+_RE_H5_BOUNDARY = re.compile(r"<(?:h5\b|footer\b)", re.IGNORECASE)
 _RE_STRIP_ANCHORS = re.compile(r"<a\b[^>]*>.*?</a>", re.DOTALL | re.IGNORECASE)
 _RE_HEADING = re.compile(
     r"<(?P<tag>h[1-3])[^>]*>(?P<body>[^<]*)</(?P=tag)>", re.IGNORECASE
@@ -435,15 +434,34 @@ def extract_rr_trs_talkgroups(html_segment: str) -> List[Dict[str, Any]]:
     return talkgroups
 
 
+def _iter_h5_category_sections(html: str):
+    """Yield ``(title_html, section_html)`` for each ``<h5>`` block (no lazy backtracking)."""
+    pos = 0
+    while True:
+        open_match = _RE_H5_OPEN.search(html, pos)
+        if open_match is None:
+            break
+        inner_start = open_match.end()
+        close_match = _RE_H5_CLOSE.search(html, inner_start)
+        if close_match is None:
+            break
+        title_raw = html[inner_start : close_match.start()]
+        section_start = close_match.end()
+        boundary = _RE_H5_BOUNDARY.search(html, section_start)
+        section_end = boundary.start() if boundary else len(html)
+        yield title_raw, html[section_start:section_end]
+        pos = section_end
+
+
 def parse_rr_trs_sid(html: str) -> Optional[Dict[str, Any]]:
     """Parse a RadioReference trunk system (sid) page into categories + talkgroups."""
     system_name = _system_name_from_html(html)
     categories: List[Dict[str, Any]] = []
-    for match in _RE_H5_CATEGORY.finditer(html):
-        title = clean_rr_category_title(match.group("title"))
+    for title_raw, section_html in _iter_h5_category_sections(html):
+        title = clean_rr_category_title(title_raw)
         if not title or title.lower() in ("premium subscription required",):
             continue
-        talkgroups = extract_rr_trs_talkgroups(match.group("after"))
+        talkgroups = extract_rr_trs_talkgroups(section_html)
         if not talkgroups:
             continue
         categories.append({"name": title, "talkgroups": talkgroups})

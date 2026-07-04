@@ -15,6 +15,11 @@ def safe_resolve_path(base: Path, user_path: Path | str) -> Path:
     Both arguments may be relative; resolution is performed relative to
     ``base`` which must exist and be a directory.
     """
+    return _resolved_under_base(base, user_path)
+
+
+def _resolved_under_base(base: Path, user_path: Path | str) -> Path:
+    """Return an absolute path under ``base`` after traversal validation (no I/O)."""
     base_resolved = base.expanduser().resolve(strict=False)
     if not base_resolved.is_dir():
         raise PathTraversalError(f"Base path is not a directory: {base}")
@@ -30,12 +35,12 @@ def safe_resolve_path(base: Path, user_path: Path | str) -> Path:
 
 def safe_user_path(base: Path, user_path: Path | str) -> Path:
     """Resolve ``user_path`` under ``base``; reject directory traversal."""
-    return safe_resolve_path(base, user_path)
+    return _resolved_under_base(base, user_path)
 
 
 def safe_open_under(base: Path, user_path: Path | str, *args, **kwargs):
     """Open a file only when it resolves under ``base``."""
-    resolved = safe_resolve_path(base, user_path)
+    resolved = _resolved_under_base(base, user_path)
     if not resolved.is_file():
         raise FileNotFoundError(resolved)
     return resolved.open(*args, **kwargs)
@@ -43,9 +48,17 @@ def safe_open_under(base: Path, user_path: Path | str, *args, **kwargs):
 
 def safe_open_for_write(base: Path, user_path: Path | str, *args, **kwargs):
     """Open a file for writing only when it resolves under ``base``."""
-    resolved = safe_resolve_path(base, user_path)
+    resolved = _resolved_under_base(base, user_path)
     resolved.parent.mkdir(parents=True, exist_ok=True)
     return resolved.open(*args, **kwargs)
+
+
+def _write_text_at(resolved: Path, text: str, *, encoding: str = "utf-8") -> None:
+    resolved.write_text(text, encoding=encoding)
+
+
+def _write_bytes_at(resolved: Path, data: bytes) -> None:
+    resolved.write_bytes(data)
 
 
 def safe_write_text(
@@ -56,15 +69,15 @@ def safe_write_text(
     encoding: str = "utf-8",
 ) -> Path:
     """Write ``text`` only when ``user_path`` resolves under ``base``."""
-    resolved = safe_resolve_path(base, user_path)
+    resolved = _resolved_under_base(base, user_path)
     resolved.parent.mkdir(parents=True, exist_ok=True)
-    resolved.write_text(text, encoding=encoding)
+    _write_text_at(resolved, text, encoding=encoding)
     return resolved
 
 
 def safe_write_bytes(base: Path, user_path: Path | str, data: bytes) -> Path:
     """Write ``data`` only when ``user_path`` resolves under ``base``."""
-    resolved = safe_resolve_path(base, user_path)
+    resolved = _resolved_under_base(base, user_path)
     resolved.parent.mkdir(parents=True, exist_ok=True)
-    resolved.write_bytes(data)
+    _write_bytes_at(resolved, data)
     return resolved

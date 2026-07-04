@@ -4,7 +4,10 @@ build-backend = "setuptools.build_meta"
 
 # Dependency lock SSOT: requirements.lock (pip-compile from this file).
 # Regenerate: pip-compile --extra=dev --extra=full -o requirements.lock pyproject.toml
-# Sonar text:S8565 — we use pip-tools, not uv.lock/poetry.lock (see Metacache/Dev/SONARQUBE.md).
+# Sonar text:S8565 — pip-tools lock file (not uv.lock/poetry.lock); see Metacache/Dev/SONARQUBE.md.
+
+[tool.pip-tools]
+output-file = "requirements.lock"
 
 [project]
 name = "beartracker-885-scanner-manager"

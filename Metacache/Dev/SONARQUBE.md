@@ -38,23 +38,31 @@ Quick status:
 
 Linux/macOS: use `./scripts/sonar_truststore.sh` then `./scripts/sonar_scan.sh`.
 
-## Baseline (2026-07-04, Round 4 Phase 5–6 — pending Cloud re-scan after push)
+## Baseline (2026-07-04, Round 5 Phase 5–6 — pending Cloud re-scan after push)
 
 | Metric | VPS (`scanner-manager`) | SonarCloud (`disturbedkh_scanner-manager`) |
 | --- | --- | --- |
 | Host | `https://217.216.48.172:18443` | `https://sonarcloud.io` |
 | Scope | Full tree (no legacy/Metacache/scripts exclusions) | Same — `sonar-project.properties` aligned |
-| OPEN issues (`main`) | TBD after GitLab push | **57 → 0 target** (export: `.sonar/issues_checklist_r4.json`; MCP verified 2026-07-04) |
+| OPEN issues (`main`) | TBD after GitLab push | **34 → 0 target** (export: `.sonar/issues_checklist_r5.json`; MCP verified 34 OPEN pre-push 2026-07-04) |
 | Coverage (`main`) | **91.9%** (prior product-only upload) | **≥ 88%** via GitHub Actions `coverage.xml` upload |
 | Quality gate | TBD full-scope | **OK target** (`new_security_rating`, `new_reliability_rating`, `new_duplicated_lines_density` ≤ 3%) |
 | CI floor | GitLab `--cov-fail-under=88` | GitHub `sonarcloud` job + `check_quality_gate.ps1 -Cloud -MaxOpenIssues 0` |
 
-Round 4 highlights (Phases 0–4 local, uncommitted):
+Round 5 highlights (Phases 0–5 local, pushed 2026-07-04):
+
+- **Phase 0:** GitHub CI — restored FTP MDTM listing, macOS `test_device_manager` skip, sonarcloud job coverage path.
+- **Phase 1:** `core/path_utils.py` S2083/S8707 refactor; test S5443/S5778/S1481 fixes.
+- **Phase 2:** Replaced `generate_r4_checklist.py` with stdin JSON `scripts/generate_sonar_checklist.py`; `test_sonar_open_count` → `issues_checklist_r5.json` baseline (34 OPEN).
+- **Phase 3–4:** `sm_helpers.py` R4 tail (7× S3776 + S7519); `scanner_manager.py` residual; `rr_html_parsers` S6019; `geo_tables` S8786; `sub_probe` S3776; vendor FTP policy doc.
+- **Phase 5:** Qt `QStandardItemModel.item()` fix in `hpdb_tree.py`; `test_qt_coverage_gaps` import fix; expanded `test_legacy_tk_helpers` (discover_backups, revert, crossref, find_after_update, rr_html); **1053 passed** / 3 skipped locally.
+- **Cloud still shows 34 OPEN** until GitLab → GitHub push + SonarCloud re-scan.
+
+Round 4 highlights:
 
 - GitHub CI: `QT_QPA_PLATFORM=offscreen`, Linux `libEGL`/mesa packages, `--cov-fail-under=88`.
 - `legacy_tk/sm_helpers.py` + `scanner_manager.py` tail: S3776/S1172 refactors; security path guards on scripts/RE tools.
 - Regression: `tests/test_legacy_tk_helpers.py` expanded; `tests/test_sonar_open_count.py` baseline → `issues_checklist_r4.json` (57 OPEN).
-- **Cloud still shows 57 OPEN** until GitLab → GitHub push + SonarCloud re-scan (local fixes not on Cloud yet).
 
 Round 3 highlights:
 
@@ -62,7 +70,11 @@ Round 3 highlights:
 - `legacy_tk/sm_helpers.py` + `rr_html_parsers.py`: extracted complexity from `scanner_manager.py`, `rr_parsing.py`, `import_dialogs.py`, `coverage_ui.py`.
 - Security: `safe_resolve_path` / `safe_user_path` on scripts + RE tools; `tests/test_security_paths.py` extended.
 - Duplication: shared `core/hpd.py` geo helpers; thin `rr_parsing` facade re-exports parsers.
-- **`text:S8565` (`pyproject.toml`):** project uses committed [`requirements.lock`](../../requirements.lock) (pip-tools SSOT) instead of `uv.lock`/`poetry.lock` — documented here; no Sonar suppression.
+- **`text:S8565` (`pyproject.toml`):** project uses committed [`requirements.lock`](../../requirements.lock) (pip-tools SSOT) via `[tool.pip-tools] output-file` instead of `uv.lock`/`poetry.lock` — documented here; no Sonar suppression.
+
+## Vendor FTP policy (`python:S5332`)
+
+Uniden firmware discovery uses **plain FTP** on vendor-allowlisted hosts only (`data/uniden_installers.json`). The vendor CDN does not offer SFTP/FTPS. All `ftplib` usage is isolated in [`firmware/vendor_ftp_transport.py`](../../firmware/vendor_ftp_transport.py); [`firmware/ftp_client.py`](../../firmware/ftp_client.py) enforces host allowlisting and download path guards before any transfer.
 
 Local developer loop:
 
@@ -93,7 +105,7 @@ pytest -m "not requires_serial and not slow" --cov --cov-report=xml:coverage.xml
 
 - User-global MCP: **`Sonarcloud`** (primary) + **`Sonarqube`** (VPS fallback). See [`CURSOR.md`](CURSOR.md).
 - Sonar skills: `sonar-list-issues`, `sonar-quality-gate`, `sonar-coverage`, `sonar-analyze`.
-- Issue checklist export: `.sonar/issues_checklist_r4.json` (gitignored; regenerate via `user-Sonarcloud` MCP or `scripts/generate_r4_checklist.py`).
+- Issue checklist export: `.sonar/issues_checklist_r5.json` (gitignored; export via `user-Sonarcloud` MCP, then `python scripts/generate_sonar_checklist.py .sonar/issues_checklist_r5.json < export.json`).
 
 ## GitLab CI
 

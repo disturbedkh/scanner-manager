@@ -600,9 +600,15 @@ class HpdbTreeWidget(QWidget):
         info = group_coverage_info(group, state.coords, tolerance)
         return info["status"] == "out_range"
 
+    @staticmethod
+    def _child_at(parent, row: int, col: int = 0) -> Optional[QStandardItem]:
+        if isinstance(parent, QStandardItemModel):
+            return parent.item(row, col)
+        return parent.child(row, col)
+
     def _iter_child_items(self, parent, *, col: int = 0):
         for row in range(parent.rowCount()):
-            item = parent.child(row, col)
+            item = self._child_at(parent, row, col)
             if item is not None:
                 yield item
 

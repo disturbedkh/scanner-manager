@@ -19,14 +19,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 PySide6 = pytest.importorskip("PySide6")  # noqa: N816
 pytest.importorskip("pytestqt")
 
-from PySide6.QtCore import QCoreApplication  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
-
-from core.device_manager import Device, DeviceManager  # noqa: E402
-from gui.devices_dialog import AddDeviceDialog, ManageDevicesDialog  # noqa: E402
-from gui.header import HeaderBar, ModeSwitcher  # noqa: E402
-from scanner_profiles import get_profile, set_active_profile  # noqa: E402
-from tests._qt_fakes import (  # noqa: E402
+from _qt_fakes import (  # noqa: E402
     FakeMainWindow,
     FakeMainWindowNoOp,
     FakeQApplication,
@@ -34,6 +27,13 @@ from tests._qt_fakes import (  # noqa: E402
     FakeQt5,
     fake_qapplication_recording,
 )
+from PySide6.QtCore import QCoreApplication  # noqa: E402
+from PySide6.QtWidgets import QApplication  # noqa: E402
+
+from core.device_manager import Device, DeviceManager  # noqa: E402
+from gui.devices_dialog import AddDeviceDialog, ManageDevicesDialog  # noqa: E402
+from gui.header import HeaderBar, ModeSwitcher  # noqa: E402
+from scanner_profiles import get_profile, set_active_profile  # noqa: E402
 
 _BT885_CFG = (
     "TargetModel\tBCDx36HP\n"

@@ -100,6 +100,7 @@ def test_resolve_profile_falls_back_to_default(empty_manager: DeviceManager) -> 
     assert profile.id == "uniden_bt885"
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows drive letters are not valid on this platform")
 def test_detect_device_for_path_normalizes_separator(empty_manager: DeviceManager) -> None:
     device = Device.make(scanner_profile_id="uniden_sds100", label="X", sd_card_path="D:\\")
     empty_manager.add_device(device)
