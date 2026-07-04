@@ -32,21 +32,37 @@ def _repo_root() -> Path:
 
 
 def _safe_repo_root(user_root: Path) -> Path:
+    """Resolve repo root for audit/sanitize targets.
+
+    Allows the working checkout or a temp export clone (publish_github.ps1).
+    """
     resolved = user_root.expanduser().resolve(strict=False)
     anchor = _repo_root()
     try:
         resolved.relative_to(anchor)
-    except ValueError as exc:
-        raise ValueError(
-            f"--repo-root must stay inside {anchor}, got {resolved}"
-        ) from exc
-    return resolved
+        return resolved
+    except ValueError:
+        pass
+    if resolved.is_dir() and (
+        (resolved / "pyproject.toml").is_file()
+        or (resolved / "sonar-project.properties").is_file()
+    ):
+        return resolved
+    raise ValueError(
+        f"--repo-root must be the checkout or an export clone, got {resolved}"
+    )
 
 
 def load_rules(rules_path: Path | None, repo_root: Path) -> dict:
-    path = rules_path or (repo_root / "scripts" / _RULES_NAME)
-    safe_rules = _safe_repo_root(path.parent) / path.name
-    with safe_rules.open(encoding="utf-8") as fh:
+    anchor = _repo_root()
+    if rules_path is not None:
+        path = rules_path
+    elif (anchor / "scripts" / _RULES_NAME).is_file():
+        # publish_github.ps1 sanitizes a temp clone; rules live in source checkout.
+        path = anchor / "scripts" / _RULES_NAME
+    else:
+        path = repo_root / "scripts" / _RULES_NAME
+    with path.open(encoding="utf-8") as fh:
         return yaml.safe_load(fh)
 
 
@@ -190,10 +206,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     repo_root = _safe_repo_root(args.repo_root)
-    rules_path = args.rules
-    if rules_path is not None:
-        rules_path = _safe_repo_root(rules_path.parent) / rules_path.name
-    rules = load_rules(rules_path, repo_root)
+    rules = load_rules(args.rules, repo_root)
 
     if not args.audit_only:
         globs = rules.get("public_sanitize", {}).get("path_globs", [])
