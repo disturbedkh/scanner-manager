@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-BASELINE_PATH = Path(__file__).resolve().parents[1] / ".sonar" / "issues_checklist_r6.json"
+BASELINE_PATH = Path(__file__).resolve().parents[1] / ".sonar" / "issues_checklist_r7.json"
 BASELINE_OPEN = 0
 
 
@@ -17,7 +17,7 @@ BASELINE_OPEN = 0
     reason="SONARCLOUD_TOKEN not set",
 )
 def test_sonar_open_count_not_above_baseline() -> None:
-    """Fail when Cloud OPEN issues exceed the Round 6 baseline file."""
+    """Fail when Cloud OPEN issues exceed the Round 7 (Final 3) baseline file."""
     token = os.environ["SONARCLOUD_TOKEN"]
     baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
     baseline_open = sum(1 for item in baseline["issues"] if item.get("status") == "OPEN")
@@ -40,5 +40,5 @@ def test_sonar_open_count_not_above_baseline() -> None:
     total = int(payload.get("total", baseline_open))
     assert total <= baseline_open, (
         f"SonarCloud OPEN {total} exceeds baseline {baseline_open}; "
-        "refresh fixes or update .sonar/issues_checklist_r6.json after remediation."
+        "refresh fixes or update .sonar/issues_checklist_r7.json after remediation."
     )

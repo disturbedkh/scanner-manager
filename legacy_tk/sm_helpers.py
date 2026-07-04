@@ -9,7 +9,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Set, Tuple
 
 if TYPE_CHECKING:
     from core.hpd import FreqEntry, GroupNode, SystemNode
@@ -1607,6 +1607,16 @@ def tgid_diff_tree_rows(
     return rows, counts
 
 
+def _iter_c_freq_entries(
+    systems: List["SystemNode"],
+) -> Iterator[Tuple["SystemNode", "GroupNode", "FreqEntry"]]:
+    for sys_node in systems:
+        for group in sys_node.groups:
+            for entry in group.entries:
+                if entry.entry_type == "C-Freq":
+                    yield sys_node, group, entry
+
+
 def _mode_audit_row(
     sys_node: "SystemNode",
     group: "GroupNode",
@@ -1660,23 +1670,19 @@ def collect_mode_audit_rows(
 ) -> Tuple[List[Dict[str, Any]], int, int, int]:
     rows: List[Dict[str, Any]] = []
     total = rr_flags = band_flags = 0
-    for sys_node in systems:
-        for group in sys_node.groups:
-            for entry in group.entries:
-                if entry.entry_type != "C-Freq":
-                    continue
-                total += 1
-                outcome = _mode_audit_row_for_entry(
-                    sys_node, group, entry, rr_reference, audit_fn
-                )
-                if outcome is None:
-                    continue
-                row, source = outcome
-                if source == "rr":
-                    rr_flags += 1
-                else:
-                    band_flags += 1
-                rows.append(row)
+    for sys_node, group, entry in _iter_c_freq_entries(systems):
+        total += 1
+        outcome = _mode_audit_row_for_entry(
+            sys_node, group, entry, rr_reference, audit_fn
+        )
+        if outcome is None:
+            continue
+        row, source = outcome
+        if source == "rr":
+            rr_flags += 1
+        else:
+            band_flags += 1
+        rows.append(row)
     return rows, total, rr_flags, band_flags
 
 

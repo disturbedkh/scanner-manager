@@ -38,6 +38,24 @@ Quick status:
 
 Linux/macOS: use `./scripts/sonar_truststore.sh` then `./scripts/sonar_scan.sh`.
 
+## Baseline (2026-07-04, Final 3 — 3→0 OPEN target)
+
+| Metric | VPS (`scanner-manager`) | SonarCloud (`disturbedkh_scanner-manager`) |
+| --- | --- | --- |
+| Host | `https://217.216.48.172:18443` | `https://sonarcloud.io` |
+| Scope | Full tree (no legacy/Metacache/scripts exclusions) | Same — `sonar-project.properties` aligned |
+| OPEN issues (`main`) | TBD after GitLab push | **3 → 0 target** (export: `.sonar/issues_checklist_r7.json`; MCP verified 3 OPEN pre-push 2026-07-04) |
+| Coverage (`main`) | **91.9%** (prior product-only upload) | **≥ 88%** via GitHub Actions `coverage.xml` upload (Linux xvfb; `libgl1` fix unblocks apt) |
+| Quality gate | TBD full-scope | **ERROR** pre-push (`new_code_smells_severity=20`, `new_vulnerabilities_severity=10`); **OK target** after S3776 fix + UI Accept |
+| CI floor | GitLab `--cov-fail-under=88` | GitHub `sonarcloud` job + `check_quality_gate.ps1 -Cloud -MaxOpenIssues 0` |
+
+Final 3 highlights (Workers A–C):
+
+- **Worker A (CI):** `libgl1-mesa-glx` → `libgl1` (Ubuntu 24.04 Noble); GitHub matrix drops py3.9 (`mcp>=1.0` needs ≥3.10); macOS `@pytest.mark.skipif` on `test_validate_drive_root_requires_letter_colon`.
+- **Worker B (code):** `sm_helpers.py` — `_iter_c_freq_entries` generator; thinned `collect_mode_audit_rows` (S3776); `test_collect_mode_audit_rows_counts_rr_and_band_flags`.
+- **Worker C (policy):** S5332 + S8565 — **human SonarCloud UI Accept only** (MCP cannot Accept; steps below).
+- **Worker C (verify):** **753 passed** / 2 skipped locally (qt excluded); `test_sonar_open_count` → `issues_checklist_r7.json`, `BASELINE_OPEN=0`.
+
 ## Baseline (2026-07-04, Round 6 — local fixes landed, pending Cloud re-scan)
 
 | Metric | VPS (`scanner-manager`) | SonarCloud (`disturbedkh_scanner-manager`) |
@@ -80,9 +98,9 @@ Round 3 highlights:
 - Duplication: shared `core/hpd.py` geo helpers; thin `rr_parsing` facade re-exports parsers.
 - **`text:S8565` (`pyproject.toml`):** project uses committed [`requirements.lock`](../../requirements.lock) (pip-tools SSOT) via `[tool.pip-tools] output-file` instead of `uv.lock`/`poetry.lock` — documented here; no Sonar suppression.
 
-## Policy issues — SonarCloud UI Accept (Round 6)
+## Policy issues — SonarCloud UI Accept (Final 3)
 
-House rule: **no in-code suppressions**. Two remaining findings require manual resolution in the SonarCloud UI. The SonarCloud MCP can list issues and check the quality gate but **cannot** mark issues as Accept / Won't fix — that step is human-only.
+House rule: **no in-code suppressions**. Two remaining findings require manual resolution in the SonarCloud UI. The SonarCloud MCP can list issues and check the quality gate but **cannot** mark issues as Accept / Won't fix — that step requires a **human UI click** in the SonarCloud dashboard before `check_quality_gate.ps1 -Cloud -MaxOpenIssues 0` and `publish_github.ps1` (without `-SkipCloudGate`) will pass.
 
 ### `python:S5332` — plain FTP in `firmware/vendor_ftp_transport.py`
 
@@ -133,7 +151,7 @@ pytest -m "not requires_serial and not slow" --cov --cov-report=xml:coverage.xml
 
 - User-global MCP: **`Sonarcloud`** (primary) + **`Sonarqube`** (VPS fallback). See [`CURSOR.md`](CURSOR.md).
 - Sonar skills: `sonar-list-issues`, `sonar-quality-gate`, `sonar-coverage`, `sonar-analyze`.
-- Issue checklist export: `.sonar/issues_checklist_r6.json` (gitignored; export via `user-Sonarcloud` MCP, then `python scripts/generate_sonar_checklist.py issues_checklist_r6.json < export.json`).
+- Issue checklist export: `.sonar/issues_checklist_r7.json` (gitignored; export via `user-Sonarcloud` MCP, then `python scripts/generate_sonar_checklist.py issues_checklist_r7.json < export.json`).
 
 ## GitLab CI
 

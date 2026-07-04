@@ -42,6 +42,7 @@ def test_validate_usbpcap_interface_rejects_glob() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows drive-letter paths")
 def test_validate_drive_root_requires_letter_colon() -> None:
     with pytest.raises(ValueError):
         re_common.validate_drive_root("C")

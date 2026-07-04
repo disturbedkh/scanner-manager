@@ -17,6 +17,7 @@ from legacy_tk.sm_helpers import (
     apply_rr_crossref_tags,
     cfreq_diff_tree_rows,
     cfreq_import_row_display,
+    collect_mode_audit_rows,
     compute_cfreq_import_row,
     compute_group_coverage_info,
     compute_tg_import_row,
@@ -658,6 +659,95 @@ def test_sm_helpers_mode_audit_and_filters() -> None:
     assert entry_passes_button_filter(2, {2, 3}, include_others=False)
     assert not entry_passes_button_filter(99, {2}, include_others=False)
     assert entry_matches_bulk_filter(entry, {"C-Freq"}, {2}, None, None)
+
+
+@pytest.mark.unit
+def test_collect_mode_audit_rows_counts_rr_and_band_flags() -> None:
+    from core.hpd import FreqEntry, GroupNode, HpdRecord, SystemNode
+    from legacy_tk.sm_helpers import audit_mode_issue_with_rr
+
+    cf_band = FreqEntry(
+        record=HpdRecord(
+            0, "C-Freq", "Band", ["C-Freq", "1", "10", "Band", "On", "460000000", "AM", "", "2"]
+        ),
+        entry_type="C-Freq",
+        name="Band",
+        service_type=2,
+        system_id="1",
+        system_type="Conventional",
+        group_id="10",
+    )
+    cf_rr = FreqEntry(
+        record=HpdRecord(
+            0, "C-Freq", "RR", ["C-Freq", "1", "10", "RR", "On", "154280000", "NFM", "", "2"]
+        ),
+        entry_type="C-Freq",
+        name="RR",
+        service_type=2,
+        system_id="1",
+        system_type="Conventional",
+        group_id="10",
+    )
+    cf_ok = FreqEntry(
+        record=HpdRecord(
+            0, "C-Freq", "OK", ["C-Freq", "1", "10", "OK", "On", "155000000", "NFM", "", "2"]
+        ),
+        entry_type="C-Freq",
+        name="OK",
+        service_type=2,
+        system_id="1",
+        system_type="Conventional",
+        group_id="10",
+    )
+    tg = FreqEntry(
+        record=HpdRecord(
+            0, "TGID", "Skip", ["TGID", "2", "10", "Skip", "On", "100", "DIGITAL", "2"]
+        ),
+        entry_type="TGID",
+        name="Skip",
+        service_type=2,
+        system_id="1",
+        system_type="Trunk",
+        group_id="10",
+    )
+    group = GroupNode(
+        record=HpdRecord(0, "", "C-Group", []),
+        name="Dispatch",
+        group_type="C-Group",
+        group_id="10",
+        parent_id="1",
+        system_id="1",
+        system_type="Conventional",
+        system_name="County",
+        entries=[cf_band, cf_rr, cf_ok, tg],
+    )
+    system = SystemNode(
+        record=HpdRecord(0, "", "Conventional", []),
+        system_type="Conventional",
+        system_id="1",
+        name="County",
+        groups=[group],
+        sites=[],
+        area_records=[],
+    )
+    rr_ref = {154_280_000: {"mode": "FM", "name": "Dispatch"}}
+
+    rows, total, rr_flags, band_flags = collect_mode_audit_rows(
+        [system],
+        rr_ref,
+        audit_mode_issue_with_rr,
+    )
+
+    assert total == 3
+    assert len(rows) == 2
+    assert rr_flags == 1
+    assert band_flags == 1
+    flagged_names = {row["values"][2] for row in rows}
+    assert flagged_names == {"Band", "RR"}
+    rr_row = next(row for row in rows if row["values"][2] == "RR")
+    assert rr_row["tags"][1] == "source_rr"
+    band_row = next(row for row in rows if row["values"][2] == "Band")
+    assert band_row["tags"][1] == "source_band"
 
 
 @pytest.mark.unit

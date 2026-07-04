@@ -1,0 +1,36 @@
+{
+  "recorded_at": "2026-07-04",
+  "round": 7,
+  "mcp_pre_push_open": 3,
+  "remediation": {
+    "code_fixed_locally": 1,
+    "policy_ui_accept": 2,
+    "notes": "Final 3: S3776 _iter_c_freq_entries + CI libgl1/py3.9/macos skip. S5332 + S8565 require SonarCloud UI Accept (MCP cannot Accept; see SONARQUBE.md)."
+  },
+  "pre_scan_issues": [
+    {
+      "key": "AZ8szLzhyU4aPEVU5zRa",
+      "rule": "python:S3776",
+      "component": "disturbedkh_scanner-manager:legacy_tk/sm_helpers.py",
+      "status": "OPEN",
+      "textRange": {"startLine": 1656, "endLine": 1656},
+      "r7_fix": "extracted _iter_c_freq_entries; thinned collect_mode_audit_rows"
+    },
+    {
+      "key": "AZ8tdw4JRtbAQg66Pika",
+      "rule": "python:S5332",
+      "component": "disturbedkh_scanner-manager:firmware/vendor_ftp_transport.py",
+      "status": "OPEN",
+      "textRange": {"startLine": 15, "endLine": 15},
+      "r7_fix": "SonarCloud UI Accept — vendor CDN plain FTP only (see Vendor FTP policy)"
+    },
+    {
+      "key": "AZ8qKx40_PZEko83iUWS",
+      "rule": "text:S8565",
+      "component": "disturbedkh_scanner-manager:pyproject.toml",
+      "status": "OPEN",
+      "r7_fix": "SonarCloud UI Accept — requirements.lock pip-tools SSOT"
+    }
+  ],
+  "issues": []
+}

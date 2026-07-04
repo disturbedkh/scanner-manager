@@ -48,7 +48,7 @@ lockfile:check:
   stage: test
   before_script:
     - apt-get update -qq
-    - apt-get install -y -qq xvfb python3-tk libegl1 libgl1-mesa-glx libglib2.0-0
+    - apt-get install -y -qq xvfb python3-tk libegl1 libgl1 libglib2.0-0
     - python -m pip install -U pip pip-tools
     - python -m pip install -r requirements.lock
     - python -m pip install -e . --no-deps
