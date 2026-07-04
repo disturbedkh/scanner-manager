@@ -1,0 +1,10 @@
+# Append-only session log: terse house style (heading immediately followed by
+# a bullet list, <HOST> placeholders, repeated date headings). It is a dev
+# record, not published docs, so it is excluded from markdownlint.
+Metacache/Dev/WORKER_LOG.md
+
+# Not our markdown to lint.
+.venv/
+build/
+dist/
+vendor/

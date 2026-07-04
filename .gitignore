@@ -55,3 +55,8 @@ coverage.xml
 .coverage
 htmlcov/
 .scannerwork/
+.pytest_last_output.txt
+.sonar/truststore.jks
+.sonar/sonarqube-vps.cer
+.sonar/cloud_issues_baseline.json
+sonarqube-vps.cer

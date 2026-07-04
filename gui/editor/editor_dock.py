@@ -247,6 +247,38 @@ class EditorDock(QWidget):
             return f'Workspace "{self._workspace_name}" · {message}'
         return message
 
+    def _apply_card_swap_coverage(
+        self,
+        prev_device: Optional[Device],
+        device: Device,
+        profile: ScannerProfile,
+    ) -> None:
+        if not profile.supports_coverage_simulation:
+            return
+        card_swapped = prev_device is not None and (
+            prev_device.id != device.id
+            or (prev_device.sd_card_path or "") != (device.sd_card_path or "")
+        )
+        if card_swapped:
+            panel = self.coverage_panel()
+            if panel is not None:
+                panel.invalidate_map_shell()
+        self._refresh_coverage()
+
+    def _update_side_panel_for_device(
+        self, device: Device, profile: ScannerProfile, *, load_hpdb: bool
+    ) -> None:
+        if load_hpdb:
+            return
+        if profile.uses_hardware_button_semantics:
+            return
+        sd_path = device.sd_card_path or ""
+        self._side_panel.set_card_path(sd_path)
+        if sd_path:
+            self._update_profile_mismatch_banner(sd_path, profile)
+        else:
+            self._clear_profile_mismatch_banner()
+
     def set_active_device(
         self,
         device: Device,
@@ -258,11 +290,6 @@ class EditorDock(QWidget):
             return
 
         prev_device = self._current_device
-        card_swapped = prev_device is not None and (
-            prev_device.id != device.id
-            or (prev_device.sd_card_path or "") != (device.sd_card_path or "")
-        )
-
         self._current_device = device
         prev_profile = self._current_profile
         self._current_profile = profile
@@ -270,22 +297,12 @@ class EditorDock(QWidget):
         self._apply_profile_widgets(profile, prev_profile)
         if load_hpdb:
             self._load_hpdb_for_device(device, profile)
-        elif not profile.uses_hardware_button_semantics:
-            sd_path = device.sd_card_path or ""
-            self._side_panel.set_card_path(sd_path)
-            if sd_path:
-                self._update_profile_mismatch_banner(sd_path, profile)
-            else:
-                self._clear_profile_mismatch_banner()
+        else:
+            self._update_side_panel_for_device(device, profile, load_hpdb=load_hpdb)
         self._sync_hpdb_context()
         self._configure_bt885_filters(profile)
         self._tree.reemit_current_selection()
-        if profile.supports_coverage_simulation:
-            if card_swapped:
-                panel = self.coverage_panel()
-                if panel is not None:
-                    panel.invalidate_map_shell()
-            self._refresh_coverage()
+        self._apply_card_swap_coverage(prev_device, device, profile)
 
     def _confirm_discard_unsaved(self) -> bool:
         reply = QMessageBox.question(

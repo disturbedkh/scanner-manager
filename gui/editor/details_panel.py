@@ -15,6 +15,7 @@ from typing import Optional
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QComboBox,
+    QDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -27,8 +28,8 @@ from PySide6.QtWidgets import (
 
 from scanner_profiles import ScannerProfile
 
-from .display_helpers import bulk_action_label, format_service_type_details
 from ..widgets.scaling_label import ScalingHelpLabel
+from .display_helpers import bulk_action_label, format_service_type_details
 from .entry_dialog import (
     Bt885BulkServiceTypeDialog,
     Bt885EntryEditDialog,
@@ -36,6 +37,9 @@ from .entry_dialog import (
     HpdbBulkCategoryDialog,
     HpdbEntryEditDialog,
 )
+
+_LABEL_SYSTEM = "System:"
+_LABEL_MODE = "Mode:"
 
 
 class BaseDetailsPanel(QWidget):
@@ -95,13 +99,9 @@ class BaseDetailsPanel(QWidget):
     def set_profile(self, profile: ScannerProfile) -> None:
         self._profile = profile
         self._bulk_button.setText(bulk_action_label(profile))
-        if profile is not None:
-            help_text = profile.service_type_help_text().strip()
-            self._help_label.setText(help_text)
-            self._help_label.setVisible(bool(help_text))
-        else:
-            self._help_label.clear()
-            self._help_label.setVisible(False)
+        help_text = profile.service_type_help_text().strip()
+        self._help_label.setText(help_text)
+        self._help_label.setVisible(bool(help_text))
         if self._payload:
             self.show_entry(self._payload)
 
@@ -130,7 +130,7 @@ class BaseDetailsPanel(QWidget):
         group = payload["group"]
         self._title.setText(group.name or "(unnamed group)")
         self._info_form.addRow("Type:", QLabel(group.group_type or "—"))
-        self._info_form.addRow("System:", QLabel(group.system_name or "—"))
+        self._info_form.addRow(_LABEL_SYSTEM, QLabel(group.system_name or "—"))
         self._info_form.addRow(
             "Latitude:",
             QLabel(f"{group.lat:.6f}°" if group.lat is not None else "—"),
@@ -238,7 +238,7 @@ class BaseDetailsPanel(QWidget):
             return
 
         dlg = self._make_bulk_dialog(label)
-        if dlg.exec() != dlg.Accepted:
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         new_type = dlg.selected_service_type()
         if new_type is None:
@@ -304,16 +304,16 @@ class Bt885DetailsPanel(BaseDetailsPanel):
             except (TypeError, ValueError):
                 identity = freq_field or "—"
             self._info_form.addRow("Frequency:", QLabel(identity))
-            self._info_form.addRow("Mode:", QLabel(entry.record.get_field(6, "—")))
+            self._info_form.addRow(_LABEL_MODE, QLabel(entry.record.get_field(6, "—")))
             self._info_form.addRow("Tone:", QLabel(entry.record.get_field(7, "—") or "—"))
         else:
             self._info_form.addRow("TGID:", QLabel(entry.record.get_field(5, "—")))
-            self._info_form.addRow("Mode:", QLabel(entry.record.get_field(6, "—")))
+            self._info_form.addRow(_LABEL_MODE, QLabel(entry.record.get_field(6, "—")))
 
         service_text = format_service_type_details(profile, entry.service_type)
         self._info_form.addRow("Service type:", QLabel(service_text))
 
-        self._info_form.addRow("System:", QLabel(entry.system_name or "—"))
+        self._info_form.addRow(_LABEL_SYSTEM, QLabel(entry.system_name or "—"))
         self._info_form.addRow("Group:", QLabel(entry.group_name or "—"))
 
         self._service_combo = QComboBox()
@@ -388,16 +388,16 @@ class HpdbDetailsPanel(BaseDetailsPanel):
             except (TypeError, ValueError):
                 identity = freq_field or "—"
             self._info_form.addRow("Frequency:", QLabel(identity))
-            self._info_form.addRow("Mode:", QLabel(entry.record.get_field(6, "—")))
+            self._info_form.addRow(_LABEL_MODE, QLabel(entry.record.get_field(6, "—")))
             self._info_form.addRow("Tone:", QLabel(entry.record.get_field(7, "—") or "—"))
         else:
             self._info_form.addRow("TGID:", QLabel(entry.record.get_field(5, "—")))
-            self._info_form.addRow("Mode:", QLabel(entry.record.get_field(6, "—")))
+            self._info_form.addRow(_LABEL_MODE, QLabel(entry.record.get_field(6, "—")))
 
         category = format_service_type_details(profile, entry.service_type)
         self._info_form.addRow("Category:", QLabel(category))
 
-        self._info_form.addRow("System:", QLabel(entry.system_name or "—"))
+        self._info_form.addRow(_LABEL_SYSTEM, QLabel(entry.system_name or "—"))
         self._info_form.addRow("Group:", QLabel(entry.group_name or "—"))
 
         self._edit_button.setEnabled(True)

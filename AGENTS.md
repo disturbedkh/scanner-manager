@@ -18,9 +18,8 @@ Short router for Cursor agents. **Full notebook:** [`Metacache/Dev/README.md`](M
 | `scanner_profiles/` work | `MULTI_SCANNER_BACKEND.md`, RE docs | `add-scanner-profile` |
 | Live serial RE | `Metacache/Dev/RE/README.md` | `serial-re-probe` |
 | Qt GUI / drivers | `gui/`, `scanner_drivers/` | — |
+| Sonar issues / quality gate | `Metacache/Dev/CURSOR.md` (Sonarcloud → Sonarqube MCP); dual scan: `.\sonar_scan.ps1` + `.\scripts\sonar_scan_cloud.ps1` + `.\scripts\sonar_compare.ps1` | `sonar-list-issues`, `sonar-quality-gate` |
 | End of session | `WORKER_LOG.md` format | `session-handoff` |
-
-## Subagent briefs
 
 Use built-in Task subagents with prompts from [`.cursor/agents/`](.cursor/agents/):
 
@@ -35,6 +34,7 @@ Use built-in Task subagents with prompts from [`.cursor/agents/`](.cursor/agents
 - **RE probes are read-only** unless user explicitly opts into destructive flags
 - **Don't commit** unless the user asks
 - **`app_eval` MCP** blocked unless `SCANNER_MANAGER_ALLOW_APP_EVAL=1`
+- **Sonar issues:** use **`Sonarcloud`** MCP first; fall back to **`Sonarqube`** MCP (user-global `%USERPROFILE%\.cursor\mcp.json`)
 
 ## Active workstreams (headline)
 

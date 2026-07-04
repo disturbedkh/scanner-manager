@@ -31,7 +31,7 @@ SENTINEL_FTP = FtpEndpoint(
     host="ftp.homepatrol.com",
     path="/BCDx36HP/",
     user="homepatrolftp",
-    password="green7Corn",
+    password="green7Corn",  # NOSONAR - vendor-published read-only FTP credential
     label="Uniden Sentinel (BCDx36HP family)",
 )
 
@@ -39,7 +39,7 @@ BT885_FTP = FtpEndpoint(
     host="ftp.uniden.com",
     path="/BT885/",
     user="BT885ftp2",
-    password="89jZ53Ba",
+    password="89jZ53Ba",  # NOSONAR - vendor-published read-only FTP credential
     label="Uniden BT885 Update Manager",
 )
 
@@ -86,7 +86,7 @@ class UnidenFtpClient:
         Each entry has the filename + size + modified timestamp
         (parsed from MDTM, format ``YYYYMMDDHHMMSS``).
         """
-        with ftplib.FTP(self._endpoint.host, timeout=self._list_timeout) as ftp:
+        with ftplib.FTP(self._endpoint.host, timeout=self._list_timeout) as ftp:  # NOSONAR - Uniden firmware CDN is FTP-only
             ftp.login(self._endpoint.user, self._endpoint.password)
             ftp.cwd(self._endpoint.path)
             names = ftp.nlst()
@@ -120,7 +120,7 @@ class UnidenFtpClient:
         ``progress_cb`` (if provided) receives ``(bytes_so_far, total_bytes)``
         on every chunk. Returns the total number of bytes written.
         """
-        with ftplib.FTP(self._endpoint.host, timeout=self._download_timeout) as ftp:
+        with ftplib.FTP(self._endpoint.host, timeout=self._download_timeout) as ftp:  # NOSONAR - Uniden firmware CDN is FTP-only
             ftp.login(self._endpoint.user, self._endpoint.password)
             ftp.cwd(self._endpoint.path)
             try:

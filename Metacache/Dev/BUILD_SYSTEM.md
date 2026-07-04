@@ -67,25 +67,32 @@ python scripts/build_release.py --type Development
 python scripts/build_release.py --type Release --smoke
 ```
 
-## Self-hosted SonarQube
+## Self-hosted SonarQube (VPS)
 
 SonarCloud free tier is public-repo only; this project uses **private GitLab**
-and **self-hosted SonarQube Community Edition**.
+and **self-hosted SonarQube Community Edition** at `https://217.216.48.172:18443`.
 
 ### Dev machine
 
 ```powershell
-docker compose -f docker-compose.sonar.yml up -d
+.\scripts\sonar_truststore.ps1    # one-time (self-signed TLS)
+sonar auth login -s https://217.216.48.172:18443
 .\scripts\sonar_scan.ps1
 ```
 
-Create project `scanner-manager` at http://localhost:9000 and generate a token.
+Create project `scanner-manager` on the VPS if missing. See [`Metacache/Dev/SONARQUBE.md`](SONARQUBE.md).
+
+Local `docker compose -f docker-compose.sonar.yml` is **deprecated** for daily dev;
+compose files remain as VPS deployment reference.
 
 ### CI gate
 
-1. Run SonarQube on a persistent host (reuse `docker-compose.sonar.yml`).
-2. Register a **self-hosted GitLab runner** on the same host/network (`tags: [sonar]`).
-3. Set GitLab CI variables: `SONAR_TOKEN`, `SONAR_HOST_URL`.
+1. SonarQube runs on the VPS (`docker-compose.sonar.yml` + `docker-compose.sonar.prod.yml`).
+2. Register a **self-hosted GitLab runner** on the VPS or same network (`tags: [sonar]`).
+3. Set GitLab CI variables (Settings → CI/CD → Variables):
+   - `SONAR_TOKEN` — VPS project token (masked, protected)
+   - `SONAR_HOST_URL` — `http://127.0.0.1:9000` when runner is co-located on the VPS;
+     use `https://217.216.48.172:18443` only for remote runners (requires truststore in job)
 4. `sonarqube` job uploads `coverage.xml` with `-Dsonar.qualitygate.wait=true`.
 
 If `SONAR_HOST_URL` is unset, the Sonar job is skipped; `test:coverage` still

@@ -77,6 +77,216 @@ def card_root(tmp_path: Path) -> Path:
     return root
 
 
+def _bt885_details_panel(qtbot, *, with_profile: bool = True):
+    """Bt885DetailsPanel with profile wired (not the BaseDetailsPanel alias)."""
+    from gui.editor.details_panel import Bt885DetailsPanel
+
+    if with_profile:
+        set_active_profile("uniden_bt885")
+    panel = Bt885DetailsPanel()
+    if with_profile:
+        panel.set_profile(get_profile("uniden_bt885"))
+    qtbot.addWidget(panel)
+    return panel
+
+
+# ------------------------------------------------------------------
+# gui/editor/coverage_panel.py
+# ------------------------------------------------------------------
+
+
+def test_coverage_panel_refresh_disabled_without_force(qtbot) -> None:
+    from gui.editor.coverage_panel import CoverageHeatmapWidget, CoveragePanel
+
+    panel = CoveragePanel()
+    qtbot.addWidget(panel)
+    panel.set_data_source(lambda: [])
+    panel.set_refresh_enabled(False)
+    assert panel.refresh_from_hpdb() is False
+    assert panel.refresh_from_hpdb(force=True) is True
+
+    heat = CoverageHeatmapWidget()
+    qtbot.addWidget(heat)
+    heat.set_groups([])
+    heat.set_groups([(25.0, -80.0, 5.0)])
+
+
+def test_coverage_panel_helpers_and_refresh_with_data(qtbot) -> None:
+    from types import SimpleNamespace
+
+    from gui.editor.coverage_panel import (
+        CoveragePanel,
+        _coverage_items_from_hpd_files,
+        _group_coverage_from_group,
+        _map_center_from_items,
+        _rectangle_items_for_group,
+        _site_marker_item,
+    )
+
+    group = SimpleNamespace(
+        lat=34.0,
+        lon=-118.0,
+        range_miles=5.0,
+        name="Dispatch",
+        entries=[SimpleNamespace(), SimpleNamespace()],
+        rectangles=[(34.0, -118.0, 34.1, -117.9), (1, 2)],
+    )
+    pt, items = _group_coverage_from_group(group)
+    assert pt == (34.0, -118.0, 2.0)
+    assert items[0]["kind"] == "circle"
+    assert _rectangle_items_for_group(group)[0]["kind"] == "rectangle"
+
+    site = SimpleNamespace(lat=35.0, lon=-119.0, name="Tower")
+    assert _site_marker_item(site)["label"] == "Site: Tower"
+    assert _site_marker_item(SimpleNamespace(lat=None, lon=0, name="X")) is None
+
+    center = _map_center_from_items(items)
+    assert center is not None
+
+    system = SimpleNamespace(groups=[group], sites=[site])
+    hpd = SimpleNamespace(systems=[system])
+    groups, map_items = _coverage_items_from_hpd_files([hpd])
+    assert groups
+    assert map_items
+
+    panel = CoveragePanel()
+    qtbot.addWidget(panel)
+    panel.set_sim_center(40.0, -90.0)
+    panel.set_data_source(lambda: [hpd])
+    panel.set_refresh_enabled(True)
+    assert panel.refresh_from_hpdb() is True
+    panel.invalidate_map_shell()
+
+
+def test_coverage_heatmap_no_pyqtgraph_placeholder(
+    qtbot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("gui.editor.coverage_panel.HAS_PYQTGRAPH", False)
+    from gui.editor.coverage_panel import CoverageHeatmapWidget
+
+    heat = CoverageHeatmapWidget()
+    qtbot.addWidget(heat)
+    assert heat._plot is None
+    heat.set_groups([(25.0, -80.0, 1.0)])
+
+
+def test_coverage_heatmap_collapsed_lat_lon_range(qtbot) -> None:
+    from gui.editor.coverage_panel import HAS_PYQTGRAPH, CoverageHeatmapWidget
+
+    if not HAS_PYQTGRAPH:
+        pytest.skip("pyqtgraph required")
+    heat = CoverageHeatmapWidget()
+    qtbot.addWidget(heat)
+    heat.set_groups([(25.0, -80.0, 1.0), (25.0, -80.0, 2.0)])
+
+
+def test_coverage_map_view_no_webengine_placeholder(
+    qtbot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("gui.editor.coverage_panel.HAS_WEBENGINE", False)
+    from gui.editor.coverage_panel import CoverageMapView
+
+    map_view = CoverageMapView()
+    qtbot.addWidget(map_view)
+    assert map_view._view is None
+    map_view.set_view(1.0, 2.0, zoom=5, items=[])
+
+
+def test_coverage_map_view_webengine_shell_and_javascript(
+    qtbot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    from gui.editor.coverage_panel import HAS_WEBENGINE, CoverageMapView
+
+    if not HAS_WEBENGINE:
+        pytest.skip("QtWebEngine required")
+
+    map_view = CoverageMapView()
+    qtbot.addWidget(map_view)
+
+    js_calls: list[str] = []
+    html_calls: list[str] = []
+
+    monkeypatch.setattr(
+        map_view._view,
+        "page",
+        lambda: SimpleNamespace(runJavaScript=js_calls.append),
+    )
+    monkeypatch.setattr(map_view._view, "setHtml", html_calls.append)
+
+    map_view.invalidate_shell()
+    items = [{"kind": "marker", "lat": 34.0, "lon": -118.0, "label": "A"}]
+    map_view.set_view(34.0, -118.0, zoom=6, items=items)
+    assert map_view._loading_shell
+    assert html_calls
+
+    map_view._on_shell_loaded(True)
+    assert map_view._shell_loaded
+    assert js_calls
+    assert "updateCoverageData" in js_calls[0]
+
+    map_view.set_view(35.0, -119.0, zoom=7, items=[])
+    assert len(js_calls) >= 2
+
+    map_view._on_shell_loaded(False)
+    map_view._on_shell_loaded(True)
+
+
+def test_coverage_map_view_shell_load_without_pending(qtbot) -> None:
+    from gui.editor.coverage_panel import HAS_WEBENGINE, CoverageMapView
+
+    if not HAS_WEBENGINE:
+        pytest.skip("QtWebEngine required")
+
+    map_view = CoverageMapView()
+    qtbot.addWidget(map_view)
+    map_view._pending_view = None
+    map_view._shell_loaded = False
+    map_view._loading_shell = True
+    map_view._on_shell_loaded(True)
+    assert map_view._shell_loaded
+    assert not map_view._loading_shell
+
+
+def test_group_coverage_from_group_skips_missing_coords() -> None:
+    from types import SimpleNamespace
+
+    from gui.editor.coverage_panel import _group_coverage_from_group
+
+    group = SimpleNamespace(
+        lat=None,
+        lon=-118.0,
+        range_miles=5.0,
+        name="NoCoords",
+        entries=[],
+        rectangles=[],
+    )
+    assert _group_coverage_from_group(group) == (None, [])
+
+
+def test_coverage_panel_refresh_without_data_source(qtbot) -> None:
+    from gui.editor.coverage_panel import CoveragePanel
+
+    panel = CoveragePanel()
+    qtbot.addWidget(panel)
+    assert panel.refresh_from_hpdb(force=True) is False
+
+
+def test_coverage_panel_refresh_swallows_provider_error(qtbot) -> None:
+    from gui.editor.coverage_panel import CoveragePanel
+
+    panel = CoveragePanel()
+    qtbot.addWidget(panel)
+
+    def _boom() -> None:
+        raise RuntimeError("provider failed")
+
+    panel.set_data_source(_boom)
+    panel.set_refresh_enabled(True)
+    assert panel.refresh_from_hpdb() is True
+
+
 @pytest.fixture
 def loaded_hpd(card_root: Path):
     from legacy_tk.scanner_manager import HpdFile
@@ -248,20 +458,16 @@ def test_bulk_service_type_dialog_builds(qtbot) -> None:
 
 
 def test_details_panel_default_state(qtbot) -> None:
-    from gui.editor.details_panel import DetailsPanel
+    from gui.editor.details_panel import BaseDetailsPanel
 
-    panel = DetailsPanel()
+    panel = BaseDetailsPanel()
     qtbot.addWidget(panel)
     assert panel._title.text() == "Select a node in the tree"
     assert not panel._edit_button.isEnabled()
 
 
 def test_details_panel_show_entry_payload(qtbot, loaded_hpd) -> None:
-    from gui.editor.details_panel import DetailsPanel
-
-    set_active_profile("uniden_bt885")
-    panel = DetailsPanel()
-    qtbot.addWidget(panel)
+    panel = _bt885_details_panel(qtbot)
 
     payload = {
         "kind": "entry",
@@ -277,11 +483,7 @@ def test_details_panel_show_entry_payload(qtbot, loaded_hpd) -> None:
 
 
 def test_details_panel_show_group_and_system(qtbot, loaded_hpd) -> None:
-    from gui.editor.details_panel import DetailsPanel
-
-    set_active_profile("uniden_bt885")
-    panel = DetailsPanel()
-    qtbot.addWidget(panel)
+    panel = _bt885_details_panel(qtbot)
 
     group_payload = {
         "kind": "group",
@@ -304,9 +506,9 @@ def test_details_panel_show_group_and_system(qtbot, loaded_hpd) -> None:
 
 
 def test_details_panel_show_file_payload(qtbot, loaded_hpd) -> None:
-    from gui.editor.details_panel import DetailsPanel
+    from gui.editor.details_panel import BaseDetailsPanel
 
-    panel = DetailsPanel()
+    panel = BaseDetailsPanel()
     qtbot.addWidget(panel)
 
     file_payload = {
@@ -321,11 +523,16 @@ def test_details_panel_show_file_payload(qtbot, loaded_hpd) -> None:
 
 
 def test_details_panel_show_none_resets(qtbot, loaded_hpd) -> None:
-    from gui.editor.details_panel import DetailsPanel
-
-    panel = DetailsPanel()
-    qtbot.addWidget(panel)
-    panel.show_entry({"kind": "entry", "entry": loaded_hpd["entry"]})
+    panel = _bt885_details_panel(qtbot)
+    panel.show_entry(
+        {
+            "kind": "entry",
+            "system": loaded_hpd["system"],
+            "group": loaded_hpd["group"],
+            "entry": loaded_hpd["entry"],
+            "hpd_file": loaded_hpd["hpd"],
+        }
+    )
     panel.show_entry(None)
     assert panel._title.text() == "Select a node in the tree"
 
@@ -633,12 +840,9 @@ def test_main_qt5_high_dpi_attributes(qtbot, monkeypatch: pytest.MonkeyPatch) ->
 def test_details_panel_edit_entry_emits_signal(
     qtbot, loaded_hpd, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from gui.editor.details_panel import DetailsPanel
-    from gui.editor.entry_dialog import EntryEditDialog
+    from gui.editor.entry_dialog import Bt885EntryEditDialog
 
-    set_active_profile("uniden_bt885")
-    panel = DetailsPanel()
-    qtbot.addWidget(panel)
+    panel = _bt885_details_panel(qtbot)
     payload = {
         "kind": "entry",
         "system": loaded_hpd["system"],
@@ -647,7 +851,7 @@ def test_details_panel_edit_entry_emits_signal(
         "hpd_file": loaded_hpd["hpd"],
     }
     panel.show_entry(payload)
-    monkeypatch.setattr(EntryEditDialog, "exec", lambda self: EntryEditDialog.Accepted)
+    monkeypatch.setattr(Bt885EntryEditDialog, "exec", lambda self: Bt885EntryEditDialog.Accepted)
     with qtbot.waitSignal(panel.entryEdited, timeout=1000):
         panel._on_edit_clicked()
 
@@ -655,11 +859,9 @@ def test_details_panel_edit_entry_emits_signal(
 def test_details_panel_edit_group_emits_signal(
     qtbot, loaded_hpd, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from gui.editor.details_panel import DetailsPanel
     from gui.editor.entry_dialog import GroupEditDialog
 
-    panel = DetailsPanel()
-    qtbot.addWidget(panel)
+    panel = _bt885_details_panel(qtbot)
     payload = {
         "kind": "group",
         "system": loaded_hpd["system"],
@@ -675,12 +877,11 @@ def test_details_panel_edit_group_emits_signal(
 def test_details_panel_bulk_service_on_group(
     qtbot, loaded_hpd, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from gui.editor.details_panel import DetailsPanel
-    from gui.editor.entry_dialog import BulkServiceTypeDialog
+    from PySide6.QtWidgets import QDialog
 
-    set_active_profile("uniden_bt885")
-    panel = DetailsPanel()
-    qtbot.addWidget(panel)
+    from gui.editor.entry_dialog import Bt885BulkServiceTypeDialog
+
+    panel = _bt885_details_panel(qtbot)
     payload = {
         "kind": "group",
         "system": loaded_hpd["system"],
@@ -688,9 +889,13 @@ def test_details_panel_bulk_service_on_group(
         "hpd_file": loaded_hpd["hpd"],
     }
     panel.show_entry(payload)
-    monkeypatch.setattr(BulkServiceTypeDialog, "exec", lambda self: BulkServiceTypeDialog.Accepted)
     monkeypatch.setattr(
-        BulkServiceTypeDialog,
+        Bt885BulkServiceTypeDialog,
+        "exec",
+        lambda self: QDialog.DialogCode.Accepted,
+    )
+    monkeypatch.setattr(
+        Bt885BulkServiceTypeDialog,
         "selected_service_type",
         lambda self: 14,
     )
@@ -702,21 +907,24 @@ def test_details_panel_bulk_service_on_group(
 def test_details_panel_bulk_service_on_system(
     qtbot, loaded_hpd, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from gui.editor.details_panel import DetailsPanel
-    from gui.editor.entry_dialog import BulkServiceTypeDialog
+    from PySide6.QtWidgets import QDialog
 
-    set_active_profile("uniden_bt885")
-    panel = DetailsPanel()
-    qtbot.addWidget(panel)
+    from gui.editor.entry_dialog import Bt885BulkServiceTypeDialog
+
+    panel = _bt885_details_panel(qtbot)
     payload = {
         "kind": "system",
         "system": loaded_hpd["system"],
         "hpd_file": loaded_hpd["hpd"],
     }
     panel.show_entry(payload)
-    monkeypatch.setattr(BulkServiceTypeDialog, "exec", lambda self: BulkServiceTypeDialog.Accepted)
     monkeypatch.setattr(
-        BulkServiceTypeDialog,
+        Bt885BulkServiceTypeDialog,
+        "exec",
+        lambda self: QDialog.DialogCode.Accepted,
+    )
+    monkeypatch.setattr(
+        Bt885BulkServiceTypeDialog,
         "selected_service_type",
         lambda self: 1,
     )
@@ -729,10 +937,7 @@ def test_details_panel_delete_entry(
 ) -> None:
     from PySide6.QtWidgets import QMessageBox
 
-    from gui.editor.details_panel import DetailsPanel
-
-    panel = DetailsPanel()
-    qtbot.addWidget(panel)
+    panel = _bt885_details_panel(qtbot)
     entry = loaded_hpd["entry"]
     payload = {
         "kind": "entry",
@@ -753,8 +958,6 @@ def test_details_panel_delete_entry(
 def test_details_panel_show_site_and_tgid_entry(qtbot, tmp_path: Path) -> None:
     from legacy_tk.scanner_manager import HpdFile
 
-    from gui.editor.details_panel import DetailsPanel
-
     hpd_path = tmp_path / "trunk.hpd"
     hpd_path.write_text(
         "TargetModel\tBCDx36HP\n"
@@ -772,9 +975,7 @@ def test_details_panel_show_site_and_tgid_entry(qtbot, tmp_path: Path) -> None:
     site = trunk.sites[0]
     tgid_entry = trunk.groups[0].entries[0]
 
-    panel = DetailsPanel()
-    qtbot.addWidget(panel)
-    set_active_profile("uniden_bt885")
+    panel = _bt885_details_panel(qtbot)
 
     panel.show_entry(
         {

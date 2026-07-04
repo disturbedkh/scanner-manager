@@ -140,6 +140,17 @@ def default_cache_dir() -> Path:
     return home / ".local" / "share" / "scanner-manager" / "installers"
 
 
+def _resolve_cache_target(raw: str) -> Path:
+    """Resolve ``target_path`` and ensure it stays under the installer cache."""
+    target = Path(raw).resolve()
+    root = default_cache_dir().resolve()
+    try:
+        target.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"Installer cache path escapes cache dir: {target}") from exc
+    return target
+
+
 def load_installer_manifest(
     manifest_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
@@ -671,7 +682,7 @@ def download_installer(
 
     Networking uses stdlib ``urllib`` - no third-party dep.
     """
-    target = Path(descriptor["target_path"])
+    target = _resolve_cache_target(descriptor["target_path"])
     target.parent.mkdir(parents=True, exist_ok=True)
     partial = target.with_suffix(target.suffix + ".part")
 

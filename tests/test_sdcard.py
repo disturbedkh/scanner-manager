@@ -7,10 +7,13 @@ import time
 import uuid
 from pathlib import Path
 
+import pytest
+
 from core.metastore import GlobalMetaStore
 from core.sdcard import (
     DISP_CONFLICT,  # noqa: F401 — re-exported constants are part of the API
     CardIdentity,
+    FileState,
     capture_file_state,
     clone_card_to_workspace,
     diff_trees,
@@ -378,3 +381,298 @@ def test_sync_push_blocks_on_changed_card_without_override(tmp_path: Path):
         (card_root / "s_000001.hpd").read_text(encoding="utf-8")
         == "updater edit\n"
     )
+
+
+# ---------------------------------------------------------------------------
+# Snapshot engine
+# ---------------------------------------------------------------------------
+
+
+def test_snapshot_workspace_creates_tree_and_metadata(tmp_path: Path):
+    from core.sdcard import SNAPSHOT_DIRNAME, snapshot_dir_for, snapshot_workspace
+
+    ws = tmp_path / "workspace"
+    ws.mkdir()
+    (ws / "HPDB").mkdir()
+    (ws / "HPDB" / "s_000001.hpd").write_text("TargetModel\tBCDx36HP\n", encoding="utf-8")
+    (ws / "note.txt").write_text("keep me", encoding="utf-8")
+
+    snap = snapshot_workspace(str(ws), reason="manual", note="unit test")
+
+    snap_dir = snapshot_dir_for(str(ws)) / snap.id
+    assert snap_dir.is_dir()
+    assert (snap_dir / "note.txt").read_text(encoding="utf-8") == "keep me"
+    assert snap.file_count >= 1
+    assert snap.size_bytes >= 1
+    assert snap.sha256
+    # Snapshots must not nest.
+    assert SNAPSHOT_DIRNAME not in [
+        p.name for p in (snap_dir / "HPDB").iterdir()
+    ] if (snap_dir / "HPDB").exists() else True
+
+
+def test_restore_snapshot_roundtrip(tmp_path: Path):
+    from core.sdcard import restore_snapshot, snapshot_workspace
+
+    ws = tmp_path / "workspace"
+    ws.mkdir()
+    original = ws / "data.txt"
+    original.write_text("v1", encoding="utf-8")
+
+    snap = snapshot_workspace(str(ws), note="before edit")
+    original.write_text("v2", encoding="utf-8")
+
+    marker, pre = restore_snapshot(str(ws), snap.id)
+    assert original.read_text(encoding="utf-8") == "v1"
+    assert marker.id == snap.id
+    assert pre is not None
+    assert pre.reason == "pre-restore"
+
+
+def test_snapshot_workspace_missing_dir_raises(tmp_path: Path):
+    from core.sdcard import snapshot_workspace
+
+    missing = tmp_path / "nope"
+    with pytest.raises(FileNotFoundError, match="Workspace not found"):
+        snapshot_workspace(str(missing))
+
+
+def test_probe_empty_root_path_returns_empty_identity():
+    ident = probe_card_identity("")
+    assert ident.has_any_id() is False
+
+
+def test_capture_file_state_missing_root_returns_empty(tmp_path: Path):
+    assert capture_file_state(str(tmp_path / "missing")) == {}
+
+
+def test_file_states_from_json_skips_invalid_entries():
+    revived = file_states_from_json(
+        {
+            "good.hpd": {"relpath": "good.hpd", "size": 1, "mtime": 0.0, "sha256": ""},
+            "bad.hpd": {"relpath": "bad.hpd", "size": "not-int", "mtime": 0.0, "sha256": ""},
+        }
+    )
+    assert list(revived) == ["good.hpd"]
+
+
+def test_diff_trees_classifies_only_card_and_only_workspace(tmp_path: Path):
+    card_root = tmp_path / "card"
+    ws_root = tmp_path / "ws"
+    _make_fake_card(card_root)
+    ws_root.mkdir()
+    (ws_root / "local_only.txt").write_text("ws", encoding="utf-8")
+    diffs = diff_trees(
+        workspace_root=str(ws_root),
+        card_root=str(card_root),
+        baseline={},
+    )
+    by_rel = {d.relpath: d.status for d in diffs}
+    assert by_rel["local_only.txt"] == "only_workspace"
+    assert by_rel["s_000001.hpd"] == "only_card"
+
+
+def test_clone_card_missing_root_reports_error(tmp_path: Path):
+    report = clone_card_to_workspace(
+        str(tmp_path / "missing"), str(tmp_path / "ws")
+    )
+    assert report.errors
+    assert "does not exist" in report.errors[0][1]
+
+
+def test_clone_without_overwrite_flags_conflicts(tmp_path: Path):
+    card_root = tmp_path / "card"
+    ws_root = tmp_path / "ws"
+    _make_fake_card(card_root)
+    (ws_root / "s_000001.hpd").parent.mkdir(parents=True, exist_ok=True)
+    (ws_root / "s_000001.hpd").write_text("pre-existing", encoding="utf-8")
+
+    report = clone_card_to_workspace(str(card_root), str(ws_root), overwrite=False)
+    assert "s_000001.hpd" in report.conflicts
+
+
+def test_sync_pull_card_not_connected(tmp_path: Path):
+    report, diffs = sync_pull(
+        card_root=str(tmp_path / "missing"),
+        workspace_root=str(tmp_path / "ws"),
+        baseline={},
+    )
+    assert report.errors
+    assert diffs == []
+
+
+def test_sync_push_workspace_and_card_missing(tmp_path: Path):
+    report, _ = sync_push(
+        card_root=str(tmp_path / "missing"),
+        workspace_root=str(tmp_path / "ws"),
+        baseline={},
+    )
+    assert any("Card not connected" in err for _, err in report.errors)
+
+    card_root = tmp_path / "card"
+    _make_fake_card(card_root)
+    report, _ = sync_push(
+        card_root=str(card_root),
+        workspace_root=str(tmp_path / "missing-ws"),
+        baseline={},
+    )
+    assert any("Workspace folder missing" in err for _, err in report.errors)
+
+
+def test_sync_pull_skips_changed_workspace_and_resolves_ancillary_both(tmp_path: Path):
+    card_root = tmp_path / "card"
+    ws_root = tmp_path / "ws"
+    _make_fake_card(card_root)
+    clone_card_to_workspace(str(card_root), str(ws_root))
+    baseline = capture_file_state(str(ws_root))
+    time.sleep(0.1)
+    (card_root / "HPDB" / "hpdb.cfg").write_text("# card\n", encoding="utf-8")
+    (ws_root / "HPDB" / "hpdb.cfg").write_text("# workspace\n", encoding="utf-8")
+    (ws_root / "s_000001.hpd").write_text("ws-only\n", encoding="utf-8")
+
+    report, _ = sync_pull(
+        card_root=str(card_root),
+        workspace_root=str(ws_root),
+        baseline=baseline,
+    )
+    assert "HPDB/hpdb.cfg" in report.copied
+    assert "s_000001.hpd" in report.skipped_newer
+
+
+def test_snapshot_disk_usage_and_delete_payload(tmp_path: Path):
+    from core.sdcard import (
+        Snapshot,
+        delete_snapshot_payload,
+        snapshot_disk_usage,
+        snapshot_workspace,
+    )
+
+    ws = tmp_path / "workspace"
+    ws.mkdir()
+    (ws / "file.bin").write_bytes(b"x" * 50)
+    snap = snapshot_workspace(str(ws))
+    assert snapshot_disk_usage(str(ws)) >= 50
+    assert delete_snapshot_payload(str(ws), snap.id) is True
+    assert delete_snapshot_payload(str(ws), "missing-id") is False
+
+
+def test_restore_snapshot_without_pre_restore(tmp_path: Path):
+    from core.sdcard import restore_snapshot, snapshot_workspace
+
+    ws = tmp_path / "workspace"
+    ws.mkdir()
+    (ws / "data.txt").write_text("v1", encoding="utf-8")
+    snap = snapshot_workspace(str(ws))
+    (ws / "data.txt").write_text("v2", encoding="utf-8")
+
+    marker, pre = restore_snapshot(str(ws), snap.id, make_pre_restore_snapshot=False)
+    assert (ws / "data.txt").read_text(encoding="utf-8") == "v1"
+    assert marker.id == snap.id
+    assert pre is None
+
+
+def test_snapshot_from_dict_roundtrip():
+    from core.sdcard import Snapshot
+
+    raw = {
+        "id": "abc",
+        "created_at": "2024-01-01T00:00:00Z",
+        "reason": "manual",
+        "note": "n",
+        "source_root": "/ws",
+        "file_count": 3,
+        "size_bytes": 99,
+        "sha256": "deadbeef",
+        "card_fingerprint": "fp",
+        "card_volume_serial": "SERIAL",
+        "target_model": "Beartracker885",
+        "keep": True,
+    }
+    snap = Snapshot.from_dict(raw)
+    assert snap.to_dict()["id"] == "abc"
+    assert snap.keep is True
+
+
+def test_diff_trees_marks_baseline_only_as_removed(tmp_path: Path):
+    baseline = {
+        "gone.hpd": FileState(relpath="gone.hpd", size=1, mtime=0.0, sha256="abc")
+    }
+    (tmp_path / "empty-ws").mkdir()
+    diffs = diff_trees(
+        workspace_root=str(tmp_path / "empty-ws"),
+        card_root=str(tmp_path / "empty-card"),
+        baseline=baseline,
+    )
+    assert diffs[0].status == "removed"
+
+
+def test_sync_report_any_changes(tmp_path: Path):
+    from core.sdcard import SyncReport
+
+    empty = SyncReport(direction="pull")
+    assert empty.any_changes is False
+    busy = SyncReport(direction="push", copied=["a.hpd"])
+    assert busy.any_changes is True
+
+
+def test_sync_push_copies_only_workspace_files(tmp_path: Path):
+    card_root = tmp_path / "card"
+    ws_root = tmp_path / "ws"
+    _make_fake_card(card_root)
+    ws_root.mkdir()
+    (ws_root / "new.hpd").write_text("new entry\n", encoding="utf-8")
+
+    report, _ = sync_push(
+        card_root=str(card_root),
+        workspace_root=str(ws_root),
+        baseline={},
+    )
+    assert "new.hpd" in report.copied
+    assert (card_root / "new.hpd").read_text(encoding="utf-8") == "new entry\n"
+
+
+def test_restore_snapshot_missing_payload_raises(tmp_path: Path):
+    from core.sdcard import restore_snapshot
+
+    ws = tmp_path / "workspace"
+    ws.mkdir()
+    with pytest.raises(FileNotFoundError, match="Snapshot folder missing"):
+        restore_snapshot(str(ws), "does-not-exist")
+
+
+def test_snapshot_disk_usage_empty_profile(tmp_path: Path):
+    from core.sdcard import snapshot_disk_usage
+
+    assert snapshot_disk_usage(str(tmp_path / "no-snapshots")) == 0
+
+
+def test_prune_snapshots_clamps_non_positive_max():
+    from core.sdcard import Snapshot, prune_snapshots
+
+    snaps = [
+        Snapshot(id="a", created_at="2020-01-01T00:00:00Z", reason="auto"),
+        Snapshot(id="b", created_at="2021-01-01T00:00:00Z", reason="auto"),
+    ]
+    kept, removed = prune_snapshots(snaps, max_snapshots=0, keep_manual=False)
+    assert len(kept) == 1
+    assert len(removed) == 1
+
+
+def test_sync_push_copy_error_is_recorded(tmp_path: Path, monkeypatch):
+    card_root = tmp_path / "card"
+    ws_root = tmp_path / "ws"
+    _make_fake_card(card_root)
+    ws_root.mkdir()
+    (ws_root / "new.hpd").write_text("data", encoding="utf-8")
+
+    def _boom(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("core.sdcard.shutil.copy2", _boom)
+    report, _ = sync_push(
+        card_root=str(card_root),
+        workspace_root=str(ws_root),
+        baseline={},
+    )
+    assert report.errors
+

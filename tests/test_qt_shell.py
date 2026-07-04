@@ -317,6 +317,7 @@ def test_main_window_live_telemetry_bridge(qtbot, tmp_devices: Path) -> None:
 
 
 def test_main_window_menu_dialogs_smoke(qtbot, tmp_devices: Path, monkeypatch) -> None:
+    from PySide6.QtCore import Signal
     from PySide6.QtWidgets import QDialog, QInputDialog, QMessageBox
 
     mgr = DeviceManager(devices_path=tmp_devices)
@@ -335,9 +336,13 @@ def test_main_window_menu_dialogs_smoke(qtbot, tmp_devices: Path, monkeypatch) -
         def exec(self):
             return 0
 
+    class _InstantWorkspaceDialog(_InstantDialog):
+        workspaceLoaded = Signal(object)
+        defaultDeviceListRequested = Signal()
+
     monkeypatch.setattr(
         "gui.main_window.WorkspaceManagerDialog",
-        lambda *a, **k: _InstantDialog(),
+        lambda *a, **k: _InstantWorkspaceDialog(),
     )
     monkeypatch.setattr(
         "gui.main_window.ProfileSnapshotsDialog",
@@ -380,7 +385,7 @@ def test_main_window_menu_dialogs_smoke(qtbot, tmp_devices: Path, monkeypatch) -
     )
     monkeypatch.setattr(
         "core.app_updater.check_for_update",
-        lambda: None,
+        lambda _current, **_kw: None,
     )
 
     window._on_workspaces()

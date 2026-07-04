@@ -1,0 +1,20 @@
+{
+  // markdownlint house style for this repo's docs + dev notebook.
+  // Keep the structural rules (blank lines around headings/lists, consistent
+  // list markers); relax the cosmetic rules the terse notes intentionally
+  // diverge from. The append-only session log is ignored entirely via
+  // .markdownlintignore (its heading-immediately-followed-by-list format is
+  // house style and would otherwise trip MD022/MD032 on every entry).
+  "default": true,
+  // Prose, tables, and pasted command lines run past 80 cols.
+  "MD013": false,
+  // Allow the same heading text under different parents (e.g. repeated
+  // "Notes" / "Usage" sections); still flags true sibling duplicates.
+  "MD024": { "siblings_only": true },
+  // Inline HTML: notes use <HOST>/<DRIVE>/<SERIAL> placeholder tokens.
+  "MD033": false,
+  // Fenced blocks include directory trees and plain output without a language.
+  "MD040": false,
+  // Notebook files lead with a metadata line, not a top-level H1.
+  "MD041": false
+}

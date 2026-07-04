@@ -98,7 +98,7 @@ _SERVICE_TYPES: Dict[int, str] = {
 # Every defined service type is scannable on the SDS - no per-button
 # filter. We expose the full ID set so the GUI's "scannable" badge
 # colors all entries correctly.
-_SCANNABLE_TYPES: FrozenSet[int] = frozenset(_SERVICE_TYPES)
+_SCANNABLE_TYPES: Set[int] = {*_SERVICE_TYPES}
 
 # The SDS has no fixed scanner buttons. The GUI's button-filter row
 # is hidden for SDS profiles and ``button_filter`` returns the empty

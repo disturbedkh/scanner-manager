@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -569,6 +569,359 @@ def test_iq_waterfall_max_hold_time_expires_old_peak(qtbot) -> None:
     assert decayed_peak < strong_peak - 5.0, (
         f"peak failed to decay: decayed={decayed_peak} strong={strong_peak}"
     )
+
+
+# ------------------------------------------------------------------
+# gui/live/widgets.py — coverage gaps (GSI/GLG/Meters/waterfalls)
+# ------------------------------------------------------------------
+
+
+def test_gsi_mirror_widget_or_fallbacks_for_empty_strings(qtbot) -> None:
+    from gui.live.widgets import GsiMirrorWidget
+
+    widget = GsiMirrorWidget()
+    qtbot.addWidget(widget)
+    widget.update_snapshot(GsiSnapshot())
+    assert widget._mode.text() == "—"
+    assert widget._system.text() == "—"
+    assert widget._department.text() == "—"
+    assert widget._unit.text() == "—"
+    assert widget._tgid.text() == "—"
+
+
+def test_meters_widget_shows_rssi_and_clamps_signal_pct(qtbot) -> None:
+    from gui.live.widgets import MetersWidget
+
+    widget = MetersWidget()
+    qtbot.addWidget(widget)
+    widget.update_snapshot(GsiSnapshot(rssi_dbm=-65, signal_pct=150))
+    assert widget._rssi_label.text() == "-65 dBm"
+    assert widget._signal_bar.value() == 100
+    widget.update_snapshot(GsiSnapshot(signal_pct=-20))
+    assert widget._signal_bar.value() == 0
+
+
+def test_glg_feed_trims_rows_at_max_and_shows_name_chain(qtbot) -> None:
+    from gui.live.widgets import GlgFeedWidget
+
+    feed = GlgFeedWidget(max_rows=2)
+    qtbot.addWidget(feed)
+    for idx in range(4):
+        feed.append_event(
+            GlgEvent(
+                frq=str(154_445_000 + idx),
+                mod="FM",
+                name1="Sys",
+                name2="Dept",
+                name3=f"TG{idx}",
+                is_receiving=True,
+            )
+        )
+    assert feed._list.count() == 2
+    assert "Sys > Dept > TG3" in feed._list.item(0).text()
+
+
+def test_glg_feed_digit_frq_value_error_fallback(qtbot) -> None:
+    from gui.live.widgets import GlgFeedWidget
+
+    feed = GlgFeedWidget()
+    qtbot.addWidget(feed)
+    real_int = int
+
+    def _int_maybe_fail(value, base=10):
+        if value == "12345":
+            raise ValueError("forced")
+        return real_int(value, base)
+
+    with patch("builtins.int", _int_maybe_fail):
+        feed.append_event(
+            GlgEvent(frq="12345", mod="P25", name3="Fallback", is_receiving=True)
+        )
+    assert "12345" in feed._list.item(0).text()
+
+
+def test_build_turbo_colormap_returns_none_without_pyqtgraph(monkeypatch) -> None:
+    from gui.live import widgets
+
+    monkeypatch.setattr(widgets, "HAS_PYQTGRAPH", False)
+    assert widgets._build_turbo_colormap() is None
+
+
+def test_build_turbo_colormap_uses_matplotlib_when_available(qtbot) -> None:
+    pytest.importorskip("pyqtgraph")
+
+    from gui.live import widgets
+
+    turbo = widgets.pg.colormap.get("viridis")
+    with patch.object(widgets.pg.colormap, "get", return_value=turbo):
+        assert widgets._build_turbo_colormap() is turbo
+
+
+def test_waterfall_widget_no_pyqtgraph_shows_install_label(qtbot, monkeypatch) -> None:
+    from gui.live import widgets
+    from scanner_drivers.serial_sub import WaterfallFrame
+
+    monkeypatch.setattr(widgets, "HAS_PYQTGRAPH", False)
+    widget = widgets.WaterfallWidget()
+    qtbot.addWidget(widget)
+    assert widget._image_item is None
+    widget.add_frame(WaterfallFrame(samples=list(range(64))))
+    widget.reset_history()
+    assert widget._sample_count is None
+
+
+def test_waterfall_widget_skips_empty_and_short_samples(qtbot) -> None:
+    pytest.importorskip("pyqtgraph")
+    pytest.importorskip("numpy")
+
+    from gui.live import widgets
+    from scanner_drivers.serial_sub import WaterfallFrame
+
+    if not widgets.HAS_PYQTGRAPH:
+        pytest.skip("pyqtgraph not available at runtime")
+
+    widget = widgets.WaterfallWidget(history_rows=4)
+    qtbot.addWidget(widget)
+    widget.add_frame(WaterfallFrame(samples=[]))
+    widget.add_frame(WaterfallFrame(samples=[0, 0, 0, 1]))
+    assert len(widget._frames) == 0
+
+
+def test_waterfall_widget_pads_truncates_and_resets(qtbot) -> None:
+    pytest.importorskip("pyqtgraph")
+    pytest.importorskip("numpy")
+    import math
+
+    from gui.live import widgets
+    from scanner_drivers.serial_sub import WaterfallFrame
+
+    if not widgets.HAS_PYQTGRAPH:
+        pytest.skip("pyqtgraph not available at runtime")
+
+    widget = widgets.WaterfallWidget(history_rows=4)
+    qtbot.addWidget(widget)
+
+    def _tone(n: int, bin_target: int = 32) -> list[int]:
+        return [
+            int(12000 * math.sin(2 * math.pi * bin_target * i / n))
+            for i in range(n)
+        ]
+
+    widget.add_frame(WaterfallFrame(samples=_tone(256)))
+    locked = widget._sample_count
+    widget.add_frame(WaterfallFrame(samples=_tone(64)))
+    widget.add_frame(WaterfallFrame(samples=_tone(512)))
+    assert locked is not None
+    assert len(widget._frames) == 3
+
+    widget.reset_history()
+    assert len(widget._frames) == 0
+    assert widget._sample_count is None
+    assert not widget._range_set
+
+
+def test_waterfall_widget_colormap_lut_failure_is_non_fatal(qtbot, monkeypatch) -> None:
+    pytest.importorskip("pyqtgraph")
+
+    from gui.live import widgets
+
+    if not widgets.HAS_PYQTGRAPH:
+        pytest.skip("pyqtgraph not available at runtime")
+
+    bad_cmap = MagicMock()
+    bad_cmap.getLookupTable.side_effect = RuntimeError("lut fail")
+    monkeypatch.setattr(widgets, "_build_turbo_colormap", lambda: bad_cmap)
+
+    widget = widgets.WaterfallWidget(history_rows=4)
+    qtbot.addWidget(widget)
+    assert widget._image_item is not None
+
+
+def test_waterfall_widget_percentile_fallback_levels(qtbot, monkeypatch) -> None:
+    pytest.importorskip("pyqtgraph")
+    pytest.importorskip("numpy")
+    import math
+
+    from gui.live import widgets
+    from scanner_drivers.serial_sub import WaterfallFrame
+
+    if not widgets.HAS_PYQTGRAPH:
+        pytest.skip("pyqtgraph not available at runtime")
+
+    widget = widgets.WaterfallWidget(history_rows=4)
+    qtbot.addWidget(widget)
+    n = 256
+    samples = [
+        int(15000 * math.sin(2 * math.pi * 32 * i / n))
+        for i in range(n)
+    ]
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("percentile fail")
+
+    monkeypatch.setattr(widgets.np, "percentile", _boom)
+    widget.add_frame(WaterfallFrame(samples=samples))
+    lo, hi = widget._image_item.getLevels()
+    assert lo == 0.0
+    assert hi == 90.0
+
+
+def test_iq_waterfall_widget_no_pyqtgraph_shows_install_label(qtbot, monkeypatch) -> None:
+    from gui.live import widgets
+    from scanner_drivers.serial_sub import IqFrame
+
+    monkeypatch.setattr(widgets, "HAS_PYQTGRAPH", False)
+    widget = widgets.IqWaterfallWidget()
+    qtbot.addWidget(widget)
+    assert widget._image_item is None
+    widget.add_frame(IqFrame(i_samples=[1] * 16, q_samples=[1] * 16, source="d"))
+    widget._update_marker()
+
+
+def test_iq_waterfall_set_center_frequency_noop_and_clear(qtbot) -> None:
+    pytest.importorskip("pyqtgraph")
+
+    from gui.live import widgets
+
+    if not widgets.HAS_PYQTGRAPH:
+        pytest.skip("pyqtgraph not available at runtime")
+
+    widget = widgets.IqWaterfallWidget(history_rows=2, sample_rate_hz=16_000.0)
+    qtbot.addWidget(widget)
+    widget.set_center_frequency(852_125_000.0)
+    widget.set_center_frequency(852_125_000.0)
+    widget.set_center_frequency(None)
+    assert not widget._marker_spectrum.isVisible()
+
+
+def test_iq_waterfall_skips_short_and_trimmed_frames(qtbot) -> None:
+    pytest.importorskip("pyqtgraph")
+
+    from gui.live import widgets
+    from scanner_drivers.serial_sub import IqFrame
+
+    if not widgets.HAS_PYQTGRAPH:
+        pytest.skip("pyqtgraph not available at runtime")
+
+    widget = widgets.IqWaterfallWidget(history_rows=2, sample_rate_hz=16_000.0)
+    qtbot.addWidget(widget)
+    widget.add_frame(IqFrame(i_samples=[1, 2], q_samples=[1, 2], source="d"))
+    widget.add_frame(
+        IqFrame(
+            i_samples=[1, 2, 3, 4, 5, 0, 0, 0, 0, 0],
+            q_samples=[1, 2, 3, 4, 5, 0, 0, 0, 0, 0],
+            source="d",
+        )
+    )
+    assert len(widget._frames) == 0
+
+
+def test_iq_waterfall_pads_truncates_spectrum_width(qtbot) -> None:
+    pytest.importorskip("pyqtgraph")
+    pytest.importorskip("numpy")
+
+    from gui.live import widgets
+    from scanner_drivers.serial_sub import IqFrame
+
+    if not widgets.HAS_PYQTGRAPH:
+        pytest.skip("pyqtgraph not available at runtime")
+
+    widget = widgets.IqWaterfallWidget(history_rows=4, sample_rate_hz=16_000.0)
+    qtbot.addWidget(widget)
+    i, q = _iq_tone(15000.0, n=256)
+    widget.add_frame(IqFrame(i_samples=i, q_samples=q, source="d"))
+    locked = widget._fft_size
+    short_i, short_q = _iq_tone(15000.0, n=64)
+    widget.add_frame(IqFrame(i_samples=short_i, q_samples=short_q, source="d"))
+    long_i, long_q = _iq_tone(15000.0, n=512)
+    widget.add_frame(IqFrame(i_samples=long_i, q_samples=long_q, source="d"))
+    assert locked is not None
+    assert len(widget._frames) == 3
+
+
+def test_iq_waterfall_colormap_lut_failure_is_non_fatal(qtbot, monkeypatch) -> None:
+    pytest.importorskip("pyqtgraph")
+
+    from gui.live import widgets
+
+    if not widgets.HAS_PYQTGRAPH:
+        pytest.skip("pyqtgraph not available at runtime")
+
+    bad_cmap = MagicMock()
+    bad_cmap.getLookupTable.side_effect = RuntimeError("lut fail")
+    monkeypatch.setattr(widgets, "_build_turbo_colormap", lambda: bad_cmap)
+
+    widget = widgets.IqWaterfallWidget(history_rows=2, sample_rate_hz=16_000.0)
+    qtbot.addWidget(widget)
+    assert widget._image_item is not None
+
+
+def test_iq_waterfall_percentile_equal_bounds_uses_offset(qtbot, monkeypatch) -> None:
+    pytest.importorskip("pyqtgraph")
+    pytest.importorskip("numpy")
+
+    from gui.live import widgets
+    from scanner_drivers.serial_sub import IqFrame
+
+    if not widgets.HAS_PYQTGRAPH:
+        pytest.skip("pyqtgraph not available at runtime")
+
+    widget = widgets.IqWaterfallWidget(history_rows=4, sample_rate_hz=16_000.0)
+    qtbot.addWidget(widget)
+    flat = [1000] * 256
+    frame = IqFrame(i_samples=flat, q_samples=flat, source="d")
+
+    def _flat_percentile(_arr, _p):
+        return 1.0
+
+    monkeypatch.setattr(widgets.np, "percentile", _flat_percentile)
+    widget.add_frame(frame)
+    lo, hi = widget._image_item.getLevels()
+    assert hi == lo + 1.0
+
+
+def test_iq_waterfall_percentile_fallback_levels(qtbot, monkeypatch) -> None:
+    pytest.importorskip("pyqtgraph")
+    pytest.importorskip("numpy")
+
+    from gui.live import widgets
+    from scanner_drivers.serial_sub import IqFrame
+
+    if not widgets.HAS_PYQTGRAPH:
+        pytest.skip("pyqtgraph not available at runtime")
+
+    widget = widgets.IqWaterfallWidget(history_rows=4, sample_rate_hz=16_000.0)
+    qtbot.addWidget(widget)
+    i, q = _iq_tone(15000.0)
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("percentile fail")
+
+    monkeypatch.setattr(widgets.np, "percentile", _boom)
+    widget.add_frame(IqFrame(i_samples=i, q_samples=q, source="d"))
+    lo, hi = widget._image_item.getLevels()
+    assert lo == -60.0
+    assert hi == 0.0
+
+
+def test_iq_waterfall_reset_peak_hold_clears_trace(qtbot) -> None:
+    pytest.importorskip("pyqtgraph")
+    pytest.importorskip("numpy")
+
+    from gui.live import widgets
+    from scanner_drivers.serial_sub import IqFrame
+
+    if not widgets.HAS_PYQTGRAPH:
+        pytest.skip("pyqtgraph not available at runtime")
+
+    widget = widgets.IqWaterfallWidget(history_rows=4, sample_rate_hz=16_000.0)
+    qtbot.addWidget(widget)
+    i, q = _iq_tone(15000.0)
+    widget.add_frame(IqFrame(i_samples=i, q_samples=q, source="d"))
+    assert widget._peak_hold is not None
+    widget.reset_peak_hold()
+    assert widget._peak_hold is None
+    assert widget._peak_times is None
 
 
 # ------------------------------------------------------------------

@@ -79,6 +79,8 @@ from virtual_sd import StageKind, VirtualCard, VirtualCardError
 
 logger = logging.getLogger(__name__)
 
+_VIRTUAL_CARD_NOT_LOADED = "(virtual card not loaded)"
+
 _NOTHING_SELECTED = "(nothing selected)"
 
 
@@ -366,7 +368,7 @@ class FirmwareDock(QWidget):
         # ---- Pending-changes (virtual SD card) panel --------------
         self._pending_box = QGroupBox("Pending changes (virtual card)")
         pend_layout = QVBoxLayout(self._pending_box)
-        self._pending_label = QLabel("(virtual card not loaded)")
+        self._pending_label = QLabel(_VIRTUAL_CARD_NOT_LOADED)
         self._pending_label.setWordWrap(True)
         self._pending_label.setStyleSheet("color: #555; font-size: 11px;")
         pend_layout.addWidget(self._pending_label)
@@ -473,7 +475,7 @@ class FirmwareDock(QWidget):
             self._current_label.setText(
                 "<i>SD card details load when the firmware window is opened.</i>"
             )
-        self._pending_label.setText("(virtual card not loaded)")
+        self._pending_label.setText(_VIRTUAL_CARD_NOT_LOADED)
         self._apply_btn.setEnabled(False)
         self._discard_btn.setEnabled(False)
         self._discard_all_btn.setEnabled(False)
@@ -808,7 +810,7 @@ class FirmwareDock(QWidget):
     def _refresh_pending_view(self) -> None:
         self._pending_tree.clear()
         if self._virtual_card is None:
-            self._pending_label.setText("(virtual card not loaded)")
+            self._pending_label.setText(_VIRTUAL_CARD_NOT_LOADED)
             self._apply_btn.setEnabled(False)
             self._discard_btn.setEnabled(False)
             self._discard_all_btn.setEnabled(False)

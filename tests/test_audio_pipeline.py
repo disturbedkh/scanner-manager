@@ -73,6 +73,81 @@ def test_list_input_devices_returns_list_or_empty():
     assert isinstance(devices, list)
 
 
+def test_list_input_devices_when_sounddevice_missing(monkeypatch):
+    from audio import capture as cap
+
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: None)
+    assert cap.list_input_devices() == []
+
+
+def test_list_input_devices_when_query_hostapis_raises(monkeypatch):
+    from audio import capture as cap
+
+    class _FakeSD:
+        @staticmethod
+        def query_hostapis():
+            raise RuntimeError("host API unavailable")
+
+        @staticmethod
+        def query_devices():
+            return [
+                {
+                    "name": "Mic",
+                    "max_input_channels": 1,
+                    "hostapi": 0,
+                    "default_samplerate": 48000.0,
+                },
+            ]
+
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    devices = cap.list_input_devices()
+    assert len(devices) == 1
+    assert devices[0].name == "Mic"
+    assert devices[0].host_api == ""
+
+
+def test_list_input_devices_resolves_host_api_name(monkeypatch):
+    from audio import capture as cap
+
+    class _FakeSD:
+        @staticmethod
+        def query_hostapis():
+            return [{"name": "DirectSound"}]
+
+        @staticmethod
+        def query_devices():
+            return [
+                {
+                    "name": "Line In",
+                    "max_input_channels": 2,
+                    "hostapi": 0,
+                    "default_samplerate": 44100.0,
+                },
+            ]
+
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    devices = cap.list_input_devices()
+    assert devices[0].host_api == "DirectSound"
+    assert devices[0].index == 0
+
+
+def test_list_input_devices_uses_fallback_name(monkeypatch):
+    from audio import capture as cap
+
+    class _FakeSD:
+        @staticmethod
+        def query_hostapis():
+            return []
+
+        @staticmethod
+        def query_devices():
+            return [{"max_input_channels": 1, "default_samplerate": 48000.0}]
+
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    devices = cap.list_input_devices()
+    assert devices[0].name == "Input 0"
+
+
 def test_list_input_devices_when_query_devices_raises(monkeypatch):
     """query_devices failure must not crash list enumeration."""
     from audio import capture as cap
@@ -117,12 +192,65 @@ def test_list_input_devices_skips_output_only_devices(monkeypatch):
     assert devices[0].max_input_channels == 2
 
 
+def test_safe_import_numpy_returns_none_when_unavailable(monkeypatch):
+    import builtins
+
+    from audio import capture as cap
+
+    real_import = builtins.__import__
+
+    def _block_numpy(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "numpy":
+            raise ImportError("no numpy")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", _block_numpy)
+    assert cap._safe_import_numpy() is None
+
+
+def test_audio_frame_from_block_handles_conversion_failure():
+    from audio import capture as cap
+
+    class _BadBlock:
+        def astype(self, _dtype, copy=False):  # noqa: ARG002
+            raise TypeError("cannot convert")
+
+    frame = cap._audio_frame_from_block(_BadBlock(), np, 48000, 1)
+    assert frame.rms == 0.0
+    assert frame.peak == 0.0
+    assert frame.pcm is not None
+
+
+def test_audio_frame_from_block_empty_array():
+    from audio import capture as cap
+
+    empty = np.array([], dtype=np.float32)
+    frame = cap._audio_frame_from_block(empty, np, 48000, 1)
+    assert frame.rms == 0.0
+    assert frame.peak == 0.0
+
+
 def test_audio_capture_start_raises_without_sounddevice(monkeypatch):
     from audio import capture as cap
 
     monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: None)
     ac = cap.AudioCapture()
     with pytest.raises(RuntimeError, match="sounddevice not installed"):
+        ac.start()
+
+
+def test_audio_capture_start_raises_without_numpy(monkeypatch):
+    from audio import capture as cap
+
+    class _FakeSD:
+        @classmethod
+        def InputStream(cls, **kwargs):  # noqa: ARG003
+            raise AssertionError("should not open stream without numpy")
+
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    monkeypatch.setattr(cap, "_safe_import_numpy", lambda: None)
+    ac = cap.AudioCapture()
+    with pytest.raises(RuntimeError, match="numpy not installed"):
         ac.start()
 
 
@@ -206,6 +334,161 @@ def test_audio_capture_callback_receives_frame(monkeypatch):
     assert frame.channels == 1
     assert frame.rms > 0.0
     assert frame.peak > 0.0
+    ac.stop()
+
+
+def test_audio_capture_logs_stream_status(monkeypatch):
+    from audio import capture as cap
+
+    class _FakeStream:
+        def __init__(self, callback):
+            self._callback = callback
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def close(self):
+            pass
+
+        def invoke(self, block, status):
+            self._callback(block, len(block), None, status)
+
+    class _FakeSD:
+        last_stream = None
+
+        @classmethod
+        def InputStream(cls, **kwargs):
+            stream = _FakeStream(kwargs["callback"])
+            cls.last_stream = stream
+            return stream
+
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    ac = cap.AudioCapture(sample_rate=48000, channels=1, block_size=2)
+    ac.start()
+    block = np.zeros((2, 1), dtype=np.float32)
+    _FakeSD.last_stream.invoke(block, "input overflow")
+    ac.stop()
+
+
+def test_audio_capture_callback_exception_is_logged(monkeypatch, caplog):
+    import logging
+
+    from audio import capture as cap
+
+    class _FakeStream:
+        def __init__(self, callback):
+            self._callback = callback
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def close(self):
+            pass
+
+        def invoke(self, block):
+            self._callback(block, len(block), None, None)
+
+    class _FakeSD:
+        last_stream = None
+
+        @classmethod
+        def InputStream(cls, **kwargs):
+            stream = _FakeStream(kwargs["callback"])
+            cls.last_stream = stream
+            return stream
+
+    def _boom(_frame):
+        raise ValueError("subscriber failed")
+
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    ac = cap.AudioCapture(sample_rate=48000, channels=1, block_size=2)
+    ac.set_callback(_boom)
+    ac.start()
+    with caplog.at_level(logging.ERROR, logger="audio.capture"):
+        block = np.array([[0.1], [0.2]], dtype=np.float32)
+        _FakeSD.last_stream.invoke(block)
+    assert "Audio callback raised" in caplog.text
+    ac.stop()
+
+
+def test_audio_capture_stop_swallows_stream_errors(monkeypatch):
+    from audio import capture as cap
+
+    class _BadStream:
+        def __init__(self, callback):  # noqa: ARG002
+            pass
+
+        def start(self):
+            pass
+
+        def stop(self):
+            raise RuntimeError("device disconnected")
+
+        def close(self):
+            raise RuntimeError("already closed")
+
+    class _FakeSD:
+        @classmethod
+        def InputStream(cls, **kwargs):
+            return _BadStream(kwargs.get("callback"))
+
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    ac = cap.AudioCapture()
+    ac.start()
+    assert ac.is_running
+    ac.stop()
+    assert not ac.is_running
+
+
+def test_audio_capture_stop_when_not_running():
+    from audio.capture import AudioCapture
+
+    ac = AudioCapture()
+    assert not ac.is_running
+    ac.stop()
+    assert not ac.is_running
+
+
+def test_audio_capture_set_callback_none(monkeypatch):
+    from audio import capture as cap
+
+    class _FakeStream:
+        def __init__(self, callback):
+            self._callback = callback
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def close(self):
+            pass
+
+        def invoke(self, block):
+            self._callback(block, len(block), None, None)
+
+    class _FakeSD:
+        last_stream = None
+
+        @classmethod
+        def InputStream(cls, **kwargs):
+            stream = _FakeStream(kwargs["callback"])
+            cls.last_stream = stream
+            return stream
+
+    monkeypatch.setattr(cap, "_safe_import_sounddevice", lambda: _FakeSD())
+    ac = cap.AudioCapture(sample_rate=48000, channels=1, block_size=2)
+    ac.set_callback(None)
+    ac.start()
+    block = np.array([[0.3], [0.4]], dtype=np.float32)
+    _FakeSD.last_stream.invoke(block)
     ac.stop()
 
 

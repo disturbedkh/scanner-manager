@@ -199,8 +199,6 @@ def check_for_update(
     try:
         with opener(req, timeout=timeout) as resp:
             data = resp.read()
-    except OSError:
-        return None
     except Exception:
         return None
     try:
@@ -377,9 +375,7 @@ del "%~f0"
 """
 
 
-def build_windows_swap_bat(
-    script_path: Path, _new_exe: Path, _current_exe: Path
-) -> Path:
+def build_windows_swap_bat(script_path: Path) -> Path:
     """Write the swap script and return its path. Pure I/O; used by
     tests that assert the bat content without spawning a process.
     """
@@ -402,7 +398,7 @@ def apply_update_windows(
     """
     script_dir = script_dir or Path(tempfile.gettempdir())
     bat_path = script_dir / "scanner_manager_update.bat"
-    build_windows_swap_bat(bat_path, new_exe, current_exe)
+    build_windows_swap_bat(bat_path)
     args = [
         "cmd.exe",
         "/c",

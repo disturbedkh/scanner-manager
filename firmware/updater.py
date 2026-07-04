@@ -124,9 +124,7 @@ def backup_card(card_root: Path, dst_root: Optional[Path] = None) -> Path:
 # ----------------------------------------------------------------------
 
 
-def _preflight_model_check(
-    model: str, _profile: ScannerProfile
-) -> Optional[PreflightResult]:
+def _preflight_model_check(model: str) -> Optional[PreflightResult]:
     if model:
         return None
     return PreflightResult(False, "scanner.inf field 1 is empty")
@@ -209,7 +207,7 @@ def preflight(
         return PreflightResult(False, "Card has no BCDx36HP/scanner.inf")
     model, _hw, ver_main, ver_sub = read_scanner_inf(card_root)
     for check in (
-        lambda: _preflight_model_check(model, profile),
+        lambda: _preflight_model_check(model),
         lambda: _preflight_alias_check(model, profile, ver_main, ver_sub),
         lambda: _preflight_cache_check(
             profile.id, cache, main_version, "main", model, ver_main, ver_sub

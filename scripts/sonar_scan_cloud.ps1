@@ -1,17 +1,19 @@
-# Run pytest with coverage, then upload results to self-hosted SonarQube (VPS).
+# Run pytest with coverage, then upload results to SonarCloud (disturbedkh_scanner-manager).
+# Clears VPS SONAR_* env vars before Cloud upload.
+#
 # Prerequisites:
-#   - Docker (for sonarsource/sonar-scanner-cli)
-#   - One-time: .\scripts\sonar_truststore.ps1  (HTTPS self-signed cert)
-#   - Auth: sonar auth login -s https://217.216.48.172:18443
-#     OR set $env:SONAR_TOKEN / $env:SONARQUBE_CLI_TOKEN
+#   - Docker (for sonarsource/sonar-scanner-cli) or native sonar-scanner
+#   - Auth: sonar auth login -o disturbedkh -s https://sonarcloud.io
+#     OR set $env:SONARCLOUD_TOKEN
 
 $ErrorActionPreference = "Stop"
 Set-Location (Split-Path -Parent $PSScriptRoot)
 if (-not (Test-Path "sonar-project.properties")) {
-    throw "Run this from the scanner-manager repo root: cd g:\scanner-manager; .\sonar_scan.ps1"
+    throw "Run from repo root: cd g:\scanner-manager; .\scripts\sonar_scan_cloud.ps1"
 }
 . "$PSScriptRoot\sonar_config.ps1"
 
+Clear-SonarVpsEnv
 Write-SonarLocalhostEnvWarning
 
 $venvPython = Join-Path $PWD ".venv\Scripts\python.exe"
@@ -41,21 +43,19 @@ if ($pytestExit -ne 0) {
     }
 }
 
-Write-Host "==> Uploading analysis to SonarQube..." -ForegroundColor Cyan
-$sonarHostUrl = Get-SonarHostUrl
-$sonarToken = Get-SonarToken
+Write-Host "==> Uploading analysis to SonarCloud..." -ForegroundColor Cyan
+$sonarToken = Get-SonarCloudToken
 if (-not $sonarToken) {
     throw @"
-No VPS token for scanner-manager. Machine SONAR_* env vars point at a different server.
-  sonar auth login -s https://217.216.48.172:18443
-  OR: `$env:SCANNER_MANAGER_SONAR_TOKEN = '<token from SonarQube UI>'
-Run from repo root: cd g:\scanner-manager; .\sonar_scan.ps1
+No SonarCloud token. Clear SONAR_* env and run:
+  sonar auth login -o disturbedkh -s https://sonarcloud.io
+  OR: `$env:SONARCLOUD_TOKEN = '<token from SonarCloud UI>'
 "@
 }
 
-Invoke-SonarScannerUpload -HostUrl $sonarHostUrl -Token $sonarToken
+Invoke-SonarCloudScannerUpload -Token $sonarToken
 
-Write-Host "==> Verifying VPS analysis landed on branch '$(Get-SonarBranchName)'..." -ForegroundColor Cyan
-Start-Sleep -Seconds 5
-$status = Confirm-SonarAnalysisFresh -HostUrl $sonarHostUrl -Token $sonarToken
+Write-Host "==> Verifying Cloud analysis landed on branch '$(Get-SonarBranchName)'..." -ForegroundColor Cyan
+Start-Sleep -Seconds 8
+$status = Confirm-SonarCloudAnalysisFresh -Token $sonarToken
 Write-Host "==> Done. Open $($status.DashboardUrl)" -ForegroundColor Green

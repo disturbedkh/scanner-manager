@@ -245,11 +245,7 @@ def test_download_and_verify_rejects_mismatch(tmp_path: Path):
 
 def test_build_windows_swap_bat_has_expected_shape(tmp_path: Path):
     bat = tmp_path / "swap.bat"
-    updater.build_windows_swap_bat(
-        bat,
-        tmp_path / "new.exe",
-        tmp_path / "current.exe",
-    )
+    updater.build_windows_swap_bat(bat)
     content = bat.read_text(encoding="ascii")
     assert content.startswith("@echo off")
     assert "tasklist" in content

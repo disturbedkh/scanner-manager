@@ -25,7 +25,7 @@ class ScalingHelpLabel(QLabel):
     ) -> None:
         super().__init__(text, parent)
         self._min_scale = min_scale
-        self._max_scale = max_scale
+        self._scale_ceiling = max_scale
         self._base_point_size = float(self.font().pointSizeF() or self.font().pointSize() or 9)
         self.setWordWrap(True)
         self._apply_scaled_font()
@@ -46,8 +46,8 @@ class ScalingHelpLabel(QLabel):
             scale = self._min_scale
         else:
             extra = min(height - self._MIN_HEIGHT, 240)
-            scale = self._min_scale + (extra / 240.0) * (self._max_scale - self._min_scale)
-        scale = max(self._min_scale, min(self._max_scale, scale))
+            scale = self._min_scale + (extra / 240.0) * (self._scale_ceiling - self._min_scale)
+        scale = max(self._min_scale, min(self._scale_ceiling, scale))
         font = QFont(self.font())
         font.setPointSizeF(self._base_point_size * scale)
         self.setFont(font)

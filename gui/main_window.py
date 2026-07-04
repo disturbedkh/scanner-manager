@@ -67,6 +67,9 @@ from .windows import CoverageWindow, FirmwareWindow, LogWindow
 
 logger = logging.getLogger(__name__)
 
+_WS_KEY_NAME = "workspace/name"
+_WS_KEY_DEVICES_PATH = "workspace/devices_path"
+
 _STORAGE_PAGE = 0
 _LIVE_PAGE = 1
 
@@ -573,16 +576,16 @@ class MainWindow(QMainWindow):
         if ws is None:
             self._clear_workspace_settings()
             return
-        self._settings.setValue("workspace/name", ws.name)
-        self._settings.setValue("workspace/devices_path", ws.devices_path)
+        self._settings.setValue(_WS_KEY_NAME, ws.name)
+        self._settings.setValue(_WS_KEY_DEVICES_PATH, ws.devices_path)
 
     def _clear_workspace_settings(self) -> None:
-        self._settings.remove("workspace/name")
-        self._settings.remove("workspace/devices_path")
+        self._settings.remove(_WS_KEY_NAME)
+        self._settings.remove(_WS_KEY_DEVICES_PATH)
 
     def _restore_workspace_if_saved(self) -> None:
-        name = self._settings.value("workspace/name")
-        devices_path = self._settings.value("workspace/devices_path")
+        name = self._settings.value(_WS_KEY_NAME)
+        devices_path = self._settings.value(_WS_KEY_DEVICES_PATH)
         if not name or not devices_path:
             return
         path = Path(str(devices_path))

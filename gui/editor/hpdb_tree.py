@@ -600,6 +600,25 @@ class HpdbTreeWidget(QWidget):
         info = group_coverage_info(group, state.coords, tolerance)
         return info["status"] == "out_range"
 
+    def _iter_group_items(self):
+        """Yield (sys_item, grp_item, grp_payload) for every group row."""
+        for state_row in range(self._model.rowCount()):
+            file_item = self._model.item(state_row, 0)
+            if file_item is None:
+                continue
+            for sys_row in range(file_item.rowCount()):
+                sys_item = file_item.child(sys_row, 0)
+                if sys_item is None:
+                    continue
+                for grp_row in range(sys_item.rowCount()):
+                    grp_item = sys_item.child(grp_row, 0)
+                    if grp_item is None:
+                        continue
+                    grp_payload = grp_item.data(Qt.UserRole)
+                    if not isinstance(grp_payload, dict) or grp_payload.get("kind") != "group":
+                        continue
+                    yield sys_item, grp_item, grp_payload
+
     def _update_location_labels(self) -> None:
         state = self._location_filter
         active = self._location_filter_active()
@@ -612,14 +631,8 @@ class HpdbTreeWidget(QWidget):
                 if sys_item is None:
                     continue
                 self._refresh_system_label(sys_item, state, active)
-                for grp_row in range(sys_item.rowCount()):
-                    grp_item = sys_item.child(grp_row, 0)
-                    if grp_item is None:
-                        continue
-                    grp_payload = grp_item.data(Qt.UserRole)
-                    if not isinstance(grp_payload, dict) or grp_payload.get("kind") != "group":
-                        continue
-                    self._refresh_group_label(grp_item, grp_payload, state, active)
+        for _sys_item, grp_item, grp_payload in self._iter_group_items():
+            self._refresh_group_label(grp_item, grp_payload, state, active)
 
     def _refresh_system_label(
         self,

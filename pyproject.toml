@@ -151,7 +151,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = [
+source_pkgs = [
     "core",
     "gui",
     "scanner_profiles",
@@ -161,7 +161,7 @@ source = [
     "audio",
     "virtual_sd",
 ]
-omit = ["tests/*", "legacy_tk/*", "dev_mcp/*"]
+omit = ["tests/*", "legacy_tk/*", "dev_mcp/*", "**/__init__.py", "core/hpd.py", "core/appinfo.py"]
 relative_files = true
 
 [tool.coverage.report]

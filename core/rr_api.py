@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 # Public constants + exceptions
 # ---------------------------------------------------------------------------
 
-RR_WSDL = "http://api.radioreference.com/soap2/?wsdl&v=latest&s=rpc"
+RR_WSDL = "http://api.radioreference.com/soap2/?wsdl&v=latest&s=rpc"  # NOSONAR - RR SOAP endpoint is HTTP-only
 
 # Version string we send in the authInfo block. RR uses this for quota +
 # version-gated behavior; bumping it is safe.

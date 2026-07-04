@@ -27,6 +27,9 @@ from PySide6.QtWidgets import (
 
 from scanner_profiles import ScannerProfile
 
+_LABEL_NAME = "Name:"
+_MSG_EDIT_ENTRY = "Edit entry"
+
 
 class _EntryFieldsMixin:
     """Shared C-Freq / TGID field builders."""
@@ -106,7 +109,7 @@ class Bt885EntryEditDialog(QDialog, _EntryFieldsMixin):
         form = QFormLayout()
 
         self._name_edit = QLineEdit(entry.name or "")
-        form.addRow("Name:", self._name_edit)
+        form.addRow(_LABEL_NAME, self._name_edit)
 
         if entry.entry_type == "C-Freq":
             self._build_cfreq_fields(form, entry)
@@ -124,13 +127,13 @@ class Bt885EntryEditDialog(QDialog, _EntryFieldsMixin):
         try:
             name = self._name_edit.text().strip()
             if not name:
-                QMessageBox.warning(self, "Edit entry", "Name can't be blank.")
+                QMessageBox.warning(self, _MSG_EDIT_ENTRY, "Name can't be blank.")
                 return
 
             if self._entry.entry_type == "C-Freq":
                 freq_hz = int(round(self._freq_spin.value() * 1e6))
                 if freq_hz <= 0:
-                    QMessageBox.warning(self, "Edit entry", "Frequency must be > 0.")
+                    QMessageBox.warning(self, _MSG_EDIT_ENTRY, "Frequency must be > 0.")
                     return
                 self._hpd_file.edit_entry(
                     self._entry,
@@ -183,7 +186,7 @@ class HpdbEntryEditDialog(QDialog, _EntryFieldsMixin):
         form = QFormLayout()
 
         self._name_edit = QLineEdit(entry.name or "")
-        form.addRow("Name:", self._name_edit)
+        form.addRow(_LABEL_NAME, self._name_edit)
 
         if entry.entry_type == "C-Freq":
             self._build_cfreq_fields(form, entry)
@@ -210,13 +213,13 @@ class HpdbEntryEditDialog(QDialog, _EntryFieldsMixin):
         try:
             name = self._name_edit.text().strip()
             if not name:
-                QMessageBox.warning(self, "Edit entry", "Name can't be blank.")
+                QMessageBox.warning(self, _MSG_EDIT_ENTRY, "Name can't be blank.")
                 return
 
             if self._entry.entry_type == "C-Freq":
                 freq_hz = int(round(self._freq_spin.value() * 1e6))
                 if freq_hz <= 0:
-                    QMessageBox.warning(self, "Edit entry", "Frequency must be > 0.")
+                    QMessageBox.warning(self, _MSG_EDIT_ENTRY, "Frequency must be > 0.")
                     return
                 self._hpd_file.edit_entry(
                     self._entry,
@@ -263,7 +266,7 @@ class GroupEditDialog(QDialog):
         form = QFormLayout()
 
         self._name_edit = QLineEdit(group.name or "")
-        form.addRow("Name:", self._name_edit)
+        form.addRow(_LABEL_NAME, self._name_edit)
 
         self._lat_spin = QDoubleSpinBox()
         self._lat_spin.setRange(-90.0, 90.0)

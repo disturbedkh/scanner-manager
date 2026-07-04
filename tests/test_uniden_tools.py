@@ -12,6 +12,7 @@ Two layers are exercised:
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import List
 
@@ -491,6 +492,8 @@ def test_download_installer_writes_and_verifies(tmp_path: Path, monkeypatch) -> 
 
     from core.uniden_tools import download_installer
 
+    monkeypatch.setattr(uniden_tools, "default_cache_dir", lambda: tmp_path)
+
     payload = b"installer-bytes"
     target = tmp_path / "tool.exe"
     descriptor = {
@@ -527,6 +530,8 @@ def test_download_installer_writes_and_verifies(tmp_path: Path, monkeypatch) -> 
 def test_download_installer_cancel_cleans_partial(tmp_path: Path, monkeypatch) -> None:
     from core.uniden_tools import download_installer
 
+    monkeypatch.setattr(uniden_tools, "default_cache_dir", lambda: tmp_path)
+
     target = tmp_path / "tool.exe"
     partial = target.with_suffix(target.suffix + ".part")
     descriptor = {
@@ -562,6 +567,8 @@ def test_download_installer_cancel_cleans_partial(tmp_path: Path, monkeypatch) -
 def test_download_installer_hash_mismatch(tmp_path: Path, monkeypatch) -> None:
     from core.uniden_tools import InstallerHashMismatch, download_installer
 
+    monkeypatch.setattr(uniden_tools, "default_cache_dir", lambda: tmp_path)
+
     payload = b"bad"
     target = tmp_path / "tool.exe"
     descriptor = {
@@ -593,3 +600,592 @@ def test_download_installer_hash_mismatch(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(uniden_tools, "sha256_of_file", lambda path: "wrong")
     with pytest.raises(InstallerHashMismatch):
         download_installer(descriptor)
+
+
+# ---------------------------------------------------------------------------
+# Installer manifest, cache, hashing
+# ---------------------------------------------------------------------------
+
+def test_installer_resolution_ready_property() -> None:
+    from core.uniden_tools import InstallerResolution
+
+    assert not InstallerResolution(tool_id="x").ready
+    assert InstallerResolution(tool_id="x", cached_path="/cache/setup.exe").ready
+
+
+def test_default_cache_dir_uses_env_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from core.uniden_tools import default_cache_dir
+
+    monkeypatch.setenv("SCANNER_MANAGER_CACHE_DIR", str(tmp_path / "custom"))
+    assert default_cache_dir() == tmp_path / "custom"
+
+
+def test_default_cache_dir_fallback_without_localappdata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from core.uniden_tools import default_cache_dir
+
+    monkeypatch.delenv("SCANNER_MANAGER_CACHE_DIR", raising=False)
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.setattr(uniden_tools.Path, "home", lambda: tmp_path)
+    assert default_cache_dir() == (
+        tmp_path / ".local" / "share" / "scanner-manager" / "installers"
+    )
+
+
+def test_load_installer_manifest_missing_and_invalid(tmp_path: Path) -> None:
+    from core.uniden_tools import load_installer_manifest
+
+    assert load_installer_manifest(tmp_path / "missing.json") == {}
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json", encoding="utf-8")
+    assert load_installer_manifest(bad) == {}
+
+
+def test_sha256_and_verify_installer(tmp_path: Path) -> None:
+    import hashlib
+
+    from core.uniden_tools import sha256_of_file, verify_installer
+
+    payload = b"verified-installer"
+    exe = tmp_path / "tool.exe"
+    exe.write_bytes(payload)
+    digest = hashlib.sha256(payload).hexdigest()
+    assert sha256_of_file(exe) == digest
+    assert verify_installer(exe, digest)
+    assert not verify_installer(exe, "deadbeef")
+    assert not verify_installer(tmp_path / "nope.exe", digest)
+
+
+def test_verify_installer_empty_hash_exists_only(tmp_path: Path) -> None:
+    from core.uniden_tools import verify_installer
+
+    exe = tmp_path / "tool.exe"
+    exe.write_bytes(b"x")
+    assert verify_installer(exe, "")
+    assert verify_installer(exe, "   ")
+
+
+def test_verify_installer_oserror_on_is_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    from core.uniden_tools import verify_installer
+
+    class _BadPath:
+        def is_file(self) -> bool:
+            raise OSError("stat failed")
+
+    monkeypatch.setattr(uniden_tools.Path, "is_file", _BadPath().is_file, raising=False)
+    assert not verify_installer(Path("/fake/tool.exe"), "abc")
+
+
+def test_resolve_installer_missing_manifest_entry(tmp_path: Path) -> None:
+    from core.uniden_tools import resolve_installer
+
+    res = resolve_installer("unknown-tool", manifest={"tools": {}}, cache_dir=tmp_path)
+    assert res.tool_id == "unknown-tool"
+    assert res.cached_path is None
+    assert res.descriptor is None
+
+
+def test_resolve_installer_cached_hit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import hashlib
+
+    from core.uniden_tools import resolve_installer
+
+    payload = b"cached-archive"
+    digest = hashlib.sha256(payload).hexdigest()
+    cache_dir = tmp_path / "cache"
+    cached = cache_dir / TOOL_BT885 / "BT885_UpdateManager_V0_00_05.zip"
+    cached.parent.mkdir(parents=True)
+    cached.write_bytes(payload)
+    manifest = {
+        "tools": {
+            TOOL_BT885: {
+                "download_url": "https://example.com/BT885_UpdateManager_V0_00_05.zip",
+                "sha256": digest,
+            }
+        }
+    }
+    res = resolve_installer(TOOL_BT885, manifest=manifest, cache_dir=cache_dir)
+    assert res.ready
+    assert res.cached_path == str(cached)
+
+
+def test_bundled_installer_prefers_verified_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import hashlib
+
+    from core.uniden_tools import _bundled_installer
+
+    payload = b"cached-setup"
+    digest = hashlib.sha256(payload).hexdigest()
+    cache_dir = tmp_path / "cache"
+    cached = cache_dir / TOOL_SENTINEL / "BCDx36HP_Sentinel_Version_3_01_01.zip"
+    cached.parent.mkdir(parents=True)
+    cached.write_bytes(payload)
+    manifest = {
+        "tools": {
+            TOOL_SENTINEL: {
+                "download_url": (
+                    "https://example.com/BCDx36HP_Sentinel_Version_3_01_01.zip"
+                ),
+                "sha256": digest,
+            }
+        }
+    }
+    found = _bundled_installer(
+        tmp_path, TOOL_SENTINEL, manifest=manifest, cache_dir=cache_dir
+    )
+    assert found == str(cached)
+
+
+def test_bundled_installer_unknown_tool_id_returns_none(tmp_path: Path) -> None:
+    from core.uniden_tools import _bundled_installer
+
+    assert _bundled_installer(tmp_path, "not-a-tool") is None
+
+
+# ---------------------------------------------------------------------------
+# Path probing + version extraction edge cases
+# ---------------------------------------------------------------------------
+
+def test_candidate_exe_paths_windows_expandvars_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core.uniden_tools import _candidate_exe_paths
+
+    monkeypatch.setattr(uniden_tools.sys, "platform", "win32")
+    monkeypatch.delenv("ProgramFiles(x86)", raising=False)
+    monkeypatch.delenv("ProgramFiles", raising=False)
+    monkeypatch.delenv("SystemDrive", raising=False)
+
+    def _expandvars(s: str) -> str:
+        if s == "%ProgramFiles(x86)%":
+            return r"C:\Program Files (x86)"
+        if s == "%ProgramFiles%":
+            return r"C:\Program Files"
+        return s
+
+    monkeypatch.setattr(uniden_tools.os.path, "expandvars", _expandvars)
+    paths = _candidate_exe_paths(r"Uniden\Tool.exe")
+    assert any("Program Files (x86)" in p for p in paths)
+    assert any(p.startswith("C:") and "Uniden" in p for p in paths)
+
+
+def test_candidate_exe_paths_system_drive_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core.uniden_tools import _candidate_exe_paths
+
+    monkeypatch.setattr(uniden_tools.sys, "platform", "win32")
+    monkeypatch.delenv("ProgramFiles(x86)", raising=False)
+    monkeypatch.delenv("ProgramFiles", raising=False)
+    monkeypatch.delenv("SystemDrive", raising=False)
+    monkeypatch.setattr(uniden_tools.os.path, "expandvars", lambda s: s)
+    paths = _candidate_exe_paths("Uniden/Foo.exe")
+    assert any(p.replace("\\", "/").endswith("Uniden/Foo.exe") for p in paths)
+
+
+def test_powershell_version_non_windows_returns_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core.uniden_tools import _powershell_version
+
+    monkeypatch.setattr(uniden_tools.sys, "platform", "linux")
+    assert _powershell_version("/any/path.exe") == ""
+
+
+def test_powershell_version_exception_returns_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core.uniden_tools import _powershell_version
+
+    monkeypatch.setattr(uniden_tools.sys, "platform", "win32")
+
+    def _boom(*args, **kwargs):  # noqa: ARG001
+        raise RuntimeError("powershell unavailable")
+
+    monkeypatch.setattr(uniden_tools.subprocess, "run", _boom)
+    assert _powershell_version(r"C:\fake\tool.exe") == ""
+
+
+def test_read_exe_version_mtime_oserror(monkeypatch: pytest.MonkeyPatch) -> None:
+    from core.uniden_tools import _read_exe_version
+
+    def _fail_mtime(_path: str) -> float:
+        raise OSError("no such file")
+
+    monkeypatch.setattr(uniden_tools.os.path, "getmtime", _fail_mtime)
+    assert _read_exe_version("/missing/tool.exe") == ""
+
+
+def test_tool_data_dir_without_localappdata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core.uniden_tools import _tool_data_dir
+
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    assert _tool_data_dir(TOOL_BT885) is None
+
+
+def test_tool_data_dir_returns_existing_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from core.uniden_tools import _tool_data_dir
+
+    uniden = tmp_path / "Uniden" / "BT885"
+    uniden.mkdir(parents=True)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    assert _tool_data_dir(TOOL_BT885) == str(uniden.parent)
+
+
+def test_tool_data_dir_no_matching_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from core.uniden_tools import _tool_data_dir
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "empty"))
+    assert _tool_data_dir(TOOL_SENTINEL) is None
+
+
+def test_detect_sets_data_dir_when_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pf = tmp_path / "ProgFiles"
+    bt_dir = pf / "Uniden" / "BT885 Update Manager"
+    bt_dir.mkdir(parents=True)
+    bt_exe = bt_dir / "UpdateManager.exe"
+    bt_exe.write_bytes(b"MZ")
+    uniden_data = tmp_path / "LocalApp" / "Uniden"
+    uniden_data.mkdir(parents=True)
+
+    monkeypatch.setenv("ProgramFiles(x86)", str(pf))
+    monkeypatch.setenv("ProgramFiles", str(pf))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "LocalApp"))
+    monkeypatch.setattr(uniden_tools, "_VERSION_CACHE", {})
+    monkeypatch.setattr(uniden_tools, "_powershell_version", lambda p: "1.0.0.0")
+
+    bt = next(t for t in detect_installed_tools(repo_root=tmp_path) if t.tool_id == TOOL_BT885)
+    assert bt.data_dir == str(uniden_data)
+
+
+# ---------------------------------------------------------------------------
+# Archive extraction + install_tool branches
+# ---------------------------------------------------------------------------
+
+def test_extract_setup_bad_zip_returns_none(tmp_path: Path) -> None:
+    from core.uniden_tools import _extract_setup_from_archive
+
+    bad = tmp_path / "broken.zip"
+    bad.write_bytes(b"not-a-zip")
+    assert _extract_setup_from_archive(bad, tmp_path / "out", "setup.exe") is None
+
+
+def test_extract_setup_finds_first_exe_without_relpath(tmp_path: Path) -> None:
+    import zipfile
+
+    from core.uniden_tools import _extract_setup_from_archive
+
+    archive = tmp_path / "bundle.zip"
+    extract_root = tmp_path / "extract"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("subdir/installer.exe", b"MZ")
+    found = _extract_setup_from_archive(archive, extract_root, "")
+    assert found is not None and found.name == "installer.exe"
+
+
+def test_extract_setup_missing_relpath_returns_none(tmp_path: Path) -> None:
+    import zipfile
+
+    from core.uniden_tools import _extract_setup_from_archive
+
+    archive = tmp_path / "empty.zip"
+    extract_root = tmp_path / "extract"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("readme.txt", b"no exe here")
+    assert _extract_setup_from_archive(archive, extract_root, "missing/setup.exe") is None
+    assert _extract_setup_from_archive(archive, extract_root, "") is None
+
+
+def test_install_tool_from_zip_archive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import zipfile
+
+    from core.uniden_tools import install_tool
+
+    archive = tmp_path / "bundle.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("pkg/setup.exe", b"MZ")
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        '{"tools": {"'
+        + TOOL_BT885
+        + '": {"installer_relpath_in_archive": "pkg/setup.exe"}}}',
+        encoding="utf-8",
+    )
+    tool = UnidenTool(
+        tool_id=TOOL_BT885,
+        display_name="BT",
+        scanner_family="BT885",
+        bundled_installer=str(archive),
+    )
+    launched: list = []
+
+    class _FakeProc:
+        def wait(self, timeout=None):  # noqa: ARG002
+            return 0
+
+    monkeypatch.setattr(
+        uniden_tools, "load_installer_manifest", lambda manifest_path=None: json.loads(
+            manifest.read_text(encoding="utf-8")
+        )
+    )
+    monkeypatch.setattr(
+        uniden_tools.subprocess, "Popen", lambda *a, **k: (_FakeProc(), launched.append(a))[0]
+    )
+    assert install_tool(tool) == 0
+    assert launched
+
+
+def test_install_tool_zip_extraction_failure(tmp_path: Path) -> None:
+    from core.uniden_tools import install_tool
+
+    bad_zip = tmp_path / "broken.zip"
+    bad_zip.write_bytes(b"not-a-zip")
+    tool = UnidenTool(
+        tool_id=TOOL_BT885,
+        display_name="BT",
+        scanner_family="BT885",
+        bundled_installer=str(bad_zip),
+    )
+    with pytest.raises(FileNotFoundError, match="Could not extract"):
+        install_tool(tool)
+
+
+def test_install_tool_no_wait(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    installer = tmp_path / "setup.exe"
+    installer.write_bytes(b"MZ")
+    tool = UnidenTool(
+        tool_id=TOOL_BT885,
+        display_name="BT",
+        scanner_family="BT885",
+        bundled_installer=str(installer),
+    )
+
+    class _FakeProc:
+        def wait(self, timeout=None):  # noqa: ARG002
+            raise AssertionError("should not wait")
+
+    monkeypatch.setattr(
+        uniden_tools.subprocess, "Popen", lambda *a, **k: _FakeProc()
+    )
+    assert install_tool(tool, wait=False) == 0
+
+
+# ---------------------------------------------------------------------------
+# Download verification edge cases
+# ---------------------------------------------------------------------------
+
+def test_verify_downloaded_installer_hash_read_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from core.uniden_tools import InstallerHashMismatch, _verify_downloaded_installer
+
+    partial = tmp_path / "tool.part"
+    partial.write_bytes(b"payload")
+    descriptor = {
+        "tool_id": "test",
+        "download_url": "http://example.com/x",
+        "sha256": "expected",
+    }
+    monkeypatch.setattr(uniden_tools, "verify_installer", lambda path, expected: False)
+
+    def _fail_hash(_path: Path) -> str:
+        raise OSError("read failed")
+
+    monkeypatch.setattr(uniden_tools, "sha256_of_file", _fail_hash)
+    with pytest.raises(InstallerHashMismatch) as exc:
+        _verify_downloaded_installer(partial, descriptor)
+    assert exc.value.got == ""
+    assert not partial.exists()
+
+
+def test_verify_downloaded_installer_unlink_oserror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from core.uniden_tools import InstallerHashMismatch, _verify_downloaded_installer
+
+    partial = tmp_path / "tool.part"
+    partial.write_bytes(b"payload")
+    descriptor = {
+        "tool_id": "test",
+        "download_url": "http://example.com/x",
+        "sha256": "expected",
+    }
+    monkeypatch.setattr(uniden_tools, "verify_installer", lambda path, expected: False)
+    monkeypatch.setattr(uniden_tools, "sha256_of_file", lambda path: "wrong")
+
+    def _unlink_fail(_self, missing_ok=False):  # noqa: ARG002
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(uniden_tools.Path, "unlink", _unlink_fail, raising=False)
+    with pytest.raises(InstallerHashMismatch):
+        _verify_downloaded_installer(partial, descriptor)
+
+
+def test_download_installer_cancel_unlink_oserror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from core.uniden_tools import download_installer
+
+    monkeypatch.setattr(uniden_tools, "default_cache_dir", lambda: tmp_path)
+
+    target = tmp_path / "tool.exe"
+    descriptor = {
+        "tool_id": "test",
+        "download_url": "http://example.com/tool.exe",
+        "target_path": str(target),
+        "sha256": "abc",
+        "size_bytes": 100,
+    }
+
+    class _FakeResp:
+        headers = {}
+
+        def read(self, n=-1):
+            return b"partial"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def _unlink_fail(_self, missing_ok=False):  # noqa: ARG002
+        raise OSError("permission denied")
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: _FakeResp())
+    monkeypatch.setattr(uniden_tools.Path, "unlink", _unlink_fail, raising=False)
+    with pytest.raises(KeyboardInterrupt):
+        download_installer(descriptor, progress_cb=lambda _f, _t: False)
+
+
+def test_installer_hash_mismatch_carries_fields() -> None:
+    from core.uniden_tools import InstallerHashMismatch
+
+    err = InstallerHashMismatch(
+        tool_id="t",
+        url="http://x",
+        expected="aaa",
+        got="bbb",
+    )
+    assert err.tool_id == "t"
+    assert err.expected == "aaa"
+    assert err.got == "bbb"
+    assert "SHA-256" in str(err)
+
+
+# ---------------------------------------------------------------------------
+# ZipList parsing edge cases
+# ---------------------------------------------------------------------------
+
+def test_ziplist_short_row_state_abbrev_tail(tmp_path: Path) -> None:
+    p = tmp_path / "ZipListUs.txt"
+    p.write_text("32605\tFL\n", encoding="latin-1")
+    entries = _parse_ziplist(p)
+    assert len(entries) == 1
+    assert entries[0].zip_code == "32605"
+    assert entries[0].state_abbrev == "FL"
+
+
+def test_ziplist_row_too_few_parts_skipped(tmp_path: Path) -> None:
+    p = tmp_path / "ZipListUs.txt"
+    p.write_text("onlyonecol\n", encoding="latin-1")
+    assert _parse_ziplist(p) == []
+
+
+def test_parse_ziplist_skips_blank_lines(tmp_path: Path) -> None:
+    p = tmp_path / "ZipListUs.txt"
+    p.write_text(
+        "\n\n90210\t34.09\t-118.40\tCA\n\n",
+        encoding="latin-1",
+    )
+    assert len(_parse_ziplist(p)) == 1
+
+
+def test_parse_ziplist_missing_file_returns_empty(tmp_path: Path) -> None:
+    assert _parse_ziplist(tmp_path / "missing.txt") == []
+
+
+def test_load_sentinel_ziplist_cache_hit_and_wrong_tool(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_dir = tmp_path / "sentinel"
+    install_dir.mkdir()
+    (install_dir / "ZipListUs.txt").write_text(
+        "90210\t34.09\t-118.40\tCA\n",
+        encoding="latin-1",
+    )
+    exe = install_dir / "BCDx36HP_Sentinel.exe"
+    exe.write_bytes(b"MZ")
+    sentinel = UnidenTool(
+        tool_id=TOOL_SENTINEL,
+        display_name="Sentinel",
+        scanner_family="x",
+        exe_path=str(exe),
+        installed=True,
+    )
+    bt = UnidenTool(
+        tool_id=TOOL_BT885,
+        display_name="BT",
+        scanner_family="x",
+        exe_path=str(exe),
+        installed=True,
+    )
+    monkeypatch.setattr(uniden_tools, "_ZIPLIST_CACHE", {})
+    first = load_sentinel_ziplist(sentinel)
+    second = load_sentinel_ziplist(sentinel)
+    assert first is second
+    assert load_sentinel_ziplist(bt) == []
+
+
+def test_lookup_zip_not_found(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_dir = tmp_path / "sentinel"
+    install_dir.mkdir()
+    (install_dir / "ZipListUs.txt").write_text(
+        "90210\t34.09\t-118.40\tCA\n",
+        encoding="latin-1",
+    )
+    exe = install_dir / "BCDx36HP_Sentinel.exe"
+    exe.write_bytes(b"MZ")
+    tool = UnidenTool(
+        tool_id=TOOL_SENTINEL,
+        display_name="Sentinel",
+        scanner_family="x",
+        exe_path=str(exe),
+        installed=True,
+    )
+    monkeypatch.setattr(uniden_tools, "_ZIPLIST_CACHE", {})
+    assert lookup_zip(tool, "00000") is None
+
+
+def test_resolve_cache_target_rejects_escape(tmp_path: Path, monkeypatch) -> None:
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    monkeypatch.setattr(uniden_tools, "default_cache_dir", lambda: cache)
+    from core.uniden_tools import _resolve_cache_target
+
+    inside = _resolve_cache_target(str(cache / "tool" / "installer.exe"))
+    assert inside == (cache / "tool" / "installer.exe").resolve()
+
+    with pytest.raises(ValueError, match="escapes cache dir"):
+        _resolve_cache_target(str(tmp_path / "outside.exe"))

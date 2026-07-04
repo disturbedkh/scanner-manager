@@ -1,22 +1,26 @@
-# Poll SonarQube quality gate status (local or CI helper).
+# Poll SonarQube quality gate status (VPS or CI helper).
 param(
-    [string]$HostUrl = $env:SONAR_HOST_URL,
-    [string]$Token = $env:SONAR_TOKEN,
-    [string]$ProjectKey = "scanner-manager"
+    [string]$HostUrl,
+    [string]$Token,
+    [string]$ProjectKey = "scanner-manager",
+    [string]$Branch = "main"
 )
 
 $ErrorActionPreference = "Stop"
-if (-not $HostUrl) { $HostUrl = "http://localhost:9000" }
-if (-not $Token) {
-    if ($env:SONARQUBE_CLI_TOKEN) { $Token = $env:SONARQUBE_CLI_TOKEN }
-}
+. "$PSScriptRoot\sonar_config.ps1"
+
+if (-not $HostUrl) { $HostUrl = Get-SonarHostUrl }
+if (-not $Token) { $Token = Get-SonarToken }
 if (-not $Token) {
     throw "Set SONAR_TOKEN or SONARQUBE_CLI_TOKEN"
 }
 
-$uri = "$HostUrl/api/qualitygates/project_status?projectKey=$ProjectKey"
+$uri = "$HostUrl/api/qualitygates/project_status?projectKey=$ProjectKey&branch=$([Uri]::EscapeDataString($Branch))"
 $headers = @{ Authorization = "Bearer $Token" }
-$response = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get
+$response = Invoke-SonarRestMethod -Uri $uri -Headers $headers -Method Get
+if (-not $response.projectStatus) {
+    throw "SonarQube API returned no project status (check SONAR_TOKEN and project key '$ProjectKey' on $HostUrl)."
+}
 $status = $response.projectStatus.status
 Write-Host "Quality gate: $status"
 if ($status -ne "OK") {

@@ -427,7 +427,7 @@ class StreamingDock(QWidget):
         self._server = server
         self._listener_btn.setText("Stop LAN listener")
         ip = _local_ip()
-        url = f"http://{ip}:{port}/viewer"
+        url = f"http://{ip}:{port}/viewer"  # NOSONAR - local LAN HTTP listener for on-prem viewer
         self._listener_url.setText(url)
         self._listener_status.setText("Running.")
 
