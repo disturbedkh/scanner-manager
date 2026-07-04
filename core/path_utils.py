@@ -28,9 +28,43 @@ def safe_resolve_path(base: Path, user_path: Path | str) -> Path:
     return candidate
 
 
+def safe_user_path(base: Path, user_path: Path | str) -> Path:
+    """Resolve ``user_path`` under ``base``; reject directory traversal."""
+    return safe_resolve_path(base, user_path)
+
+
 def safe_open_under(base: Path, user_path: Path | str, *args, **kwargs):
     """Open a file only when it resolves under ``base``."""
     resolved = safe_resolve_path(base, user_path)
     if not resolved.is_file():
         raise FileNotFoundError(resolved)
     return resolved.open(*args, **kwargs)
+
+
+def safe_open_for_write(base: Path, user_path: Path | str, *args, **kwargs):
+    """Open a file for writing only when it resolves under ``base``."""
+    resolved = safe_resolve_path(base, user_path)
+    resolved.parent.mkdir(parents=True, exist_ok=True)
+    return resolved.open(*args, **kwargs)
+
+
+def safe_write_text(
+    base: Path,
+    user_path: Path | str,
+    text: str,
+    *,
+    encoding: str = "utf-8",
+) -> Path:
+    """Write ``text`` only when ``user_path`` resolves under ``base``."""
+    resolved = safe_resolve_path(base, user_path)
+    resolved.parent.mkdir(parents=True, exist_ok=True)
+    resolved.write_text(text, encoding=encoding)
+    return resolved
+
+
+def safe_write_bytes(base: Path, user_path: Path | str, data: bytes) -> Path:
+    """Write ``data`` only when ``user_path`` resolves under ``base``."""
+    resolved = safe_resolve_path(base, user_path)
+    resolved.parent.mkdir(parents=True, exist_ok=True)
+    resolved.write_bytes(data)
+    return resolved

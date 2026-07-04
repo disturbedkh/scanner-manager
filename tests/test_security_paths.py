@@ -12,7 +12,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-from core.path_utils import PathTraversalError, safe_resolve_path
+from core.path_utils import PathTraversalError, safe_resolve_path, safe_write_text
 from firmware.ftp_client import _MANIFEST_PATH, BT885_FTP, SENTINEL_FTP, UnidenFtpClient
 
 
@@ -115,19 +115,19 @@ def test_ftp_download_accepts_temp_path(tmp_path: Path, monkeypatch) -> None:
 
     class _FakeFTP:
         def __init__(self, *args, **kwargs) -> None:
-            pass
+            pass  # stub for monkeypatch target
 
         def __enter__(self):
             return self
 
         def __exit__(self, *args) -> None:
-            pass
+            pass  # stub for monkeypatch target
 
         def login(self, *args) -> None:
-            pass
+            pass  # stub for monkeypatch target
 
         def cwd(self, *args) -> None:
-            pass
+            pass  # stub for monkeypatch target
 
         def size(self, name: str) -> int:
             return len(payload)
@@ -158,3 +158,50 @@ def test_find_mdl_handler_rejects_traversal_dump(tmp_path: Path) -> None:
     outside.write_text("{}", encoding="utf-8")
     with pytest.raises(PathTraversalError):
         re_common.safe_user_path(re_common.RE_ROOT, outside)
+
+
+@pytest.mark.unit
+def test_safe_write_text_rejects_escape(tmp_path: Path) -> None:
+    base = tmp_path / "repo"
+    base.mkdir()
+    with pytest.raises(PathTraversalError):
+        safe_write_text(base, Path("../escape.txt"), "nope")
+
+
+@pytest.mark.unit
+def test_safe_write_text_writes_under_base(tmp_path: Path) -> None:
+    base = tmp_path / "repo"
+    base.mkdir()
+    target = safe_write_text(base, Path("nested/out.txt"), "hello")
+    assert target.read_text(encoding="utf-8") == "hello"
+
+
+@pytest.mark.unit
+def test_extract_dispatch_output_rejects_traversal() -> None:
+    extract_dispatch = _load_re_module(
+        "sec_extract_dispatch", "firmware/extract_dispatch.py"
+    )
+    re_common = _load_re_module("sec_re_common_ed", "_common.py")
+    outside = Path("../escape.md")
+    with pytest.raises(PathTraversalError):
+        extract_dispatch._write_dispatch_report(
+            out=outside,
+            fw_path=re_common.REPO_ROOT / "README.md",
+            table_base=0,
+            table_ptr_addr=0,
+            entries=[],
+            valid=[],
+        )
+
+
+@pytest.mark.unit
+def test_ftp_uses_vendor_allowlisted_plain_ftp() -> None:
+    """Uniden CDN endpoints are FTP-only; client must stay on allowlist."""
+    from firmware.ftp_client import VendorFtpTransport
+
+    manifest = json.loads(_MANIFEST_PATH.read_text(encoding="utf-8"))
+    allowed = {h.lower() for h in manifest["ftp_allowed_hosts"]}
+    client = UnidenFtpClient(SENTINEL_FTP)
+    assert client.endpoint.host.lower() in allowed
+    doc = VendorFtpTransport.__doc__ or ""
+    assert "FTP" in doc and "allowlisted" in doc

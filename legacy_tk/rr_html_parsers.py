@@ -40,10 +40,10 @@ _RE_LICENSEE_ANCHOR = re.compile(
 _RE_PAGE_TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.DOTALL | re.IGNORECASE)
 _RE_H12 = re.compile(r"<h[12][^>]*>(.*?)</h[12]>", re.DOTALL | re.IGNORECASE)
 _RE_H5_CATEGORY = re.compile(
-    r"<h5[^>]*>(?P<title>[^<]*)</h5>(?P<after>[\s\S]*?)(?=<h5\b|<footer|$)",
-    re.IGNORECASE,
+    r"<h5[^>]*>(?P<title>[^<]*)</h5>(?P<after>.+?)(?=<h5\b|<footer|$)",
+    re.DOTALL | re.IGNORECASE,
 )
-_RE_STRIP_ANCHORS = re.compile(r"<a\b[^>]*>[\s\S]*?</a>", re.DOTALL | re.IGNORECASE)
+_RE_STRIP_ANCHORS = re.compile(r"<a\b[^>]*>.*?</a>", re.DOTALL | re.IGNORECASE)
 _RE_HEADING = re.compile(
     r"<(?P<tag>h[1-3])[^>]*>(?P<body>[^<]*)</(?P=tag)>", re.IGNORECASE
 )
@@ -287,8 +287,8 @@ def parse_rr_category_aid(html: str) -> Optional[Dict[str, Any]]:
 def _heading_category_pattern(heading_tag: str) -> re.Pattern[str]:
     return re.compile(
         rf"<{heading_tag}[^>]*>(?P<title>[^<]*)</{heading_tag}>"
-        rf"(?P<after>[\s\S]*?)(?=<{heading_tag}\b|<footer|$)",
-        re.IGNORECASE,
+        rf"(?P<after>.+?)(?=<{heading_tag}\b|<footer|$)",
+        re.DOTALL | re.IGNORECASE,
     )
 
 

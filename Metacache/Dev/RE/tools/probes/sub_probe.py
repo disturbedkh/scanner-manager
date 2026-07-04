@@ -599,6 +599,28 @@ def _maybe_refresh_anchor(
     return anchor_resp
 
 
+def _record_probe_classification(
+    cls: str,
+    cmd: str,
+    response: bytes,
+    elapsed_ms: float,
+    *,
+    hits: list[tuple[str, bytes, float]],
+    errs: list[tuple[str, float]],
+    unrec_count: int,
+    timeout_count: int,
+) -> tuple[int, int]:
+    if cls == "hit":
+        hits.append((cmd, response, elapsed_ms))
+    elif cls == "err":
+        errs.append((cmd, elapsed_ms))
+    elif cls == "timeout":
+        timeout_count += 1
+    else:
+        unrec_count += 1
+    return unrec_count, timeout_count
+
+
 def probe(
     port_dev: str,
     candidates: list[str],
@@ -654,14 +676,11 @@ def probe(
                 last_progress_t=last_progress_t, log=log,
             )
 
-            if cls == "hit":
-                hits.append((cmd, response, elapsed_ms))
-            elif cls == "err":
-                errs.append((cmd, elapsed_ms))
-            elif cls == "timeout":
-                timeout_count += 1
-            else:
-                unrec_count += 1
+            unrec_count, timeout_count = _record_probe_classification(
+                cls, cmd, response, elapsed_ms,
+                hits=hits, errs=errs,
+                unrec_count=unrec_count, timeout_count=timeout_count,
+            )
 
             if cls in ("hit", "err"):
                 _log_probe_result(

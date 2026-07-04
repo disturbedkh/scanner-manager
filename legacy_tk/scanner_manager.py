@@ -9,7 +9,6 @@ edit service types, add new entries from RadioReference, and save back.
 
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -111,26 +110,37 @@ from legacy_tk.rr_parsing import (  # noqa: F401 — re-exported for tests / gui
 )
 from legacy_tk.sd_paths import filesystem_space_root, resolve_existing_folder, validated_sd_folder
 from legacy_tk.sm_helpers import (  # noqa: F401 — many symbols re-exported for tests
+    AddEntryValidation,
     MetastoreRevertOps,
     add_entry_from_snapshot,
+    alerts_file_tree_rows,
+    alerts_viewer_summary,
+    append_fuzzy_licensee_rr_candidates,
     append_rr_candidate,
     apply_metastore_revert,
+    apply_revert_import_payload,
     apply_sync_conflict_decision,
     audit_mode_issue_with_rr,
     audit_mode_issues,
     build_custom_city_records,
     card_identity_matches_profile,
+    card_state_display,
     cfreq_diff_tree_rows,
     cfreq_import_service_type,
     collect_mode_audit_rows,
     compute_group_coverage_info,
     county_mismatch_reason,
     default_state_combo_index,
+    discover_backups,
     entry_identity_display,
     entry_matches_bulk_filter,
     entry_passes_button_filter,
+    events_newer_than_pivot,
     filter_meta_events,
+    find_entry_after_update,
+    find_group_after_update,
     find_hpdb_config,
+    find_system_after_update,
     flatten_rr_cfreq_rows,
     flatten_rr_tg_rows,
     format_vsd_section,
@@ -145,16 +155,21 @@ from legacy_tk.sm_helpers import (  # noqa: F401 — many symbols re-exported fo
     location_scope_label,
     parse_rr_import_freq_hz,
     pipeline_health_color,
+    pipeline_report_lines,
     pipeline_tools_info,
+    pull_stage_summary,
     qr_code_matrix,
     replay_entry_type_and_identity,
+    replay_norm,
     resolve_script_dir,
+    resolve_target_system,
     restore_import_deleted_entry,
     rr_callsign_urls,
     rr_diff_mode,
     rr_fetch_display_name,
     rr_pull_entry_row,
     rr_recent_url_candidates,
+    select_installed_uniden_tool,
     service_choice_for_type,
     sort_rr_candidates,
     suggest_mode_for_freq,
@@ -163,8 +178,12 @@ from legacy_tk.sm_helpers import (  # noqa: F401 — many symbols re-exported fo
     system_matches_location,
     system_tree_label,
     tgid_diff_tree_rows,
+    validate_add_entry,
     workspace_clone_result,
     zip_lookup_status_message,
+)
+from legacy_tk.sm_helpers import (
+    crossref_hint_for_rr_row as lookup_crossref_hint_for_rr_row,
 )
 from scanner_profiles import (
     DEFAULT_PROFILE_ID,
@@ -439,11 +458,6 @@ def is_scannable(stype: int) -> bool:
     return stype in SCANNABLE_TYPES
 
 
-BACKUP_SUFFIX_PATTERN = re.compile(
-    r"^(?P<base>.+)\.backup_(?P<ts>\d{8}_\d{6})(?:_\w+)?$"
-)
-
-
 def list_backups_for(source_path: str) -> List[Path]:
     """Return backup files for source_path sorted oldest-first."""
     directory = Path(source_path).parent
@@ -457,37 +471,6 @@ def list_backups_for(source_path: str) -> List[Path]:
             items.append(p)
     items.sort(key=lambda p: p.stat().st_mtime)
     return items
-
-
-def discover_backups(search_roots: List[Path]) -> Dict[str, List[Path]]:
-    """Walk given directories and group backup files by their source path.
-
-    Also de-duplicates overlapping search roots (e.g., SD root + HPD folder).
-    """
-    groups: Dict[str, List[Path]] = {}
-    seen_files: Set[str] = set()
-    for root in search_roots:
-        if not root or not root.exists():
-            continue
-        for p in root.rglob("*.backup_*"):
-            if not p.is_file():
-                continue
-            m = BACKUP_SUFFIX_PATTERN.match(p.name)
-            if not m:
-                continue
-            try:
-                key = str(p.resolve())
-            except Exception:
-                key = str(p)
-            if key in seen_files:
-                continue
-            seen_files.add(key)
-            source_name = m.group("base")
-            source_path = str(p.parent / source_name)
-            groups.setdefault(source_path, []).append(p)
-    for source in groups:
-        groups[source].sort(key=lambda p: p.stat().st_mtime)
-    return groups
 
 
 def prune_backups(source_path: str, max_backups: int) -> List[Path]:
@@ -1962,23 +1945,9 @@ class ScannerManagerApp:
         licensees: Set[str],
         gm: GlobalMetaStore,
     ) -> None:
-        for licensee in licensees:
-            for key, score, ids in gm.fuzzy_licensee_candidates(licensee, min_score=0.8):
-                for eid in ids:
-                    other_ref = self._meta.ref_for(eid) or {}
-                    for url in other_ref.get("source_urls") or []:
-                        append_rr_candidate(
-                            candidates, seen, url, "fuzzy-licensee", 0.7 * score,
-                            f"Fuzzy licensee match ({int(score * 100)}%) to {key}",
-                        )
-                    cs = other_ref.get("fcc_callsign")
-                    if cs:
-                        append_rr_candidate(
-                            candidates, seen,
-                            f"https://www.radioreference.com/db/fcc/callsign/{cs}",
-                            "fuzzy-licensee", 0.65 * score,
-                            f"Fuzzy match -> CS {cs}",
-                        )
+        append_fuzzy_licensee_rr_candidates(
+            candidates, seen, licensees, gm, self._meta, append_rr_candidate,
+        )
 
     def _on_unlink_group_from_rr(self):
         group = self._selected_group
@@ -2082,12 +2051,11 @@ class ScannerManagerApp:
         if scope == "none" or not entries:
             messagebox.showinfo("Info", "Select an entry, group, or system first.")
             return
-        if scope != "entry":
-            if not messagebox.askyesno(
-                "Bulk Update",
-                f"Apply service type {service_label(new_type)} to {len(entries)} entries in this {scope}?",
-            ):
-                return
+        if scope != "entry" and not messagebox.askyesno(
+            "Bulk Update",
+            f"Apply service type {service_label(new_type)} to {len(entries)} entries in this {scope}?",
+        ):
+            return
         txn = self._new_txn_id()
         source = "bulk" if scope != "entry" else "manual"
         changed = 0
@@ -2209,18 +2177,12 @@ class ScannerManagerApp:
         return messagebox.askyesno("Location Mismatch", f"{reason}\n\nContinue anyway?")
 
     def _resolve_target_system(self) -> Optional[SystemNode]:
-        if self._selected_system is not None:
-            return self._selected_system
-        if self._selected_group is not None:
-            for sys_node in self.hpd.systems:
-                if self._selected_group in sys_node.groups:
-                    return sys_node
-        if self._selected_entry is not None:
-            for sys_node in self.hpd.systems:
-                for group in sys_node.groups:
-                    if self._selected_entry in group.entries:
-                        return sys_node
-        return None
+        return resolve_target_system(
+            self.hpd.systems,
+            self._selected_system,
+            self._selected_group,
+            self._selected_entry,
+        )
 
     def _on_create_group(self):
         system = self._resolve_target_system()
@@ -2715,7 +2677,7 @@ class ScannerManagerApp:
         if group is None and needs_new_group:
             return counts
         self._trs_apply_group_geo_defaults(
-            group, default_lat, default_lon, default_range, source, import_txn
+            group, default_lat, default_lon, default_range
         )
         for tg in talkgroups:
             result = self._trs_apply_talkgroup_action(
@@ -2769,8 +2731,6 @@ class ScannerManagerApp:
         default_lat: Optional[float],
         default_lon: Optional[float],
         default_range: Optional[float],
-        source: str,
-        import_txn: Optional[str],
     ) -> None:
         if group is None:
             return
@@ -2779,14 +2739,11 @@ class ScannerManagerApp:
         if default_lat is None or default_lon is None:
             return
         try:
-            self._do_edit_group(
+            self.hpd.edit_group(
                 group,
                 lat=default_lat,
                 lon=default_lon,
                 range_miles=default_range,
-                source=source,
-                txn_id=import_txn,
-                log=False,
             )
         except Exception:
             pass
@@ -2968,68 +2925,42 @@ class ScannerManagerApp:
         if not self._confirm_location_mismatch(group=self._selected_group):
             return
 
-        name = self._add_name_var.get().strip()
-        if not name:
-            messagebox.showwarning("Missing", "Please enter a name / description.")
-            return
-
-        stype_str = self._add_stype_var.get()
-        if not stype_str:
-            messagebox.showwarning("Missing", "Please select a service type.")
-            return
-        service_type = int(stype_str.split(" - ")[0])
-
-        add_type = self._add_type_var.get()
         group = self._selected_group
+        validation = validate_add_entry(
+            add_type=self._add_type_var.get(),
+            group_type=group.group_type,
+            name=self._add_name_var.get().strip(),
+            stype_str=self._add_stype_var.get(),
+            freq_text=self._add_freq_var.get().strip(),
+            tgid_text=self._add_freq_var.get().strip(),
+            parse_freq_mhz=parse_freq_mhz,
+        )
+        if not validation.ok:
+            messagebox.showwarning(validation.error_title, validation.error_message)
+            return
 
-        if add_type == "Conventional":
-            if group.group_type != "C-Group":
-                messagebox.showwarning(
-                    "Wrong group",
-                    "Select a Conventional group (under a county) to add a frequency.",
-                )
-                return
-
-            freq_text = self._add_freq_var.get().strip()
-            if not freq_text:
-                messagebox.showwarning("Missing", "Please enter a frequency in MHz.")
-                return
-            try:
-                freq_hz = parse_freq_mhz(freq_text)
-            except ValueError:
-                messagebox.showerror("Invalid", "Could not parse frequency. Enter a number in MHz (e.g. 460.050)")
-                return
-
-            mode = self._add_mode_var.get()
+        name = self._add_name_var.get().strip()
+        mode = self._add_mode_var.get()
+        service_type = validation.service_type
+        if self._add_type_var.get() == "Conventional":
             tone = self._add_tone_var.get().strip()
-
-            entry = self._do_add_cfreq(group, name, freq_hz, mode, tone, service_type)
+            entry = self._do_add_cfreq(
+                group, name, validation.freq_hz, mode, tone, service_type,
+            )
             self._add_entry_to_tree(group, entry)
-            self._set_status(f"Added: {name} — {format_freq(freq_hz)} [{service_label(service_type)}]")
-
+            self._set_status(
+                f"Added: {name} — {format_freq(validation.freq_hz)} "
+                f"[{service_label(service_type)}]"
+            )
         else:
-            if group.group_type != "T-Group":
-                messagebox.showwarning(
-                    "Wrong group",
-                    "Select a Trunked group (under a trunk system) to add a talkgroup.",
-                )
-                return
-
-            tgid_text = self._add_freq_var.get().strip()
-            if not tgid_text:
-                messagebox.showwarning("Missing", "Please enter a talkgroup ID.")
-                return
-            try:
-                tgid = int(tgid_text)
-            except ValueError:
-                messagebox.showerror("Invalid", "Talkgroup ID must be an integer.")
-                return
-
-            mode = self._add_mode_var.get()
-
-            entry = self._do_add_tgid(group, name, tgid, mode, service_type)
+            entry = self._do_add_tgid(
+                group, name, validation.tgid, mode, service_type,
+            )
             self._add_entry_to_tree(group, entry)
-            self._set_status(f"Added: {name} — TGID {tgid} [{service_label(service_type)}]")
+            self._set_status(
+                f"Added: {name} — TGID {validation.tgid} "
+                f"[{service_label(service_type)}]"
+            )
 
         self._add_name_var.set("")
         self._add_freq_var.set("")
@@ -3597,51 +3528,14 @@ class ScannerManagerApp:
                         ),
                     )
                     return
-                self.hpd.load(target_hpd_path)
-                self._attach_meta_for_hpd(target_hpd_path, is_restore=False)
-                # One batch around the whole replay + summary event so a
-                # large replay doesn't rewrite the sidecar per reapplied
-                # event.
-                batch_ctx = (
-                    self._meta.batch() if self._meta is not None else nullcontext()
+                self._merge_report = self._batch_reconcile_after_reload(
+                    target_hpd_path,
+                    snapshot,
+                    source="updater",
+                    target_id=f"updater::{int(time.time())}",
+                    target_name=os.path.basename(updater_path),
+                    payload_extra={"updater_path": updater_path},
                 )
-                with batch_ctx:
-                    replay_report = self._replay_events_after_update()
-                    self._merge_report = self.hpd.apply_customizations(snapshot)
-                    self._merge_report.update(replay_report)
-                    if self.hpd.has_changes:
-                        self.hpd.save()
-                    try:
-                        self._log_event(
-                            op=OP_EXTERNAL_CHANGE,
-                            target_id=f"updater::{int(time.time())}",
-                            target_name=os.path.basename(updater_path),
-                            summary=(
-                                f"Uniden updater ran: "
-                                f"replayed={replay_report.get('replayed', 0)}, "
-                                f"missed={replay_report.get('missed', 0)}, "
-                                f"safety_reapplied="
-                                f"{self._merge_report.get('reapplied', 0)}, "
-                                f"inserted="
-                                f"{self._merge_report.get('inserted', 0)}"
-                            ),
-                            source="updater",
-                            payload={
-                                "updater_path": updater_path,
-                                "hpd_path": target_hpd_path,
-                                "replay": replay_report,
-                                "safety_net": {
-                                    k: self._merge_report.get(k, 0)
-                                    for k in ("reapplied", "inserted", "unresolved")
-                                },
-                            },
-                        )
-                    except Exception:
-                        pass
-                audit_path = self._write_reconcile_audit(
-                    target_hpd_path, snapshot, self._merge_report
-                )
-                self._last_reconcile_audit = audit_path
                 self.root.after(0, self._populate_tree)
                 self.root.after(0, self._show_merge_report)
                 self.root.after(0, self._refresh_sd_space)
@@ -3691,6 +3585,61 @@ class ScannerManagerApp:
         self._set_status("Update and reconcile complete.")
         messagebox.showinfo("Reconcile Report", msg)
 
+    def _batch_reconcile_after_reload(
+        self,
+        target_hpd_path: str,
+        snapshot: List[EntryCustomization],
+        *,
+        source: str,
+        target_id: str,
+        target_name: str,
+        payload_extra: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, int]:
+        """Reload HPD, replay events, apply customization snapshot, log once."""
+        self.hpd.load(target_hpd_path)
+        self._attach_meta_for_hpd(target_hpd_path, is_restore=False)
+        batch_ctx = (
+            self._meta.batch() if self._meta is not None else nullcontext()
+        )
+        with batch_ctx:
+            replay_report = self._replay_events_after_update()
+            merge_report = self.hpd.apply_customizations(snapshot)
+            merge_report.update(replay_report)
+            if self.hpd.has_changes:
+                self.hpd.save()
+            payload: Dict[str, Any] = {
+                "hpd_path": target_hpd_path,
+                "replay": replay_report,
+                "safety_net": {
+                    k: merge_report.get(k, 0)
+                    for k in ("reapplied", "inserted", "unresolved")
+                },
+            }
+            if payload_extra:
+                payload.update(payload_extra)
+            try:
+                self._log_event(
+                    op=OP_EXTERNAL_CHANGE,
+                    target_id=target_id,
+                    target_name=target_name,
+                    summary=(
+                        f"{source}: "
+                        f"replayed={replay_report.get('replayed', 0)}, "
+                        f"missed={replay_report.get('missed', 0)}, "
+                        f"safety_reapplied={merge_report.get('reapplied', 0)}, "
+                        f"inserted={merge_report.get('inserted', 0)}"
+                    ),
+                    source=source,
+                    payload=payload,
+                )
+            except Exception:
+                pass
+        audit_path = self._write_reconcile_audit(
+            target_hpd_path, snapshot, merge_report
+        )
+        self._last_reconcile_audit = audit_path
+        return merge_report
+
     # ---- Full pipeline (push -> run -> pull -> reconcile) ---------------
 
     def _run_update_pipeline(self, *, tool_id: Optional[str] = None) -> None:
@@ -3714,17 +3663,7 @@ class ScannerManagerApp:
             repo_root=self._script_dir,
             overrides=self._tool_overrides(),
         )
-        selected: Optional[uniden_tools.UnidenTool] = None
-        if tool_id:
-            for tool in tools:
-                if tool.tool_id == tool_id and tool.installed:
-                    selected = tool
-                    break
-        if selected is None:
-            for tool in tools:
-                if tool.installed:
-                    selected = tool
-                    break
+        selected = select_installed_uniden_tool(tools, tool_id)
         if selected is None:
             messagebox.showerror(
                 "Pipeline",
@@ -3735,20 +3674,18 @@ class ScannerManagerApp:
 
         profile = self._active_profile()
         push_report: Optional["sdcard.SyncReport"] = None
-        push_diffs: List["sdcard.FileDiff"] = []
         card_root: Optional[str] = None
         # Stage 1 — push (only when there's a workspace + card)
         if profile:
             card_root = self._prompt_card_for_sync(profile)
             if card_root:
                 baseline = self._profile_baseline(profile)
-                push_report, push_diffs = sdcard.sync_push(
+                push_report, _ = sdcard.sync_push(
                     card_root=card_root,
                     workspace_root=profile["workspace_dir"],
                     baseline=baseline,
                 )
-                if push_report.conflicts:
-                    if not messagebox.askyesno(
+                if push_report.conflicts and not messagebox.askyesno(
                         "Pipeline — conflicts on card",
                         (
                             f"{len(push_report.conflicts)} file(s) on the "
@@ -3757,8 +3694,8 @@ class ScannerManagerApp:
                             "(Your changes will not be pushed until resolved.)"
                         ),
                     ):
-                        return
-                else:
+                    return
+                if not push_report.conflicts:
                     self._update_profile_baseline(
                         profile, profile["workspace_dir"]
                     )
@@ -3796,57 +3733,17 @@ class ScannerManagerApp:
                         ),
                     )
                     return
-                self.hpd.load(target_hpd_path)
-                self._attach_meta_for_hpd(target_hpd_path, is_restore=False)
-                # Event replay first (source of truth), then the legacy
-                # snapshot-based pass as a safety net for user-added
-                # entries / anything not covered by reversible events.
-                # Wrapped in a single batch so even a heavy replay
-                # results in one sidecar write at the end.
-                batch_ctx = (
-                    self._meta.batch() if self._meta is not None else nullcontext()
+                self._merge_report = self._batch_reconcile_after_reload(
+                    target_hpd_path,
+                    snapshot,
+                    source="pipeline",
+                    target_id=f"pipeline::{int(time.time())}",
+                    target_name=selected.display_name,
+                    payload_extra={
+                        "tool_id": selected.tool_id,
+                        "tool_version": selected.version or "",
+                    },
                 )
-                with batch_ctx:
-                    replay_report = self._replay_events_after_update()
-                    self._merge_report = self.hpd.apply_customizations(snapshot)
-                    self._merge_report.update(replay_report)
-                    if self.hpd.has_changes:
-                        self.hpd.save()
-                    # Single row in the Changes panel for the whole
-                    # pipeline; revertable via the session snapshot taken
-                    # just before the tool launched.
-                    try:
-                        self._log_event(
-                            op=OP_EXTERNAL_CHANGE,
-                            target_id=f"pipeline::{int(time.time())}",
-                            target_name=selected.display_name,
-                            summary=(
-                                f"Uniden update pipeline: "
-                                f"replayed={replay_report.get('replayed', 0)}, "
-                                f"missed={replay_report.get('missed', 0)}, "
-                                f"safety_reapplied="
-                                f"{self._merge_report.get('reapplied', 0)}, "
-                                f"inserted="
-                                f"{self._merge_report.get('inserted', 0)}"
-                            ),
-                            source="pipeline",
-                            payload={
-                                "tool_id": selected.tool_id,
-                                "tool_version": selected.version or "",
-                                "hpd_path": target_hpd_path,
-                                "replay": replay_report,
-                                "safety_net": {
-                                    k: self._merge_report.get(k, 0)
-                                    for k in ("reapplied", "inserted", "unresolved")
-                                },
-                            },
-                        )
-                    except Exception:
-                        pass
-                audit_path = self._write_reconcile_audit(
-                    target_hpd_path, snapshot, self._merge_report
-                )
-                self._last_reconcile_audit = audit_path
                 self.root.after(0, self._populate_tree)
                 self.root.after(0, self._refresh_sd_space)
                 stage = "pull"
@@ -3858,11 +3755,7 @@ class ScannerManagerApp:
                         workspace_root=profile["workspace_dir"],
                         baseline=baseline,
                     )
-                    pull_summary = {
-                        "copied": len(pull_report.copied),
-                        "conflicts": len(pull_report.conflicts),
-                        "external_changes": len(pull_report.external_changes),
-                    }
+                    pull_summary = pull_stage_summary(pull_report)
                     self.root.after(
                         0,
                         lambda: self._handle_sync_result(
@@ -3894,42 +3787,11 @@ class ScannerManagerApp:
         merge_report: Optional[Dict[str, int]],
         pull_summary: Dict[str, Any],
     ) -> None:
-        lines = [f"Tool: {tool.display_name} ({tool.version or '?'})"]
-        lines.append("")
-        if push_report is not None:
-            lines.append(
-                f"Push (workspace \u2192 card): copied={len(push_report.copied)}, "
-                f"conflicts={len(push_report.conflicts)}, "
-                f"errors={len(push_report.errors)}"
-            )
-        else:
-            lines.append("Push (workspace \u2192 card): skipped (no workspace/card).")
-        merge = merge_report or {}
-        lines.append(
-            "Reconcile (event replay):"
-            f" replayed={merge.get('replayed', 0)},"
-            f" missed={merge.get('missed', 0)}"
-            f" [deletions={merge.get('deletions', 0)},"
-            f" services={merge.get('services', 0)},"
-            f" edits={merge.get('edits', 0)},"
-            f" additions={merge.get('additions', 0)}]"
-        )
-        lines.append(
-            "Reconcile (safety net):"
-            f" reapplied={merge.get('reapplied', 0)},"
-            f" inserted={merge.get('inserted', 0)},"
-            f" unresolved={merge.get('unresolved', 0)}"
-        )
-        if pull_summary:
-            lines.append(
-                f"Pull (card \u2192 workspace): copied={pull_summary.get('copied', 0)}, "
-                f"external={pull_summary.get('external_changes', 0)}, "
-                f"conflicts={pull_summary.get('conflicts', 0)}"
-            )
-        else:
-            lines.append("Pull (card \u2192 workspace): skipped.")
         self._set_status("Pipeline complete.")
-        messagebox.showinfo("Pipeline report", "\n".join(lines))
+        messagebox.showinfo(
+            "Pipeline report",
+            "\n".join(pipeline_report_lines(tool, push_report, merge_report, pull_summary)),
+        )
 
     def _post_updater_pull(self, profile: Dict[str, Any]) -> None:
         """After the Uniden updater writes a new HPD on the workspace,
@@ -4053,7 +3915,7 @@ class ScannerManagerApp:
         return 1
 
     def _ensure_entry_baseline(
-        self, sys_node: SystemNode, group: GroupNode, entry: FreqEntry
+        self, _sys_node: SystemNode, _group: GroupNode, entry: FreqEntry
     ) -> int:
         eid = self._entry_id_for(entry)
         if self._meta.has_baseline(eid):
@@ -4166,120 +4028,45 @@ class ScannerManagerApp:
 
     @staticmethod
     def _replay_norm(text: str) -> str:
-        return " ".join((text or "").strip().lower().split())
+        return replay_norm(text)
+
+    def _event_baseline(self, target_id: str) -> Any:
+        if self._meta is None:
+            return None
+        return self._meta.get_baseline(target_id)
 
     def _find_entry_after_update(
         self, event: "Event"
     ) -> Optional[FreqEntry]:
-        """Locate an entry in the freshly reloaded tree that corresponds to
-        the target of an event. Tries, in order:
-        1. Stable target_id match (same system_id/group_id/identity).
-        2. Baseline snapshot: entry_type + normalized system/group name +
-           identity_value.
-        3. Event payload snapshot: same fields.
-        """
-        hit = self._find_entry_by_id(event.target_id or "")
-        if hit is not None:
-            return hit
-
-        def _match_from_snap(snap: Dict[str, Any]) -> Optional[FreqEntry]:
-            if not snap:
-                return None
-            et = (snap.get("entry_type") or "").upper()
-            identity = str(snap.get("identity_value") or "")
-            sys_name = self._replay_norm(snap.get("system_name", ""))
-            grp_name = self._replay_norm(snap.get("group_name", ""))
-            if not (et and identity and sys_name and grp_name):
-                return None
-            for sys_node in self.hpd.systems:
-                if self._replay_norm(sys_node.name) != sys_name:
-                    continue
-                for group in sys_node.groups:
-                    if self._replay_norm(group.name) != grp_name:
-                        continue
-                    for entry in group.entries:
-                        if entry.entry_type.upper() != et:
-                            continue
-                        if entry.record.get_field(5, "") == identity:
-                            return entry
-            return None
-
-        baseline = (
-            self._meta.get_baseline(event.target_id)
-            if self._meta is not None else None
+        return find_entry_after_update(
+            self.hpd.systems,
+            event,
+            find_by_id=self._find_entry_by_id,
+            baseline_for=self._event_baseline,
+            norm=self._replay_norm,
         )
-        if baseline is not None:
-            hit = _match_from_snap(baseline.snapshot or {})
-            if hit is not None:
-                return hit
-
-        hit = _match_from_snap((event.payload or {}).get("snapshot") or {})
-        if hit is not None:
-            return hit
-        hit = _match_from_snap((event.payload or {}).get("after") or {})
-        if hit is not None:
-            return hit
-        return None
 
     def _find_group_after_update(
         self, event: "Event"
     ) -> Optional[GroupNode]:
-        hit = self._find_group_by_key(event.target_id or "")
-        if hit is not None:
-            return hit
-
-        def _match(snap: Dict[str, Any]) -> Optional[GroupNode]:
-            if not snap:
-                return None
-            sys_name = self._replay_norm(snap.get("system_name", ""))
-            grp_name = self._replay_norm(snap.get("name", ""))
-            if not (sys_name and grp_name):
-                return None
-            for sys_node in self.hpd.systems:
-                if self._replay_norm(sys_node.name) != sys_name:
-                    continue
-                for group in sys_node.groups:
-                    if self._replay_norm(group.name) == grp_name:
-                        return group
-            return None
-
-        baseline = (
-            self._meta.get_baseline(event.target_id)
-            if self._meta is not None else None
+        return find_group_after_update(
+            self.hpd.systems,
+            event,
+            find_by_key=self._find_group_by_key,
+            baseline_for=self._event_baseline,
+            norm=self._replay_norm,
         )
-        if baseline is not None:
-            hit = _match(baseline.snapshot or {})
-            if hit is not None:
-                return hit
-        hit = _match((event.payload or {}).get("snapshot") or {})
-        if hit is not None:
-            return hit
-        return None
 
     def _find_system_after_update(
         self, event: "Event"
     ) -> Optional[SystemNode]:
-        hit = self._find_system_by_key(event.target_id or "")
-        if hit is not None:
-            return hit
-        # Fallback by normalized system name from baseline or payload.
-        name_candidates: List[str] = []
-        if self._meta is not None:
-            baseline = self._meta.get_baseline(event.target_id)
-            if baseline is not None:
-                name_candidates.append(baseline.snapshot.get("name", ""))
-        payload = event.payload or {}
-        for snap_key in ("snapshot", "before", "after"):
-            snap = payload.get(snap_key) or {}
-            name_candidates.append(snap.get("name", ""))
-        for raw in name_candidates:
-            norm = self._replay_norm(raw)
-            if not norm:
-                continue
-            for sys_node in self.hpd.systems:
-                if self._replay_norm(sys_node.name) == norm:
-                    return sys_node
-        return None
+        return find_system_after_update(
+            self.hpd.systems,
+            event,
+            find_by_key=self._find_system_by_key,
+            baseline_for=self._event_baseline,
+            norm=self._replay_norm,
+        )
 
     def _find_group_for_reinsert(
         self, event: "Event"
@@ -4962,68 +4749,13 @@ class ScannerManagerApp:
         fallback_name: str = "",
         fuzzy_threshold: float = 0.85,
     ) -> Optional[Dict[str, Any]]:
-        """Look up an RR row (freq/talkgroup) against the GlobalMetaStore indexes.
-
-        Returns a hint dict when a confident cross-reference is found,
-        else None. Callsign hits are authoritative; fuzzy licensee hits
-        require fallback_name/licensee and clear the threshold.
-
-        Shape:
-          {
-            "kind": "callsign" | "fuzzy",
-            "score": float,
-            "label": str,
-            "entry_ids": List[str],
-            "matched_entry": Optional[FreqEntry],
-            "matched_group": str,
-          }
-        """
-        gm = getattr(self, "_global_meta", None)
-        if gm is None:
-            return None
-
-        callsign = (rr_row.get("fcc_callsign") or "").strip().upper()
-        if callsign:
-            ids = gm.callsign_lookup(callsign)
-            if ids:
-                entry, group_name = self._entry_for_id(ids[0])
-                matched = entry.name if entry else ""
-                label = f"CS {callsign}"
-                if matched:
-                    label = f"{label} -> {matched}"
-                return {
-                    "kind": "callsign",
-                    "score": 1.0,
-                    "label": label,
-                    "entry_ids": list(ids),
-                    "matched_entry": entry,
-                    "matched_group": group_name,
-                }
-
-        licensee = (rr_row.get("licensee") or rr_row.get("licensee_text") or "").strip()
-        if not licensee:
-            licensee = (fallback_name or "").strip()
-        if licensee:
-            candidates = gm.fuzzy_licensee_candidates(licensee, min_score=fuzzy_threshold)
-            if candidates:
-                key, score, ids = candidates[0]
-                entry: Optional[FreqEntry] = None
-                group_name = ""
-                if ids:
-                    entry, group_name = self._entry_for_id(ids[0])
-                pct = int(round(score * 100))
-                label = f"~{pct}% {key}"
-                if entry is not None:
-                    label = f"{label} -> {entry.name}"
-                return {
-                    "kind": "fuzzy",
-                    "score": score,
-                    "label": label,
-                    "entry_ids": list(ids),
-                    "matched_entry": entry,
-                    "matched_group": group_name,
-                }
-        return None
+        return lookup_crossref_hint_for_rr_row(
+            getattr(self, "_global_meta", None),
+            rr_row,
+            self._entry_for_id,
+            fallback_name=fallback_name,
+            fuzzy_threshold=fuzzy_threshold,
+        )
 
     # ---- Revert engine ----------------------------------------------------
 
@@ -5181,51 +4913,17 @@ class ScannerManagerApp:
     def _revert_import_apply(
         self, payload: Dict[str, Any]
     ) -> Tuple[bool, str]:
-        removed = 0
-        reverted = 0
-        restored = 0
-        failed = 0
-        for add in payload.get("added") or []:
-            target = self._find_entry_by_id(add.get("id") or "")
-            if target is None:
-                continue
-            try:
-                self.hpd.delete_entry(target)
-                removed += 1
-            except Exception:
-                failed += 1
-        for upd in payload.get("updated") or []:
-            target = self._find_entry_by_id(upd.get("id") or "")
-            if target is None:
-                failed += 1
-                continue
-            try:
-                self._apply_entry_snapshot(target, upd.get("before") or {})
-                reverted += 1
-            except Exception:
-                failed += 1
-        for dl in payload.get("deleted") or []:
-            try:
-                group = self._find_group_by_key(dl.get("group_key") or "")
-                if group is None:
-                    failed += 1
-                    continue
-                if restore_import_deleted_entry(self.hpd, group, dl):
-                    restored += 1
-                else:
-                    failed += 1
-            except Exception:
-                failed += 1
-        groups = payload.get("groups_created") or []
-        group_removed = 0
-        for gkey in groups:
-            grp = self._find_group_by_key(gkey)
-            if grp is not None and not grp.entries:
-                try:
-                    self.hpd.delete_group(grp)
-                    group_removed += 1
-                except Exception:
-                    pass
+        removed, reverted, restored, group_removed, failed = apply_revert_import_payload(
+            payload,
+            find_entry=self._find_entry_by_id,
+            find_group=self._find_group_by_key,
+            delete_entry=self.hpd.delete_entry,
+            apply_snapshot=self._apply_entry_snapshot,
+            restore_deleted=lambda group, dl: restore_import_deleted_entry(
+                self.hpd, group, dl
+            ),
+            delete_group=self.hpd.delete_group,
+        )
         return True, summarize_revert_import(
             removed, reverted, restored, group_removed, failed
         )
@@ -5257,19 +4955,11 @@ class ScannerManagerApp:
         """Revert every active event strictly after pivot_event_id, newest-first."""
         if self._meta is None:
             return False, "No metastore."
-        seen_pivot = False
-        newer: List[Event] = []
-        for e in self._meta.events:
-            if e.event_id == pivot_event_id:
-                seen_pivot = True
-                continue
-            if not seen_pivot:
-                continue
-            if e.op in (OP_REVERT, OP_BULK_REVERT):
-                continue
-            if e.reverted:
-                continue
-            newer.append(e)
+        newer = events_newer_than_pivot(
+            self._meta.events,
+            pivot_event_id,
+            {OP_REVERT, OP_BULK_REVERT},
+        )
         if not newer:
             return False, "No later changes to revert."
         txn = self._new_txn_id()
@@ -5348,9 +5038,12 @@ class ScannerManagerApp:
             if not entries:
                 continue
             info = self._group_coverage_info(group, tolerance)
-            if apply_location and self._active_coords is not None:
-                if info["status"] == "out_range":
-                    continue
+            if (
+                apply_location
+                and self._active_coords is not None
+                and info["status"] == "out_range"
+            ):
+                continue
             visible.append((group, entries, info))
         return visible
 
@@ -5721,40 +5414,17 @@ class ScannerManagerApp:
         card status."""
         profile = self._active_profile()
         folder = (self._path_var.get() or "").strip()
-        if profile is None:
-            if folder and os.path.isdir(folder):
-                ident = sdcard.probe_card_identity(folder)
-                if ident.has_any_id():
-                    self._card_state_var.set(
-                        f"Card: connected ({ident.target_model or 'unknown'})"
-                    )
-                else:
-                    self._card_state_var.set("Card: folder loaded")
-            else:
-                self._card_state_var.set("")
-            return
-        name = profile.get("name") or "workspace"
-        ws_dir = profile.get("workspace_dir") or ""
-        # Does the current path point at a physical card matching this
-        # profile? Try detection.
-        card_match = False
-        if folder and os.path.isdir(folder) and folder != ws_dir:
-            ident = sdcard.probe_card_identity(folder)
-            card_match = bool(
-                (ident.volume_serial and ident.volume_serial == profile.get("card_volume_serial"))
-                or (ident.content_fingerprint and ident.content_fingerprint == profile.get("content_fingerprint"))
-            )
-        pending = 0
-        if self._meta is not None:
-            pending = len(self._meta.uncommitted_events())
-        bits = [f"Workspace: {name}"]
-        if card_match:
-            bits.append("card connected")
-        else:
-            bits.append("card detached")
-        if pending:
-            bits.append(f"{pending} pending")
-        self._card_state_var.set(" · ".join(bits))
+        pending = (
+            len(self._meta.uncommitted_events()) if self._meta is not None else 0
+        )
+        ident = (
+            sdcard.probe_card_identity(folder)
+            if folder and os.path.isdir(folder)
+            else sdcard.CardIdentity()
+        )
+        self._card_state_var.set(
+            card_state_display(profile, folder, ident, pending)
+        )
         self._refresh_pipeline_health()
 
     def _refresh_pipeline_health(self) -> None:
@@ -6690,16 +6360,7 @@ class AlertsViewerDialog:
 
         header_frame = ttk.Frame(self.top, padding=(8, 8, 8, 0))
         header_frame.pack(fill=tk.X)
-        if not self.alert_root or not self.alert_root.exists():
-            summary = "No alert folder found. Select a valid SD card folder first."
-        elif not self.files:
-            summary = (
-                f"Alert folder found at {self.alert_root}, but no files are present."
-            )
-        else:
-            summary = (
-                f"Alert root: {self.alert_root}    Files: {len(self.files)}"
-            )
+        summary = alerts_viewer_summary(self.alert_root, self.files)
         ttk.Label(
             header_frame, text=summary, wraplength=860, justify=tk.LEFT
         ).pack(side=tk.LEFT)
@@ -6733,32 +6394,18 @@ class AlertsViewerDialog:
 
         folders: Dict[str, str] = {}
         if self.alert_root and self.files:
-            for p in self.files:
-                try:
-                    rel_parent = p.parent.relative_to(self.alert_root)
-                except Exception:
-                    rel_parent = Path(".")
-                key = str(rel_parent)
+            for row in alerts_file_tree_rows(self.alert_root, self.files):
+                key = row["folder_key"]
                 if key not in folders:
-                    label = key if key != "." else "(root)"
                     folders[key] = self.file_tree.insert(
-                        "", tk.END, text=label, open=True
+                        "", tk.END, text=row["folder_label"], open=True
                     )
-                try:
-                    stat = p.stat()
-                    size_kb = f"{stat.st_size / 1024:.1f} KB"
-                    modified = datetime.fromtimestamp(stat.st_mtime).strftime(
-                        "%Y-%m-%d %H:%M:%S"
-                    )
-                except Exception:
-                    size_kb = ""
-                    modified = ""
                 self.file_tree.insert(
                     folders[key],
                     tk.END,
                     text="",
-                    values=(p.name, size_kb, modified),
-                    tags=(str(p),),
+                    values=(row["name"], row["size_kb"], row["modified"]),
+                    tags=(str(row["path"]),),
                 )
 
         footer = ttk.Frame(self.top, padding=8)
@@ -8567,17 +8214,16 @@ class WorkspaceManagerDialog:
         )
         if not ws_dir:
             return
-        clone = workspace_clone_result(name, card_root, ws_dir)
+        clone = workspace_clone_result(name, ws_dir)
         if clone is None:
             return
-        if clone.get("needs_nonempty_confirm"):
-            if not messagebox.askyesno(
+        if clone.get("needs_nonempty_confirm") and not messagebox.askyesno(
                 "Clone",
                 f"{clone['workspace_dir']} already exists and is not empty. "
                 "Cloning may overwrite files. Continue?",
                 parent=self.top,
             ):
-                return
+            return
         self.result = {
             "action": clone["action"],
             "name": clone["name"],
@@ -9422,7 +9068,7 @@ def _write_crash_log(exc_type, exc_value, exc_tb) -> Path:
     return log_path
 
 
-def _install_crash_hook(root: tk.Tk, app: "ScannerManagerApp") -> None:
+def _install_crash_hook(root: tk.Tk, _app: "ScannerManagerApp") -> None:
     """Route Tk callback exceptions through our crash-log writer and
     give the user a one-click path to file the bug report.
     """
@@ -9471,9 +9117,10 @@ def main():
     _install_crash_hook(root, app)
 
     def on_close():
-        if app.hpd.has_changes:
-            if not messagebox.askyesno("Unsaved Changes", "You have unsaved changes. Quit anyway?"):
-                return
+        if app.hpd.has_changes and not messagebox.askyesno(
+            "Unsaved Changes", "You have unsaved changes. Quit anyway?"
+        ):
+            return
         root.destroy()
 
     root.protocol("WM_DELETE_WINDOW", on_close)

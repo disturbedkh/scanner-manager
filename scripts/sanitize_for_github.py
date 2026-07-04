@@ -13,7 +13,7 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO_ROOT))
 
-from core.path_utils import PathTraversalError, safe_resolve_path  # noqa: E402
+from core.path_utils import PathTraversalError, safe_resolve_path, safe_write_text  # noqa: E402
 
 try:
     import yaml
@@ -173,14 +173,17 @@ def sanitize_analysis_dump(text: str) -> str:
 
 def sanitize_file(path: Path, repo_root: Path) -> None:
     root = repo_root.resolve(strict=False)
-    try:
-        rel = path.resolve(strict=False).relative_to(root)
-    except ValueError as exc:
-        raise PathTraversalError(
-            f"Refusing to sanitize path outside repo: {path}"
-        ) from exc
-    safe_path = safe_resolve_path(root, rel)
-    rel_posix = rel.as_posix()
+    if path.is_absolute():
+        try:
+            rel = path.resolve(strict=False).relative_to(root)
+        except ValueError as exc:
+            raise PathTraversalError(
+                f"Refusing to sanitize path outside repo: {path}"
+            ) from exc
+        safe_path = safe_resolve_path(root, rel)
+    else:
+        safe_path = safe_resolve_path(root, path)
+    rel_posix = safe_path.relative_to(root).as_posix()
     raw = safe_path.read_text(encoding="utf-8", errors="replace")
     if rel_posix.endswith(".jsonl"):
         sanitized = "".join(
@@ -190,7 +193,7 @@ def sanitize_file(path: Path, repo_root: Path) -> None:
         sanitized = sanitize_analysis_dump(raw)
     else:
         sanitized = sanitize_session_text(raw, rel_posix)
-    safe_path.write_text(sanitized, encoding="utf-8")
+    safe_write_text(root, rel_posix, sanitized)
 
 
 def _audit_skip(rel: str) -> bool:

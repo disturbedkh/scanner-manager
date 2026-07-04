@@ -31,6 +31,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import _common as _c  # noqa: E402
 
+from core.path_utils import safe_write_text  # noqa: E402
+
 DEFAULT_TABLE_PTR_ADDR = 0x14008428
 DEFAULT_LITPOOL_RANGE = (0x14008418, 0x14008448)
 BASE = 0x14000000
@@ -134,8 +136,6 @@ def _write_dispatch_report(
     entries: list,
     valid: list,
 ) -> None:
-    safe_out = _c.safe_user_path(_c.RE_ROOT, out)
-    _c.ensure_dir(safe_out.parent)
     lines = ["# SUB-port dispatch table (extracted)", ""]
     lines.append(f"- Firmware: `{fw_path.relative_to(_c.REPO_ROOT)}`")
     lines.append(f"- Table base: 0x{table_base:08X}")
@@ -147,7 +147,7 @@ def _write_dispatch_report(
     lines.append("|---:|---:|---|---|")
     for i, b, ch, h in valid:
         lines.append(f"| {i} | 0x{b:02X} | `{ch}` | `FUN_{h:08x}` |")
-    safe_out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    safe_write_text(_c.RE_ROOT, out, "\n".join(lines) + "\n")
 
 
 def main() -> int:

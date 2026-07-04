@@ -2,6 +2,10 @@
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+# Dependency lock SSOT: requirements.lock (pip-compile from this file).
+# Regenerate: pip-compile --extra=dev --extra=full -o requirements.lock pyproject.toml
+# Sonar text:S8565 — we use pip-tools, not uv.lock/poetry.lock (see Metacache/Dev/SONARQUBE.md).
+
 [project]
 name = "beartracker-885-scanner-manager"
 version = "0.11.1"
@@ -39,6 +43,8 @@ classifiers = [
     "Topic :: Utilities",
 ]
 dependencies = [
+    # Reproducible installs: compile with pip-tools; lock SSOT is
+    # requirements.lock at repo root (not uv.lock / poetry.lock).
     # Qt + supporting libs are now required - the default
     # ``scanner-manager`` console script targets the PySide6 shell.
     # Audio + serial are imported lazily so the app still boots if

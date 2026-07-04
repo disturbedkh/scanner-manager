@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import sys
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
 
@@ -224,6 +226,101 @@ def changes_detail(changes: Dict[str, Tuple[Any, Any]]) -> str:
     )
 
 
+def crossref_summary_suffix(crossref_counts: Dict[str, int]) -> str:
+    """Append cross-reference counts when present."""
+    if not crossref_counts.get("callsign") and not crossref_counts.get("fuzzy"):
+        return ""
+    return (
+        f"   |  xref: {crossref_counts.get('callsign', 0)} callsign, "
+        f"{crossref_counts.get('fuzzy', 0)} fuzzy"
+    )
+
+
+def _cfreq_import_summary_counts(
+    item_meta: Dict[str, Dict[str, Any]],
+) -> Tuple[int, int, int, int]:
+    total = new_sel = update_sel = updates_available = 0
+    for meta in item_meta.values():
+        if meta.get("type") != "cfreq":
+            continue
+        total += 1
+        if meta.get("action") == "update":
+            updates_available += 1
+        if not meta.get("checked"):
+            continue
+        action = meta.get("action")
+        if action == "new":
+            new_sel += 1
+        elif action == "update":
+            update_sel += 1
+    return total, new_sel, update_sel, updates_available
+
+
+def _tg_import_summary_counts(
+    item_meta: Dict[str, Dict[str, Any]],
+) -> Tuple[int, int, int, int, int, int]:
+    total = new_sel = update_sel = delete_sel = encrypted = updates_available = 0
+    for meta in item_meta.values():
+        if meta.get("type") != "tg":
+            continue
+        total += 1
+        if meta["data"].get("encrypted"):
+            encrypted += 1
+        if meta.get("action") == "update":
+            updates_available += 1
+        if not meta.get("checked"):
+            continue
+        action = meta.get("action")
+        if action == "new":
+            new_sel += 1
+        elif action == "update":
+            update_sel += 1
+        elif action == "delete_encrypted":
+            delete_sel += 1
+    return total, new_sel, update_sel, delete_sel, encrypted, updates_available
+
+
+def import_selection_payload(
+    meta: Dict[str, Any],
+    action: str,
+    *,
+    include_freq_hz: bool = False,
+) -> Dict[str, Any]:
+    """Build a checked import row payload from tree item metadata."""
+    payload = dict(meta["data"])
+    payload["__action__"] = action
+    payload["__changes__"] = meta.get("changes", {})
+    payload["__existing__"] = meta.get("existing")
+    if include_freq_hz:
+        payload["__freq_hz__"] = meta.get("freq_hz")
+    return payload
+
+
+def _gather_checked_import_items(
+    item_meta: Dict[str, Dict[str, Any]],
+    cat_id: str,
+    *,
+    item_type: str,
+    allowed_actions: Set[str],
+    include_freq_hz: bool = False,
+) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+    items: List[Dict[str, Any]] = []
+    counts = {action: 0 for action in allowed_actions}
+    for meta in item_meta.values():
+        if meta.get("type") != item_type or meta.get("parent") != cat_id:
+            continue
+        if not meta.get("checked"):
+            continue
+        action = meta.get("action")
+        if action not in allowed_actions:
+            continue
+        items.append(
+            import_selection_payload(meta, action, include_freq_hz=include_freq_hz)
+        )
+        counts[action] += 1
+    return items, counts
+
+
 def filter_rr_import_changes(
     raw: Dict[str, Tuple[Any, Any]],
     *,
@@ -292,7 +389,6 @@ def apply_rr_crossref_tags(
 
 def compute_cfreq_import_row(
     freq: Dict[str, Any],
-    freq_hz: int,
     existing: Optional["FreqEntry"],
     cat_name: str,
     *,
@@ -385,30 +481,10 @@ def summarize_cfreq_import_rows(
     item_meta: Dict[str, Dict[str, Any]],
     crossref_counts: Dict[str, int],
 ) -> str:
-    total = 0
-    new_sel = 0
-    update_sel = 0
-    updates_available = 0
-    for meta in item_meta.values():
-        if meta.get("type") != "cfreq":
-            continue
-        total += 1
-        if meta.get("action") == "update":
-            updates_available += 1
-        if meta.get("checked"):
-            if meta.get("action") == "new":
-                new_sel += 1
-            elif meta.get("action") == "update":
-                update_sel += 1
-    extra = ""
-    if crossref_counts.get("callsign") or crossref_counts.get("fuzzy"):
-        extra = (
-            f"   |  xref: {crossref_counts.get('callsign', 0)} callsign, "
-            f"{crossref_counts.get('fuzzy', 0)} fuzzy"
-        )
+    total, new_sel, update_sel, updates_available = _cfreq_import_summary_counts(item_meta)
     return (
         f"{total} frequencies; {new_sel} new, {update_sel}/{updates_available} updates"
-        + extra
+        + crossref_summary_suffix(crossref_counts)
     )
 
 
@@ -416,40 +492,19 @@ def summarize_tg_import_rows(
     item_meta: Dict[str, Dict[str, Any]],
     crossref_counts: Dict[str, int],
 ) -> str:
-    total = 0
-    new_sel = 0
-    update_sel = 0
-    delete_sel = 0
-    encrypted = 0
-    updates_available = 0
-    for meta in item_meta.values():
-        if meta.get("type") != "tg":
-            continue
-        total += 1
-        if meta["data"].get("encrypted"):
-            encrypted += 1
-        if meta.get("action") == "update":
-            updates_available += 1
-        if meta.get("checked"):
-            action = meta.get("action")
-            if action == "new":
-                new_sel += 1
-            elif action == "update":
-                update_sel += 1
-            elif action == "delete_encrypted":
-                delete_sel += 1
-    extra = ""
-    if crossref_counts.get("callsign") or crossref_counts.get("fuzzy"):
-        extra = (
-            f"   |  xref: {crossref_counts.get('callsign', 0)} callsign, "
-            f"{crossref_counts.get('fuzzy', 0)} fuzzy"
-        )
+    total, new_sel, update_sel, delete_sel, encrypted, updates_available = (
+        _tg_import_summary_counts(item_meta)
+    )
     return (
         f"{total} talkgroups; {new_sel} new, {update_sel}/{updates_available} updates, "
         f"{delete_sel} delete-encrypted, "
         f"{encrypted} total encrypted"
-        + extra
+        + crossref_summary_suffix(crossref_counts)
     )
+
+
+_CFREQ_IMPORT_ACTIONS = frozenset({"new", "update"})
+_TG_IMPORT_ACTIONS = frozenset({"new", "update", "delete_encrypted"})
 
 
 def gather_cfreq_import_selection(
@@ -461,28 +516,17 @@ def gather_cfreq_import_selection(
     new_count = 0
     update_count = 0
     for cat_id in cat_ids:
-        cat_name = cat_name_fn(cat_id)
-        items: List[Dict[str, Any]] = []
-        for _iid, meta in item_meta.items():
-            if meta.get("type") != "cfreq" or meta.get("parent") != cat_id:
-                continue
-            if not meta.get("checked"):
-                continue
-            action = meta.get("action")
-            if action not in ("new", "update"):
-                continue
-            payload = dict(meta["data"])
-            payload["__action__"] = action
-            payload["__changes__"] = meta.get("changes", {})
-            payload["__existing__"] = meta.get("existing")
-            payload["__freq_hz__"] = meta.get("freq_hz")
-            items.append(payload)
-            if action == "new":
-                new_count += 1
-            elif action == "update":
-                update_count += 1
+        items, counts = _gather_checked_import_items(
+            item_meta,
+            cat_id,
+            item_type="cfreq",
+            allowed_actions=_CFREQ_IMPORT_ACTIONS,
+            include_freq_hz=True,
+        )
         if items:
-            selection.append((cat_name, items))
+            selection.append((cat_name_fn(cat_id), items))
+            new_count += counts["new"]
+            update_count += counts["update"]
     return selection, new_count, update_count
 
 
@@ -496,29 +540,17 @@ def gather_tg_import_selection(
     update_count = 0
     delete_count = 0
     for cat_id in cat_ids:
-        cat_name = cat_name_fn(cat_id)
-        items: List[Dict[str, Any]] = []
-        for _iid, meta in item_meta.items():
-            if meta.get("type") != "tg" or meta.get("parent") != cat_id:
-                continue
-            if not meta.get("checked"):
-                continue
-            action = meta.get("action")
-            if action not in ("new", "update", "delete_encrypted"):
-                continue
-            payload = dict(meta["data"])
-            payload["__action__"] = action
-            payload["__changes__"] = meta.get("changes", {})
-            payload["__existing__"] = meta.get("existing")
-            items.append(payload)
-            if action == "new":
-                new_count += 1
-            elif action == "update":
-                update_count += 1
-            elif action == "delete_encrypted":
-                delete_count += 1
+        items, counts = _gather_checked_import_items(
+            item_meta,
+            cat_id,
+            item_type="tg",
+            allowed_actions=_TG_IMPORT_ACTIONS,
+        )
         if items:
-            selection.append((cat_name, items))
+            selection.append((cat_name_fn(cat_id), items))
+            new_count += counts["new"]
+            update_count += counts["update"]
+            delete_count += counts["delete_encrypted"]
     return selection, new_count, update_count, delete_count
 
 
@@ -891,12 +923,51 @@ def replay_entry_type_and_identity(snap: Dict[str, Any]) -> Tuple[str, str]:
 # ---- Coverage / location filter (R3+R4) ------------------------------------
 
 
+def _group_coverage_in_rectangle(
+    info: Dict[str, Any],
+    group: "GroupNode",
+    lat: float,
+    lon: float,
+) -> None:
+    from core.hpd import haversine_miles
+
+    info["has_geo"] = True
+    info["status"] = "in_range"
+    if group.lat is not None and group.lon is not None:
+        info["distance"] = haversine_miles(lat, lon, group.lat, group.lon)
+    else:
+        info["distance"] = 0.0
+
+
+def _group_coverage_by_distance(
+    info: Dict[str, Any],
+    group: "GroupNode",
+    lat: float,
+    lon: float,
+    tolerance: float,
+) -> None:
+    from core.hpd import haversine_miles
+
+    info["has_geo"] = True
+    d = haversine_miles(lat, lon, group.lat, group.lon)
+    info["distance"] = d
+    rng = group.range_miles or 0.0
+    if rng > 0 and d <= rng:
+        info["status"] = "in_range"
+    elif rng > 0 and d <= rng + tolerance:
+        info["status"] = "nearby"
+    elif rng <= 0 and d <= tolerance:
+        info["status"] = "nearby"
+    else:
+        info["status"] = "out_range"
+
+
 def compute_group_coverage_info(
     group: "GroupNode",
     active_coords: Optional[Tuple[float, float]],
     tolerance: float,
 ) -> Dict[str, Any]:
-    from core.hpd import haversine_miles, rectangle_contains_point
+    from core.hpd import rectangle_contains_point
 
     info: Dict[str, Any] = {
         "has_geo": False,
@@ -910,28 +981,44 @@ def compute_group_coverage_info(
     if group.rectangles and any(
         rectangle_contains_point(r, lat, lon) for r in group.rectangles
     ):
-        info["has_geo"] = True
-        info["status"] = "in_range"
-        if group.lat is not None and group.lon is not None:
-            info["distance"] = haversine_miles(lat, lon, group.lat, group.lon)
-        else:
-            info["distance"] = 0.0
+        _group_coverage_in_rectangle(info, group, lat, lon)
         return info
     if group.lat is None or group.lon is None:
         return info
-    info["has_geo"] = True
-    d = haversine_miles(lat, lon, group.lat, group.lon)
-    info["distance"] = d
-    rng = group.range_miles or 0.0
-    if rng > 0 and d <= rng:
-        info["status"] = "in_range"
-    elif rng > 0 and d <= rng + tolerance:
-        info["status"] = "nearby"
-    elif rng <= 0 and d <= tolerance:
-        info["status"] = "nearby"
-    else:
-        info["status"] = "out_range"
+    _group_coverage_by_distance(info, group, lat, lon, tolerance)
     return info
+
+
+def _system_matches_active_coords(
+    sys_node: "SystemNode",
+    active_coords: Tuple[float, float],
+    active_county_id: Optional[int],
+    tolerance: float,
+) -> bool:
+    from core.hpd import system_covers_point, system_has_geo
+
+    covered, delta = system_covers_point(
+        sys_node, active_coords[0], active_coords[1]
+    )
+    if covered:
+        return True
+    if system_has_geo(sys_node):
+        return delta != float("inf") and delta <= tolerance
+    if active_county_id and active_county_id in sys_node.county_ids:
+        return True
+    return not sys_node.county_ids and not sys_node.state_ids
+
+
+def _system_matches_county_scope(
+    sys_node: "SystemNode",
+    active_county_id: int,
+    selected_state_id: Optional[int],
+) -> bool:
+    if sys_node.county_ids:
+        return active_county_id in sys_node.county_ids
+    if sys_node.state_ids and selected_state_id is not None:
+        return selected_state_id in sys_node.state_ids
+    return True
 
 
 def system_matches_location(
@@ -942,28 +1029,13 @@ def system_matches_location(
     selected_state_id: Optional[int],
     tolerance: float,
 ) -> bool:
-    from core.hpd import system_covers_point, system_has_geo
-
     if active_coords is not None:
-        covered, delta = system_covers_point(
-            sys_node, active_coords[0], active_coords[1]
+        return _system_matches_active_coords(
+            sys_node, active_coords, active_county_id, tolerance
         )
-        if covered:
-            return True
-        if system_has_geo(sys_node):
-            if delta != float("inf") and delta <= tolerance:
-                return True
-            return False
-        if active_county_id and active_county_id in sys_node.county_ids:
-            return True
-        return not sys_node.county_ids and not sys_node.state_ids
     if active_county_id is None:
         return True
-    if sys_node.county_ids:
-        return active_county_id in sys_node.county_ids
-    if sys_node.state_ids and selected_state_id is not None:
-        return selected_state_id in sys_node.state_ids
-    return True
+    return _system_matches_county_scope(sys_node, active_county_id, selected_state_id)
 
 
 def location_scope_label(
@@ -1021,6 +1093,160 @@ class MetastoreRevertOps:
     restore_group_link: Callable[[str, Dict[str, Any]], None]
 
 
+def _revert_edit_entry(
+    event: Any,
+    payload: Dict[str, Any],
+    ops: MetastoreRevertOps,
+) -> Tuple[bool, str]:
+    target = ops.find_entry_by_id(event.target_id)
+    if target is None:
+        prev = payload.get("prev_target_id")
+        if prev:
+            target = ops.find_entry_by_id(prev)
+    if target is None:
+        return False, "Could not find the entry to revert."
+    ops.apply_entry_snapshot(target, payload.get("before") or {})
+    return True, f"Reverted edit on {target.name}"
+
+
+def _revert_edit_group(
+    event: Any,
+    payload: Dict[str, Any],
+    ops: MetastoreRevertOps,
+) -> Tuple[bool, str]:
+    target = ops.find_group_by_key(event.target_id)
+    if target is None:
+        return False, "Could not find the group to revert."
+    ops.apply_group_snapshot(target, payload.get("before") or {})
+    return True, f"Reverted edit on group {target.name}"
+
+
+def _revert_edit_system(
+    event: Any,
+    payload: Dict[str, Any],
+    ops: MetastoreRevertOps,
+) -> Tuple[bool, str]:
+    target = ops.find_system_by_key(event.target_id)
+    if target is None:
+        return False, "Could not find the system to revert."
+    before = payload.get("before") or {}
+    prev_name = before.get("name")
+    if prev_name is not None:
+        ops.edit_system_name(target, str(prev_name))
+    return True, f"Reverted edit on system {target.name}"
+
+
+def _revert_delete_system(
+    event: Any,
+    payload: Dict[str, Any],
+    ops: MetastoreRevertOps,
+) -> Tuple[bool, str]:
+    restored = ops.reinsert_system(payload.get("system_blob") or {})
+    if restored is None:
+        return False, "Could not restore deleted system."
+    entry_count = sum(len(g.entries) for g in restored.groups)
+    return True, (
+        f"Restored system {restored.name} with "
+        f"{len(restored.groups)} group(s) and {entry_count} entries"
+    )
+
+
+def _revert_set_service(
+    event: Any,
+    payload: Dict[str, Any],
+    ops: MetastoreRevertOps,
+) -> Tuple[bool, str]:
+    target = ops.find_entry_by_id(event.target_id)
+    if target is None:
+        return False, "Could not find the entry."
+    before = (payload.get("before") or {}).get("service_type")
+    if before is None:
+        return False, "Could not find the entry."
+    ops.update_service_type(target, int(before))
+    return True, f"Service type reverted on {target.name}"
+
+
+def _revert_add_entry(
+    event: Any,
+    _payload: Dict[str, Any],
+    ops: MetastoreRevertOps,
+) -> Tuple[bool, str]:
+    target = ops.find_entry_by_id(event.target_id)
+    if target is None:
+        return False, "Entry no longer present (already deleted)."
+    ops.delete_entry(target)
+    return True, f"Removed added entry {event.target_name}"
+
+
+def _revert_add_group(
+    event: Any,
+    _payload: Dict[str, Any],
+    ops: MetastoreRevertOps,
+) -> Tuple[bool, str]:
+    target = ops.find_group_by_key(event.target_id)
+    if target is None:
+        return False, "Group no longer present."
+    if target.entries:
+        return False, (
+            f"Group {target.name} now contains {len(target.entries)} entries; "
+            "refusing to auto-delete."
+        )
+    ops.delete_group(target)
+    return True, f"Removed added group {event.target_name}"
+
+
+def _revert_delete_entry(
+    event: Any,
+    payload: Dict[str, Any],
+    ops: MetastoreRevertOps,
+) -> Tuple[bool, str]:
+    if ops.reinsert_entry(payload):
+        return True, f"Restored deleted entry {event.target_name}"
+    return False, "Could not restore entry (group missing?)"
+
+
+def _revert_delete_group(
+    event: Any,
+    payload: Dict[str, Any],
+    ops: MetastoreRevertOps,
+) -> Tuple[bool, str]:
+    grp = ops.reinsert_group(payload)
+    if grp is not None:
+        return True, (
+            f"Restored deleted group {event.target_name} with {len(grp.entries)} entries"
+        )
+    return False, "Could not restore group (system missing?)"
+
+
+def _revert_import_apply(
+    _event: Any,
+    payload: Dict[str, Any],
+    ops: MetastoreRevertOps,
+) -> Tuple[bool, str]:
+    return ops.revert_import(payload)
+
+
+def _revert_link_rr(
+    event: Any,
+    _payload: Dict[str, Any],
+    ops: MetastoreRevertOps,
+) -> Tuple[bool, str]:
+    ops.clear_group_link(event.target_id)
+    return True, f"Unlinked {event.target_name}"
+
+
+def _revert_unlink_rr(
+    event: Any,
+    payload: Dict[str, Any],
+    ops: MetastoreRevertOps,
+) -> Tuple[bool, str]:
+    link = payload.get("link") or {}
+    if not link.get("rr_url"):
+        return False, "Original link info missing."
+    ops.restore_group_link(event.target_id, dict(link))
+    return True, f"Restored RR link on {event.target_name}"
+
+
 def apply_metastore_revert(
     op: str,
     event: Any,
@@ -1042,90 +1268,24 @@ def apply_metastore_revert(
         OP_UNLINK_RR,
     )
 
-    target_name = event.target_name
-    if op == OP_EDIT_ENTRY:
-        target = ops.find_entry_by_id(event.target_id)
-        if target is None:
-            prev = payload.get("prev_target_id")
-            if prev:
-                target = ops.find_entry_by_id(prev)
-        if target is None:
-            return False, "Could not find the entry to revert."
-        ops.apply_entry_snapshot(target, payload.get("before") or {})
-        return True, f"Reverted edit on {target.name}"
-    if op == OP_EDIT_GROUP:
-        target = ops.find_group_by_key(event.target_id)
-        if target is None:
-            return False, "Could not find the group to revert."
-        ops.apply_group_snapshot(target, payload.get("before") or {})
-        return True, f"Reverted edit on group {target.name}"
-    if op == OP_EDIT_SYSTEM:
-        target = ops.find_system_by_key(event.target_id)
-        if target is None:
-            return False, "Could not find the system to revert."
-        before = payload.get("before") or {}
-        prev_name = before.get("name")
-        if prev_name is not None:
-            ops.edit_system_name(target, str(prev_name))
-        return True, f"Reverted edit on system {target.name}"
-    if op == OP_DELETE_SYSTEM:
-        restored = ops.reinsert_system(payload.get("system_blob") or {})
-        if restored is None:
-            return False, "Could not restore deleted system."
-        entry_count = sum(len(g.entries) for g in restored.groups)
-        return True, (
-            f"Restored system {restored.name} with "
-            f"{len(restored.groups)} group(s) and {entry_count} entries"
-        )
-    if op == OP_SET_SERVICE:
-        target = ops.find_entry_by_id(event.target_id)
-        if target is None:
-            return False, "Could not find the entry."
-        before = (payload.get("before") or {}).get("service_type")
-        if before is None:
-            return False, "Could not find the entry."
-        ops.update_service_type(target, int(before))
-        return True, f"Service type reverted on {target.name}"
-    if op == OP_ADD_ENTRY:
-        target = ops.find_entry_by_id(event.target_id)
-        if target is None:
-            return False, "Entry no longer present (already deleted)."
-        ops.delete_entry(target)
-        return True, f"Removed added entry {target_name}"
-    if op == OP_ADD_GROUP:
-        target = ops.find_group_by_key(event.target_id)
-        if target is None:
-            return False, "Group no longer present."
-        if target.entries:
-            return False, (
-                f"Group {target.name} now contains {len(target.entries)} entries; "
-                "refusing to auto-delete."
-            )
-        ops.delete_group(target)
-        return True, f"Removed added group {target_name}"
-    if op == OP_DELETE_ENTRY:
-        if ops.reinsert_entry(payload):
-            return True, f"Restored deleted entry {target_name}"
-        return False, "Could not restore entry (group missing?)"
-    if op == OP_DELETE_GROUP:
-        grp = ops.reinsert_group(payload)
-        if grp is not None:
-            return True, (
-                f"Restored deleted group {target_name} with {len(grp.entries)} entries"
-            )
-        return False, "Could not restore group (system missing?)"
-    if op == OP_IMPORT_APPLY:
-        return ops.revert_import(payload)
-    if op == OP_LINK_RR:
-        ops.clear_group_link(event.target_id)
-        return True, f"Unlinked {target_name}"
-    if op == OP_UNLINK_RR:
-        link = payload.get("link") or {}
-        if not link.get("rr_url"):
-            return False, "Original link info missing."
-        ops.restore_group_link(event.target_id, dict(link))
-        return True, f"Restored RR link on {target_name}"
-    return False, f"Don't know how to revert {op}."
+    handlers: Dict[str, Callable[..., Tuple[bool, str]]] = {
+        OP_EDIT_ENTRY: _revert_edit_entry,
+        OP_EDIT_GROUP: _revert_edit_group,
+        OP_EDIT_SYSTEM: _revert_edit_system,
+        OP_DELETE_SYSTEM: _revert_delete_system,
+        OP_SET_SERVICE: _revert_set_service,
+        OP_ADD_ENTRY: _revert_add_entry,
+        OP_ADD_GROUP: _revert_add_group,
+        OP_DELETE_ENTRY: _revert_delete_entry,
+        OP_DELETE_GROUP: _revert_delete_group,
+        OP_IMPORT_APPLY: _revert_import_apply,
+        OP_LINK_RR: _revert_link_rr,
+        OP_UNLINK_RR: _revert_unlink_rr,
+    }
+    handler = handlers.get(op)
+    if handler is None:
+        return False, f"Don't know how to revert {op}."
+    return handler(event, payload, ops)
 
 
 def add_entry_from_snapshot(hpd: Any, group: "GroupNode", snap: Dict[str, Any]) -> bool:
@@ -1155,6 +1315,41 @@ def add_entry_from_snapshot(hpd: Any, group: "GroupNode", snap: Dict[str, Any]) 
     return True
 
 
+def _restore_tgid_from_import_delete(
+    hpd: Any,
+    group: "GroupNode",
+    snap: Dict[str, Any],
+    name: str,
+) -> None:
+    try:
+        tgid_val = int(snap.get("identity_value") or 0)
+    except Exception:
+        tgid_val = 0
+    hpd.add_tgid(
+        group, name, tgid_val,
+        snap.get("mode") or "ALL",
+        int(snap.get("service_type") or 1),
+    )
+
+
+def _restore_cfreq_from_import_delete(
+    hpd: Any,
+    group: "GroupNode",
+    snap: Dict[str, Any],
+    name: str,
+) -> None:
+    try:
+        freq_hz = int(snap.get("identity_value") or 0)
+    except Exception:
+        freq_hz = 0
+    hpd.add_cfreq(
+        group, name, freq_hz,
+        snap.get("mode") or "NFM",
+        snap.get("tone") or "",
+        int(snap.get("service_type") or 14),
+    )
+
+
 def restore_import_deleted_entry(
     hpd: Any,
     group: "GroupNode",
@@ -1166,26 +1361,9 @@ def restore_import_deleted_entry(
     entry_type = snap.get("entry_type") or "TGID"
     name = snap.get("name") or dl.get("name") or ""
     if entry_type == "TGID":
-        try:
-            tgid_val = int(snap.get("identity_value") or 0)
-        except Exception:
-            tgid_val = 0
-        hpd.add_tgid(
-            group, name, tgid_val,
-            snap.get("mode") or "ALL",
-            int(snap.get("service_type") or 1),
-        )
+        _restore_tgid_from_import_delete(hpd, group, snap, name)
     else:
-        try:
-            freq_hz = int(snap.get("identity_value") or 0)
-        except Exception:
-            freq_hz = 0
-        hpd.add_cfreq(
-            group, name, freq_hz,
-            snap.get("mode") or "NFM",
-            snap.get("tone") or "",
-            int(snap.get("service_type") or 14),
-        )
+        _restore_cfreq_from_import_delete(hpd, group, snap, name)
     return True
 
 
@@ -1207,6 +1385,69 @@ def summarize_revert_import(
 # ---- RR diff rows (R3) -----------------------------------------------------
 
 
+def _parse_rr_freq_hz(rr: Dict[str, Any]) -> Optional[int]:
+    try:
+        hz = int(round(float(rr.get("mhz") or 0) * 1_000_000))
+    except Exception:
+        return None
+    if hz <= 0:
+        return None
+    return hz
+
+
+def _cfreq_diff_added_row(
+    hz: int,
+    rr: Dict[str, Any],
+    status_added: str,
+) -> Dict[str, Any]:
+    rr_name = rr.get("name") or rr.get("alpha") or ""
+    rr_mode_str = rr.get("mode") or ""
+    ident = f"{hz / 1_000_000:.4f} MHz"
+    return {
+        "values": (status_added, ident, "", f"{rr_name} / {rr_mode_str}", "New on RR"),
+        "tags": ("added",),
+    }
+
+
+def _cfreq_diff_existing_row(
+    hz: int,
+    rr: Dict[str, Any],
+    existing: "FreqEntry",
+    *,
+    diff_fn: Callable[..., Dict[str, Tuple[Any, Any]]],
+    status_changed: str,
+    status_same: str,
+) -> Tuple[Dict[str, Any], str]:
+    rr_name = rr.get("name") or rr.get("alpha") or ""
+    rr_mode_str = rr.get("mode") or ""
+    ident = f"{hz / 1_000_000:.4f} MHz"
+    svc = rr.get("suggested_service_type")
+    changes = diff_fn(
+        existing.name,
+        existing.record.get_field(6, ""),
+        existing.record.get_field(7, ""),
+        existing.service_type,
+        rr_name,
+        rr_mode_str,
+        rr.get("tone") or "",
+        svc if isinstance(svc, int) else None,
+    )
+    if changes:
+        return {
+            "values": (
+                status_changed, ident,
+                f"{existing.name} / {existing.record.get_field(6, '')}",
+                f"{rr_name} / {rr_mode_str}",
+                changes_detail(changes),
+            ),
+            "tags": ("changed",),
+        }, "changed"
+    return {
+        "values": (status_same, ident, existing.name, rr_name, ""),
+        "tags": ("same",),
+    }, "same"
+
+
 def cfreq_diff_tree_rows(
     local_by_hz: Dict[int, "FreqEntry"],
     rr_rows: List[Dict[str, Any]],
@@ -1221,52 +1462,23 @@ def cfreq_diff_tree_rows(
     rows: List[Dict[str, Any]] = []
     seen: Set[int] = set()
     for rr in rr_rows:
-        try:
-            hz = int(round(float(rr.get("mhz") or 0) * 1_000_000))
-        except Exception:
-            continue
-        if hz <= 0:
+        hz = _parse_rr_freq_hz(rr)
+        if hz is None:
             continue
         seen.add(hz)
         existing = local_by_hz.get(hz)
-        rr_name = rr.get("name") or rr.get("alpha") or ""
-        rr_mode_str = rr.get("mode") or ""
-        ident = f"{hz / 1_000_000:.4f} MHz"
         if existing is None:
-            rows.append({
-                "values": (status_added, ident, "", f"{rr_name} / {rr_mode_str}", "New on RR"),
-                "tags": ("added",),
-            })
+            rows.append(_cfreq_diff_added_row(hz, rr, status_added))
             counts["added"] += 1
             continue
-        svc = rr.get("suggested_service_type")
-        changes = diff_fn(
-            existing.name,
-            existing.record.get_field(6, ""),
-            existing.record.get_field(7, ""),
-            existing.service_type,
-            rr_name,
-            rr_mode_str,
-            rr.get("tone") or "",
-            svc if isinstance(svc, int) else None,
+        row, bucket = _cfreq_diff_existing_row(
+            hz, rr, existing,
+            diff_fn=diff_fn,
+            status_changed=status_changed,
+            status_same=status_same,
         )
-        if changes:
-            rows.append({
-                "values": (
-                    status_changed, ident,
-                    f"{existing.name} / {existing.record.get_field(6, '')}",
-                    f"{rr_name} / {rr_mode_str}",
-                    changes_detail(changes),
-                ),
-                "tags": ("changed",),
-            })
-            counts["changed"] += 1
-        else:
-            rows.append({
-                "values": (status_same, ident, existing.name, rr_name, ""),
-                "tags": ("same",),
-            })
-            counts["same"] += 1
+        rows.append(row)
+        counts[bucket] += 1
     for hz, entry in local_by_hz.items():
         if hz in seen:
             continue
@@ -1279,6 +1491,76 @@ def cfreq_diff_tree_rows(
         })
         counts["removed"] += 1
     return rows, counts
+
+
+def _parse_rr_tgid(rr: Dict[str, Any]) -> Optional[int]:
+    try:
+        tgid = int(rr.get("tgid") or 0)
+    except Exception:
+        return None
+    if tgid <= 0:
+        return None
+    return tgid
+
+
+def _tgid_diff_added_row(
+    tgid: int,
+    rr: Dict[str, Any],
+    status_added: str,
+    mode_label_fn: Callable[[str], str],
+) -> Dict[str, Any]:
+    rr_name = rr.get("name") or rr.get("alpha") or ""
+    rr_mode_str = rr.get("mode") or ""
+    ident = f"TGID {tgid}"
+    detail = "Encrypted" if rr.get("encrypted") else "New on RR"
+    mode_disp = mode_label_fn(rr_mode_str) or rr_mode_str
+    return {
+        "values": (status_added, ident, "", f"{rr_name} / {mode_disp}", detail),
+        "tags": ("added",),
+    }
+
+
+def _tgid_diff_existing_row(
+    tgid: int,
+    rr: Dict[str, Any],
+    existing: "FreqEntry",
+    *,
+    diff_fn: Callable[..., Dict[str, Tuple[Any, Any]]],
+    mode_label_fn: Callable[[str], str],
+    status_changed: str,
+    status_same: str,
+) -> Tuple[Dict[str, Any], str]:
+    rr_name = rr.get("name") or rr.get("alpha") or ""
+    rr_mode_str = rr.get("mode") or ""
+    ident = f"TGID {tgid}"
+    svc = rr.get("suggested_service_type")
+    changes = diff_fn(
+        existing.name,
+        existing.record.get_field(6, ""),
+        existing.service_type,
+        rr_name,
+        rr_mode_str,
+        svc if isinstance(svc, int) else None,
+    )
+    if changes:
+        detail = changes_detail(changes)
+        if rr.get("encrypted"):
+            detail = f"[enc] {detail}"
+        ex_mode = mode_label_fn(existing.record.get_field(6, "")) or ""
+        rr_mode_disp = mode_label_fn(rr_mode_str) or rr_mode_str
+        return {
+            "values": (
+                status_changed, ident,
+                f"{existing.name} / {ex_mode}",
+                f"{rr_name} / {rr_mode_disp}",
+                detail,
+            ),
+            "tags": ("changed",),
+        }, "changed"
+    return {
+        "values": (status_same, ident, existing.name, rr_name, ""),
+        "tags": ("same",),
+    }, "same"
 
 
 def tgid_diff_tree_rows(
@@ -1296,57 +1578,24 @@ def tgid_diff_tree_rows(
     rows: List[Dict[str, Any]] = []
     seen_tgids: Set[int] = set()
     for rr in rr_rows:
-        try:
-            tgid = int(rr.get("tgid") or 0)
-        except Exception:
-            continue
-        if tgid <= 0:
+        tgid = _parse_rr_tgid(rr)
+        if tgid is None:
             continue
         seen_tgids.add(tgid)
         existing = local_by_tgid.get(tgid)
-        rr_name = rr.get("name") or rr.get("alpha") or ""
-        rr_mode_str = rr.get("mode") or ""
-        ident = f"TGID {tgid}"
         if existing is None:
-            detail = "Encrypted" if rr.get("encrypted") else "New on RR"
-            mode_disp = mode_label_fn(rr_mode_str) or rr_mode_str
-            rows.append({
-                "values": (status_added, ident, "", f"{rr_name} / {mode_disp}", detail),
-                "tags": ("added",),
-            })
+            rows.append(_tgid_diff_added_row(tgid, rr, status_added, mode_label_fn))
             counts["added"] += 1
             continue
-        svc = rr.get("suggested_service_type")
-        changes = diff_fn(
-            existing.name,
-            existing.record.get_field(6, ""),
-            existing.service_type,
-            rr_name,
-            rr_mode_str,
-            svc if isinstance(svc, int) else None,
+        row, bucket = _tgid_diff_existing_row(
+            tgid, rr, existing,
+            diff_fn=diff_fn,
+            mode_label_fn=mode_label_fn,
+            status_changed=status_changed,
+            status_same=status_same,
         )
-        if changes:
-            detail = changes_detail(changes)
-            if rr.get("encrypted"):
-                detail = f"[enc] {detail}"
-            ex_mode = mode_label_fn(existing.record.get_field(6, "")) or ""
-            rr_mode_disp = mode_label_fn(rr_mode_str) or rr_mode_str
-            rows.append({
-                "values": (
-                    status_changed, ident,
-                    f"{existing.name} / {ex_mode}",
-                    f"{rr_name} / {rr_mode_disp}",
-                    detail,
-                ),
-                "tags": ("changed",),
-            })
-            counts["changed"] += 1
-        else:
-            rows.append({
-                "values": (status_same, ident, existing.name, rr_name, ""),
-                "tags": ("same",),
-            })
-            counts["same"] += 1
+        rows.append(row)
+        counts[bucket] += 1
     for tgid, entry in local_by_tgid.items():
         if tgid in seen_tgids:
             continue
@@ -1356,6 +1605,38 @@ def tgid_diff_tree_rows(
         })
         counts["removed"] += 1
     return rows, counts
+
+
+def _mode_audit_row(
+    sys_node: "SystemNode",
+    group: "GroupNode",
+    entry: "FreqEntry",
+    issue: str,
+    suggested: str,
+    source: str,
+) -> Dict[str, Any]:
+    rec = entry.record
+    try:
+        freq_mhz = int(rec.get_field(5, "0")) / 1_000_000
+    except ValueError:
+        freq_mhz = 0
+    row_tag = "source_rr" if source == "rr" else "source_band"
+    return {
+        "entry": entry,
+        "issue": issue,
+        "suggested": suggested,
+        "values": (
+            sys_node.name,
+            group.name,
+            entry.name,
+            f"{freq_mhz:.4f}",
+            rec.get_field(6, ""),
+            suggested,
+            source.upper(),
+            issue,
+        ),
+        "tags": (str(id(entry)), row_tag),
+    }
 
 
 def collect_mode_audit_rows(
@@ -1375,34 +1656,36 @@ def collect_mode_audit_rows(
                 if result is None:
                     continue
                 issue, suggested, source = result
-                rec = entry.record
-                try:
-                    freq_mhz = int(rec.get_field(5, "0")) / 1_000_000
-                except ValueError:
-                    freq_mhz = 0
                 if source == "rr":
                     rr_flags += 1
-                    row_tag = "source_rr"
                 else:
                     band_flags += 1
-                    row_tag = "source_band"
-                rows.append({
-                    "entry": entry,
-                    "issue": issue,
-                    "suggested": suggested,
-                    "values": (
-                        sys_node.name,
-                        group.name,
-                        entry.name,
-                        f"{freq_mhz:.4f}",
-                        rec.get_field(6, ""),
-                        suggested,
-                        source.upper(),
-                        issue,
-                    ),
-                    "tags": (str(id(entry)), row_tag),
-                })
+                rows.append(
+                    _mode_audit_row(sys_node, group, entry, issue, suggested, source)
+                )
     return rows, total, rr_flags, band_flags
+
+
+def _bulk_remap_location_indices(
+    systems: List["SystemNode"],
+    location_match_fn: Callable[["SystemNode"], bool],
+) -> Set[int]:
+    return {i for i, sys_node in enumerate(systems) if location_match_fn(sys_node)}
+
+
+def _system_in_bulk_remap_scope(
+    index: int,
+    sys_node: "SystemNode",
+    *,
+    scope: str,
+    location_indices: Optional[Set[int]],
+    selected_system_id: Optional[str],
+) -> bool:
+    if scope == "location" and location_indices is not None and index not in location_indices:
+        return False
+    if scope == "selected" and selected_system_id is not None and sys_node.system_id != selected_system_id:
+        return False
+    return True
 
 
 def iter_bulk_remap_candidates(
@@ -1414,16 +1697,19 @@ def iter_bulk_remap_candidates(
     location_match_fn: Callable[["SystemNode"], bool],
     selected_system_id: Optional[str],
 ) -> List["FreqEntry"]:
-    location_indices: Optional[Set[int]] = None
-    if scope == "location":
-        location_indices = {
-            i for i, sys_node in enumerate(systems) if location_match_fn(sys_node)
-        }
+    location_indices = (
+        _bulk_remap_location_indices(systems, location_match_fn)
+        if scope == "location"
+        else None
+    )
     candidates: List[FreqEntry] = []
     for i, sys_node in enumerate(systems):
-        if scope == "location" and location_indices is not None and i not in location_indices:
-            continue
-        if scope == "selected" and selected_system_id is not None and sys_node.system_id != selected_system_id:
+        if not _system_in_bulk_remap_scope(
+            i, sys_node,
+            scope=scope,
+            location_indices=location_indices,
+            selected_system_id=selected_system_id,
+        ):
             continue
         for group in sys_node.groups:
             for entry in group.entries:
@@ -1434,22 +1720,95 @@ def iter_bulk_remap_candidates(
     return candidates
 
 
+_RR_PULL_URL_BUILDERS: Dict[str, Callable[[Dict[str, Any]], Tuple[str, str]]] = {
+    "trs": lambda e: (e.get("sid") or "", f"https://www.radioreference.com/db/sid/{e.get('sid')}" if e.get("sid") else ""),
+    "trs_ref": lambda e: (e.get("sid") or "", f"https://www.radioreference.com/db/sid/{e.get('sid')}" if e.get("sid") else ""),
+    "ctid": lambda e: (e.get("ctid") or "", f"https://www.radioreference.com/db/ctid/{e.get('ctid')}" if e.get("ctid") else ""),
+    "county_ref": lambda e: (e.get("cid") or "", f"https://www.radioreference.com/db/county/{e.get('cid')}" if e.get("cid") else ""),
+}
+
+
+def rr_pull_ident_and_url(entry: Dict[str, Any], kind: str) -> Tuple[str, str]:
+    """Return (ident_field, url) for an RR pull list entry kind."""
+    builder = _RR_PULL_URL_BUILDERS.get(kind)
+    if builder is None:
+        return entry.get("id") or "", ""
+    return builder(entry)
+
+
 def rr_pull_entry_row(entry: Dict[str, Any], mode: str) -> Tuple[str, str, str, str]:
     kind = entry.get("system_kind") or entry.get("type") or mode
-    if kind in ("trs", "trs_ref"):
-        ident_field = entry.get("sid") or ""
-        url = f"https://www.radioreference.com/db/sid/{ident_field}" if ident_field else ""
-    elif kind == "ctid":
-        ident_field = entry.get("ctid") or ""
-        url = f"https://www.radioreference.com/db/ctid/{ident_field}" if ident_field else ""
-    elif kind == "county_ref":
-        ident_field = entry.get("cid") or ""
-        url = f"https://www.radioreference.com/db/county/{ident_field}" if ident_field else ""
-    else:
-        ident_field = entry.get("id") or ""
-        url = ""
+    ident_field, url = rr_pull_ident_and_url(entry, kind)
     title = entry.get("title") or entry.get("group") or ""
     return title, kind, ident_field, url
+
+
+def _meta_event_status_ok(event: Any, status_filter: str) -> bool:
+    if status_filter == "Active" and event.reverted:
+        return False
+    if status_filter == "Reverted" and not event.reverted:
+        return False
+    return True
+
+
+def _meta_event_committed_ok(event: Any, committed_filter: str) -> bool:
+    if committed_filter == "Saved" and not event.committed:
+        return False
+    if committed_filter == "Pending" and event.committed:
+        return False
+    return True
+
+
+def _meta_event_search_ok(event: Any, search_lower: str) -> bool:
+    if not search_lower:
+        return True
+    haystack = " ".join([
+        event.target_name or "",
+        event.summary or "",
+        event.target_id or "",
+    ]).lower()
+    return search_lower in haystack
+
+
+def meta_event_passes_filters(
+    event: Any,
+    *,
+    op_labels: Dict[str, str],
+    op_filter: str,
+    src_filter: str,
+    status_filter: str,
+    committed_filter: str,
+    search_lower: str,
+) -> bool:
+    op_label = op_labels.get(event.op, event.op)
+    if op_filter != "All" and op_filter != op_label:
+        return False
+    if src_filter != "All" and src_filter != event.source:
+        return False
+    if not _meta_event_status_ok(event, status_filter):
+        return False
+    if not _meta_event_committed_ok(event, committed_filter):
+        return False
+    return _meta_event_search_ok(event, search_lower)
+
+
+def meta_event_display_row(
+    event: Any,
+    op_labels: Dict[str, str],
+) -> Dict[str, Any]:
+    op_label = op_labels.get(event.op, event.op)
+    status = "reverted" if event.reverted else "active"
+    saved_label = "yes" if event.committed else "pending"
+    tags: Tuple[str, ...] = () if event.committed else ("pending",)
+    return {
+        "iid": event.event_id,
+        "values": (
+            event.ts, op_label,
+            event.target_name or event.target_id,
+            event.source, status, saved_label, event.summary,
+        ),
+        "tags": tags,
+    }
 
 
 def filter_meta_events(
@@ -1466,42 +1825,21 @@ def filter_meta_events(
     rows: List[Dict[str, Any]] = []
     search_lower = search.strip().lower()
     for event in events:
-        op_label = op_labels.get(event.op, event.op)
-        if op_filter != "All" and op_filter != op_label:
+        if not meta_event_passes_filters(
+            event,
+            op_labels=op_labels,
+            op_filter=op_filter,
+            src_filter=src_filter,
+            status_filter=status_filter,
+            committed_filter=committed_filter,
+            search_lower=search_lower,
+        ):
             continue
-        if src_filter != "All" and src_filter != event.source:
-            continue
-        if status_filter == "Active" and event.reverted:
-            continue
-        if status_filter == "Reverted" and not event.reverted:
-            continue
-        if committed_filter == "Saved" and not event.committed:
-            continue
-        if committed_filter == "Pending" and event.committed:
-            continue
-        haystack = " ".join([
-            event.target_name or "",
-            event.summary or "",
-            event.target_id or "",
-        ]).lower()
-        if search_lower and search_lower not in haystack:
-            continue
-        status = "reverted" if event.reverted else "active"
-        saved_label = "yes" if event.committed else "pending"
-        tags: Tuple[str, ...] = () if event.committed else ("pending",)
         if event.committed:
             saved_count += 1
         else:
             pending_count += 1
-        rows.append({
-            "iid": event.event_id,
-            "values": (
-                event.ts, op_label,
-                event.target_name or event.target_id,
-                event.source, status, saved_label, event.summary,
-            ),
-            "tags": tags,
-        })
+        rows.append(meta_event_display_row(event, op_labels))
     return rows, pending_count, saved_count
 
 
@@ -1558,11 +1896,8 @@ def build_custom_city_records(
 
 def workspace_clone_result(
     name: str,
-    card_root: str,
     ws_dir: str,
 ) -> Optional[Dict[str, str]]:
-    import re
-
     safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("_") or "workspace"
     workspace_dir = os.path.join(ws_dir, safe_name)
     return {
@@ -1573,3 +1908,608 @@ def workspace_clone_result(
             os.path.exists(workspace_dir) and bool(os.listdir(workspace_dir))
         ),
     }
+
+
+# ---- Backup discovery (scanner_manager S3776) ---------------------------
+
+BACKUP_SUFFIX_PATTERN = re.compile(
+    r"^(?P<base>.+)\.backup_(?P<ts>\d{8}_\d{6})(?:_\w+)?$"
+)
+
+
+def discover_backups(search_roots: List[Path]) -> Dict[str, List[Path]]:
+    """Walk directories and group backup files by their source path."""
+    groups: Dict[str, List[Path]] = {}
+    seen_files: Set[str] = set()
+    for root in search_roots:
+        if not root or not root.exists():
+            continue
+        for p in root.rglob("*.backup_*"):
+            if not p.is_file():
+                continue
+            m = BACKUP_SUFFIX_PATTERN.match(p.name)
+            if not m:
+                continue
+            try:
+                key = str(p.resolve())
+            except Exception:
+                key = str(p)
+            if key in seen_files:
+                continue
+            seen_files.add(key)
+            source_name = m.group("base")
+            source_path = str(p.parent / source_name)
+            groups.setdefault(source_path, []).append(p)
+    for source in groups:
+        groups[source].sort(key=lambda p: p.stat().st_mtime)
+    return groups
+
+
+# ---- Post-update replay matching (scanner_manager S3776) ----------------
+
+def replay_norm(text: str) -> str:
+    return " ".join((text or "").strip().lower().split())
+
+
+def _match_entry_from_replay_snap(
+    systems: List["SystemNode"],
+    snap: Dict[str, Any],
+    norm: Callable[[str], str],
+) -> Optional["FreqEntry"]:
+    if not snap:
+        return None
+    et = (snap.get("entry_type") or "").upper()
+    identity = str(snap.get("identity_value") or "")
+    sys_name = norm(snap.get("system_name", ""))
+    grp_name = norm(snap.get("group_name", ""))
+    if not (et and identity and sys_name and grp_name):
+        return None
+    for sys_node in systems:
+        if norm(sys_node.name) != sys_name:
+            continue
+        for group in sys_node.groups:
+            if norm(group.name) != grp_name:
+                continue
+            for entry in group.entries:
+                if entry.entry_type.upper() != et:
+                    continue
+                if entry.record.get_field(5, "") == identity:
+                    return entry
+    return None
+
+
+def find_entry_after_update(
+    systems: List["SystemNode"],
+    event: Any,
+    *,
+    find_by_id: Callable[[str], Optional["FreqEntry"]],
+    baseline_for: Callable[[str], Any],
+    norm: Callable[[str], str],
+) -> Optional["FreqEntry"]:
+    hit = find_by_id(event.target_id or "")
+    if hit is not None:
+        return hit
+    baseline = baseline_for(event.target_id or "")
+    if baseline is not None:
+        hit = _match_entry_from_replay_snap(systems, baseline.snapshot or {}, norm)
+        if hit is not None:
+            return hit
+    payload = event.payload or {}
+    for key in ("snapshot", "after"):
+        hit = _match_entry_from_replay_snap(systems, payload.get(key) or {}, norm)
+        if hit is not None:
+            return hit
+    return None
+
+
+def _match_group_from_replay_snap(
+    systems: List["SystemNode"],
+    snap: Dict[str, Any],
+    norm: Callable[[str], str],
+) -> Optional["GroupNode"]:
+    if not snap:
+        return None
+    sys_name = norm(snap.get("system_name", ""))
+    grp_name = norm(snap.get("name", ""))
+    if not (sys_name and grp_name):
+        return None
+    for sys_node in systems:
+        if norm(sys_node.name) != sys_name:
+            continue
+        for group in sys_node.groups:
+            if norm(group.name) == grp_name:
+                return group
+    return None
+
+
+def find_group_after_update(
+    systems: List["SystemNode"],
+    event: Any,
+    *,
+    find_by_key: Callable[[str], Optional["GroupNode"]],
+    baseline_for: Callable[[str], Any],
+    norm: Callable[[str], str],
+) -> Optional["GroupNode"]:
+    hit = find_by_key(event.target_id or "")
+    if hit is not None:
+        return hit
+    baseline = baseline_for(event.target_id or "")
+    if baseline is not None:
+        hit = _match_group_from_replay_snap(systems, baseline.snapshot or {}, norm)
+        if hit is not None:
+            return hit
+    payload = event.payload or {}
+    return _match_group_from_replay_snap(systems, payload.get("snapshot") or {}, norm)
+
+
+def find_system_after_update(
+    systems: List["SystemNode"],
+    event: Any,
+    *,
+    find_by_key: Callable[[str], Optional["SystemNode"]],
+    baseline_for: Callable[[str], Any],
+    norm: Callable[[str], str],
+) -> Optional["SystemNode"]:
+    hit = find_by_key(event.target_id or "")
+    if hit is not None:
+        return hit
+    name_candidates: List[str] = []
+    baseline = baseline_for(event.target_id or "")
+    if baseline is not None:
+        name_candidates.append(baseline.snapshot.get("name", ""))
+    payload = event.payload or {}
+    for snap_key in ("snapshot", "before", "after"):
+        snap = payload.get(snap_key) or {}
+        name_candidates.append(snap.get("name", ""))
+    for raw in name_candidates:
+        target = norm(raw)
+        if not target:
+            continue
+        for sys_node in systems:
+            if norm(sys_node.name) == target:
+                return sys_node
+    return None
+
+
+def resolve_target_system(
+    systems: List["SystemNode"],
+    selected_system: Optional["SystemNode"],
+    selected_group: Optional["GroupNode"],
+    selected_entry: Optional["FreqEntry"],
+) -> Optional["SystemNode"]:
+    if selected_system is not None:
+        return selected_system
+    if selected_group is not None:
+        for sys_node in systems:
+            if selected_group in sys_node.groups:
+                return sys_node
+    if selected_entry is not None:
+        for sys_node in systems:
+            for group in sys_node.groups:
+                if selected_entry in group.entries:
+                    return sys_node
+    return None
+
+
+# ---- RR candidate / crossref helpers ------------------------------------
+
+def append_fuzzy_licensee_rr_candidates(
+    candidates: List[Dict[str, Any]],
+    seen: Set[str],
+    licensees: Set[str],
+    gm: Any,
+    meta: Any,
+    append_fn: Callable[..., None],
+) -> None:
+    for licensee in licensees:
+        for key, score, ids in gm.fuzzy_licensee_candidates(licensee, min_score=0.8):
+            for eid in ids:
+                other_ref = meta.ref_for(eid) or {}
+                for url in other_ref.get("source_urls") or []:
+                    append_fn(
+                        candidates, seen, url, "fuzzy-licensee", 0.7 * score,
+                        f"Fuzzy licensee match ({int(score * 100)}%) to {key}",
+                    )
+                cs = other_ref.get("fcc_callsign")
+                if cs:
+                    append_fn(
+                        candidates, seen,
+                        f"https://www.radioreference.com/db/fcc/callsign/{cs}",
+                        "fuzzy-licensee", 0.65 * score,
+                        f"Fuzzy match -> CS {cs}",
+                    )
+
+
+def crossref_hint_for_rr_row(
+    gm: Any,
+    rr_row: Dict[str, Any],
+    entry_for_id_fn: Callable[[str], Tuple[Optional["FreqEntry"], str]],
+    *,
+    fallback_name: str = "",
+    fuzzy_threshold: float = 0.85,
+) -> Optional[Dict[str, Any]]:
+    if gm is None:
+        return None
+
+    callsign = (rr_row.get("fcc_callsign") or "").strip().upper()
+    if callsign:
+        ids = gm.callsign_lookup(callsign)
+        if ids:
+            entry, group_name = entry_for_id_fn(ids[0])
+            matched = entry.name if entry else ""
+            label = f"CS {callsign}"
+            if matched:
+                label = f"{label} -> {matched}"
+            return {
+                "kind": "callsign",
+                "score": 1.0,
+                "label": label,
+                "entry_ids": list(ids),
+                "matched_entry": entry,
+                "matched_group": group_name,
+            }
+
+    licensee = (rr_row.get("licensee") or rr_row.get("licensee_text") or "").strip()
+    if not licensee:
+        licensee = (fallback_name or "").strip()
+    if not licensee:
+        return None
+
+    candidates = gm.fuzzy_licensee_candidates(licensee, min_score=fuzzy_threshold)
+    if not candidates:
+        return None
+    key, score, ids = candidates[0]
+    entry: Optional["FreqEntry"] = None
+    group_name = ""
+    if ids:
+        entry, group_name = entry_for_id_fn(ids[0])
+    pct = int(round(score * 100))
+    label = f"~{pct}% {key}"
+    if entry is not None:
+        label = f"{label} -> {entry.name}"
+    return {
+        "kind": "fuzzy",
+        "score": score,
+        "label": label,
+        "entry_ids": list(ids),
+        "matched_entry": entry,
+        "matched_group": group_name,
+    }
+
+
+# ---- Pipeline / card state display --------------------------------------
+
+def select_installed_uniden_tool(
+    tools: List[Any],
+    tool_id: Optional[str],
+) -> Optional[Any]:
+    if tool_id:
+        for tool in tools:
+            if tool.tool_id == tool_id and tool.installed:
+                return tool
+    for tool in tools:
+        if tool.installed:
+            return tool
+    return None
+
+
+def pipeline_report_lines(
+    tool: Any,
+    push_report: Any,
+    merge_report: Optional[Dict[str, int]],
+    pull_summary: Dict[str, Any],
+) -> List[str]:
+    lines = [f"Tool: {tool.display_name} ({tool.version or '?'})", ""]
+    if push_report is not None:
+        lines.append(
+            f"Push (workspace \u2192 card): copied={len(push_report.copied)}, "
+            f"conflicts={len(push_report.conflicts)}, "
+            f"errors={len(push_report.errors)}"
+        )
+    else:
+        lines.append("Push (workspace \u2192 card): skipped (no workspace/card).")
+    merge = merge_report or {}
+    lines.append(
+        "Reconcile (event replay):"
+        f" replayed={merge.get('replayed', 0)},"
+        f" missed={merge.get('missed', 0)}"
+        f" [deletions={merge.get('deletions', 0)},"
+        f" services={merge.get('services', 0)},"
+        f" edits={merge.get('edits', 0)},"
+        f" additions={merge.get('additions', 0)}]"
+    )
+    lines.append(
+        "Reconcile (safety net):"
+        f" reapplied={merge.get('reapplied', 0)},"
+        f" inserted={merge.get('inserted', 0)},"
+        f" unresolved={merge.get('unresolved', 0)}"
+    )
+    if pull_summary:
+        lines.append(
+            f"Pull (card \u2192 workspace): copied={pull_summary.get('copied', 0)}, "
+            f"external={pull_summary.get('external_changes', 0)}, "
+            f"conflicts={pull_summary.get('conflicts', 0)}"
+        )
+    else:
+        lines.append("Pull (card \u2192 workspace): skipped.")
+    return lines
+
+
+def pull_stage_summary(pull_report: Any) -> Dict[str, Any]:
+    return {
+        "copied": len(pull_report.copied),
+        "conflicts": len(pull_report.conflicts),
+        "external_changes": len(pull_report.external_changes),
+    }
+
+
+def card_state_display(
+    profile: Optional[Dict[str, Any]],
+    folder: str,
+    card_identity: Any,
+    pending_count: int,
+) -> str:
+    if profile is None:
+        if folder and os.path.isdir(folder):
+            if card_identity.has_any_id():
+                model = card_identity.target_model or "unknown"
+                return f"Card: connected ({model})"
+            return "Card: folder loaded"
+        return ""
+    name = profile.get("name") or "workspace"
+    ws_dir = profile.get("workspace_dir") or ""
+    card_match = False
+    if folder and os.path.isdir(folder) and folder != ws_dir:
+        card_match = bool(
+            (card_identity.volume_serial and card_identity.volume_serial == profile.get("card_volume_serial"))
+            or (card_identity.content_fingerprint and card_identity.content_fingerprint == profile.get("content_fingerprint"))
+        )
+    bits = [f"Workspace: {name}"]
+    bits.append("card connected" if card_match else "card detached")
+    if pending_count:
+        bits.append(f"{pending_count} pending")
+    return " \u00b7 ".join(bits)
+
+
+# ---- Revert import / bulk revert helpers --------------------------------
+
+def apply_revert_import_payload(
+    payload: Dict[str, Any],
+    *,
+    find_entry: Callable[[str], Optional["FreqEntry"]],
+    find_group: Callable[[str], Optional["GroupNode"]],
+    delete_entry: Callable[["FreqEntry"], None],
+    apply_snapshot: Callable[["FreqEntry", Dict[str, Any]], None],
+    restore_deleted: Callable[["GroupNode", Dict[str, Any]], bool],
+    delete_group: Callable[["GroupNode"], None],
+) -> Tuple[int, int, int, int, int]:
+    """Return (removed, reverted, restored, group_removed, failed)."""
+    removed = 0
+    reverted = 0
+    restored = 0
+    failed = 0
+    for add in payload.get("added") or []:
+        target = find_entry(add.get("id") or "")
+        if target is None:
+            continue
+        try:
+            delete_entry(target)
+            removed += 1
+        except Exception:
+            failed += 1
+    for upd in payload.get("updated") or []:
+        target = find_entry(upd.get("id") or "")
+        if target is None:
+            failed += 1
+            continue
+        try:
+            apply_snapshot(target, upd.get("before") or {})
+            reverted += 1
+        except Exception:
+            failed += 1
+    for dl in payload.get("deleted") or []:
+        try:
+            group = find_group(dl.get("group_key") or "")
+            if group is None:
+                failed += 1
+                continue
+            if restore_deleted(group, dl):
+                restored += 1
+            else:
+                failed += 1
+        except Exception:
+            failed += 1
+    group_removed = 0
+    for gkey in payload.get("groups_created") or []:
+        grp = find_group(gkey)
+        if grp is not None and not grp.entries:
+            try:
+                delete_group(grp)
+                group_removed += 1
+            except Exception:
+                pass
+    return removed, reverted, restored, group_removed, failed
+
+
+def events_newer_than_pivot(
+    events: List[Any],
+    pivot_event_id: str,
+    skip_ops: Set[str],
+) -> List[Any]:
+    seen_pivot = False
+    newer: List[Any] = []
+    for event in events:
+        if event.event_id == pivot_event_id:
+            seen_pivot = True
+            continue
+        if not seen_pivot:
+            continue
+        if event.op in skip_ops:
+            continue
+        if event.reverted:
+            continue
+        newer.append(event)
+    return newer
+
+
+# ---- Add-entry validation ------------------------------------------------
+
+@dataclass
+class AddEntryValidation:
+    ok: bool
+    error_title: str = ""
+    error_message: str = ""
+    freq_hz: Optional[int] = None
+    tgid: Optional[int] = None
+    service_type: int = 0
+
+
+def validate_add_entry(
+    *,
+    add_type: str,
+    group_type: str,
+    name: str,
+    stype_str: str,
+    freq_text: str,
+    tgid_text: str,
+    parse_freq_mhz: Callable[[str], int],
+) -> AddEntryValidation:
+    if not name:
+        return AddEntryValidation(False, "Missing", "Please enter a name / description.")
+    if not stype_str:
+        return AddEntryValidation(False, "Missing", "Please select a service type.")
+    service_type = int(stype_str.split(" - ")[0])
+    if add_type == "Conventional":
+        if group_type != "C-Group":
+            return AddEntryValidation(
+                False, "Wrong group",
+                "Select a Conventional group (under a county) to add a frequency.",
+            )
+        if not freq_text:
+            return AddEntryValidation(False, "Missing", "Please enter a frequency in MHz.")
+        try:
+            freq_hz = parse_freq_mhz(freq_text)
+        except ValueError:
+            return AddEntryValidation(
+                False, "Invalid",
+                "Could not parse frequency. Enter a number in MHz (e.g. 460.050)",
+            )
+        return AddEntryValidation(True, freq_hz=freq_hz, service_type=service_type)
+    if group_type != "T-Group":
+        return AddEntryValidation(
+            False, "Wrong group",
+            "Select a Trunked group (under a trunk system) to add a talkgroup.",
+        )
+    if not tgid_text:
+        return AddEntryValidation(False, "Missing", "Please enter a talkgroup ID.")
+    try:
+        tgid = int(tgid_text)
+    except ValueError:
+        return AddEntryValidation(False, "Invalid", "Talkgroup ID must be an integer.")
+    return AddEntryValidation(True, tgid=tgid, service_type=service_type)
+
+
+# ---- Alerts viewer helpers ----------------------------------------------
+
+def alerts_viewer_summary(alert_root: Optional[Path], files: List[Path]) -> str:
+    if alert_root is None or not alert_root.exists():
+        return "No alert folder found. Select a valid SD card folder first."
+    if not files:
+        return f"Alert folder found at {alert_root}, but no files are present."
+    return f"Alert root: {alert_root}    Files: {len(files)}"
+
+
+def alerts_file_tree_rows(
+    alert_root: Path,
+    files: List[Path],
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for p in files:
+        try:
+            rel_parent = p.parent.relative_to(alert_root)
+        except Exception:
+            rel_parent = Path(".")
+        key = str(rel_parent)
+        label = key if key != "." else "(root)"
+        try:
+            stat = p.stat()
+            size_kb = f"{stat.st_size / 1024:.1f} KB"
+            modified = datetime.fromtimestamp(stat.st_mtime).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+        except Exception:
+            size_kb = ""
+            modified = ""
+        rows.append({
+            "folder_key": key,
+            "folder_label": label,
+            "path": p,
+            "name": p.name,
+            "size_kb": size_kb,
+            "modified": modified,
+        })
+    return rows
+
+
+# ---- Import dialog populate rows ----------------------------------------
+
+def build_cfreq_import_tree_row(
+    freq: Dict[str, Any],
+    existing: Any,
+    cat_name: str,
+    *,
+    crossref_fn: Callable[[Dict[str, Any], str], Optional[Dict[str, Any]]],
+    filter_changes_fn: Callable[[Dict[str, Tuple[Any, Any]]], Dict[str, Tuple[Any, Any]]],
+    diff_fn: Callable[..., Dict[str, Tuple[Any, Any]]],
+    target_group_fn: Callable[[Any], str],
+    crossref_counts: Dict[str, int],
+) -> Optional[Dict[str, Any]]:
+    try:
+        freq_hz = int(round(float(freq["mhz"]) * 1_000_000))
+    except Exception:
+        return None
+    hint = crossref_fn(freq, cat_name) if existing is None else None
+    row = compute_cfreq_import_row(
+        freq,
+        existing,
+        cat_name,
+        filter_changes=filter_changes_fn,
+        diff_fn=diff_fn,
+        target_group_fn=target_group_fn,
+        crossref_hint=hint,
+    )
+    row_tags = apply_rr_crossref_tags(row["row_tags"], row["crossref"], crossref_counts)
+    return {
+        "freq_hz": freq_hz,
+        "row": row,
+        "row_tags": row_tags,
+        "hint": hint,
+    }
+
+
+def build_tg_import_tree_row(
+    tg: Dict[str, Any],
+    existing: Any,
+    *,
+    crossref_fn: Callable[[Dict[str, Any], str], Optional[Dict[str, Any]]],
+    filter_changes_fn: Callable[[Dict[str, Tuple[Any, Any]]], Dict[str, Tuple[Any, Any]]],
+    diff_fn: Callable[..., Dict[str, Tuple[Any, Any]]],
+    classify_fn: Callable[..., str],
+    encrypted_policy: str,
+    include_encrypted: bool,
+    fallback_name: str,
+    crossref_counts: Dict[str, int],
+) -> Optional[Dict[str, Any]]:
+    hint = crossref_fn(tg, fallback_name) if existing is None else None
+    row = compute_tg_import_row(
+        tg,
+        existing,
+        filter_changes=filter_changes_fn,
+        diff_fn=diff_fn,
+        classify_fn=classify_fn,
+        encrypted_policy=encrypted_policy,
+        include_encrypted=include_encrypted,
+        crossref_hint=hint,
+    )
+    row_tags = apply_rr_crossref_tags(row["row_tags"], row["crossref"], crossref_counts)
+    return {"row": row, "row_tags": row_tags, "hint": hint}

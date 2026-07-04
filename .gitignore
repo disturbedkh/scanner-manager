@@ -61,4 +61,5 @@ htmlcov/
 .sonar/cloud_issues_baseline.json
 .sonar/issues_checklist_r2.json
 .sonar/issues_checklist_r3.json
+.sonar/issues_checklist_r4.json
 sonarqube-vps.cer

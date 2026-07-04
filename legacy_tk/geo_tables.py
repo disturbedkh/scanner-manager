@@ -613,7 +613,12 @@ class FirmwareCityTable:
 class ScannerCityIndex:
     """Name-to-coordinate index derived from HPD C-Group names per state."""
 
-    CITY_TOKEN_RE = re.compile(r"^[A-Za-z][\w .'-]{0,60}$")
+    CITY_TOKEN_RE = re.compile(r"^[A-Za-z][\w .'\-]{0,60}$")
+    _PAREN_SUFFIX_RE = re.compile(r"\(.*")
+    _ADMIN_SUFFIX_RE = re.compile(
+        r"\b(?:County|Parish|Borough)\b", flags=re.IGNORECASE
+    )
+    _NAME_SPLIT_RE = re.compile(r"\s*[-:]\s*")
 
     def __init__(self):
         self.by_state_name: Dict[Tuple[int, str], Tuple[float, float]] = {}
@@ -641,11 +646,11 @@ class ScannerCityIndex:
     def _extract_city_tokens(cls, group_name: str) -> List[str]:
         if not group_name:
             return []
-        parts = [p.strip() for p in re.split(r"\s*[-:]\s*", group_name) if p.strip()]
+        parts = [p.strip() for p in cls._NAME_SPLIT_RE.split(group_name) if p.strip()]
         candidates: List[str] = []
         for part in parts:
-            cleaned = re.sub(r"\([^)]*\)", "", part).strip()
-            cleaned = re.sub(r"\b(County|Parish|Borough)\b", "", cleaned, flags=re.IGNORECASE).strip()
+            cleaned = cls._PAREN_SUFFIX_RE.sub("", part).strip()
+            cleaned = cls._ADMIN_SUFFIX_RE.sub("", cleaned).strip()
             if cleaned and cls.CITY_TOKEN_RE.match(cleaned):
                 candidates.append(cleaned)
         return candidates

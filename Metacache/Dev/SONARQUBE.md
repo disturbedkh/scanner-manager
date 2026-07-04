@@ -38,16 +38,23 @@ Quick status:
 
 Linux/macOS: use `./scripts/sonar_truststore.sh` then `./scripts/sonar_scan.sh`.
 
-## Baseline (2026-07-04, Round 3 complete — pending Cloud re-scan)
+## Baseline (2026-07-04, Round 4 Phase 5–6 — pending Cloud re-scan after push)
 
 | Metric | VPS (`scanner-manager`) | SonarCloud (`disturbedkh_scanner-manager`) |
 | --- | --- | --- |
 | Host | `https://217.216.48.172:18443` | `https://sonarcloud.io` |
 | Scope | Full tree (no legacy/Metacache/scripts exclusions) | Same — `sonar-project.properties` aligned |
-| OPEN issues (`main`) | TBD after GitLab push | **88 → 0 target** (export: `.sonar/issues_checklist_r3.json`) |
+| OPEN issues (`main`) | TBD after GitLab push | **57 → 0 target** (export: `.sonar/issues_checklist_r4.json`; MCP verified 2026-07-04) |
 | Coverage (`main`) | **91.9%** (prior product-only upload) | **≥ 88%** via GitHub Actions `coverage.xml` upload |
-| Quality gate | TBD full-scope | **OK target** (`new_security_rating`, `new_duplicated_lines_density` ≤ 3%) |
+| Quality gate | TBD full-scope | **OK target** (`new_security_rating`, `new_reliability_rating`, `new_duplicated_lines_density` ≤ 3%) |
 | CI floor | GitLab `--cov-fail-under=88` | GitHub `sonarcloud` job + `check_quality_gate.ps1 -Cloud -MaxOpenIssues 0` |
+
+Round 4 highlights (Phases 0–4 local, uncommitted):
+
+- GitHub CI: `QT_QPA_PLATFORM=offscreen`, Linux `libEGL`/mesa packages, `--cov-fail-under=88`.
+- `legacy_tk/sm_helpers.py` + `scanner_manager.py` tail: S3776/S1172 refactors; security path guards on scripts/RE tools.
+- Regression: `tests/test_legacy_tk_helpers.py` expanded; `tests/test_sonar_open_count.py` baseline → `issues_checklist_r4.json` (57 OPEN).
+- **Cloud still shows 57 OPEN** until GitLab → GitHub push + SonarCloud re-scan (local fixes not on Cloud yet).
 
 Round 3 highlights:
 
@@ -86,7 +93,7 @@ pytest -m "not requires_serial and not slow" --cov --cov-report=xml:coverage.xml
 
 - User-global MCP: **`Sonarcloud`** (primary) + **`Sonarqube`** (VPS fallback). See [`CURSOR.md`](CURSOR.md).
 - Sonar skills: `sonar-list-issues`, `sonar-quality-gate`, `sonar-coverage`, `sonar-analyze`.
-- Issue checklist export: `.sonar/issues_checklist_r3.json` (gitignored).
+- Issue checklist export: `.sonar/issues_checklist_r4.json` (gitignored; regenerate via `user-Sonarcloud` MCP or `scripts/generate_r4_checklist.py`).
 
 ## GitLab CI
 

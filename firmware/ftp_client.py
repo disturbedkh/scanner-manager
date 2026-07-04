@@ -110,6 +110,19 @@ class FtpEntry:
     modified: Optional[datetime]
 
 
+class VendorFtpTransport:
+    """Plain FTP transport for Uniden's vendor CDN endpoints.
+
+    Uniden Sentinel and BT885 Update Manager use unencrypted FTP per the
+    vendor protocol — SFTP/FTPS are not offered on these hosts. Callers
+    must only connect to hosts allowlisted in ``data/uniden_installers.json``.
+    """
+
+    @staticmethod
+    def connect(host: str, timeout: float) -> ftplib.FTP:
+        return ftplib.FTP(host, timeout=timeout)
+
+
 class UnidenFtpClient:
     """Stateless thin wrapper around ``ftplib.FTP``."""
 
@@ -176,8 +189,7 @@ class UnidenFtpClient:
             return written
 
     def _open_ftp(self, timeout: float) -> ftplib.FTP:
-        """Open FTP to the configured vendor host (Uniden CDN is FTP-only)."""
-        return ftplib.FTP(self._endpoint.host, timeout=timeout)
+        return VendorFtpTransport.connect(self._endpoint.host, timeout=timeout)
 
     @staticmethod
     def _parse_mdtm(text: str) -> Optional[datetime]:

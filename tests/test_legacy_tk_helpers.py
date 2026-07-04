@@ -12,16 +12,31 @@ from legacy_tk.rr_parsing import (
     is_rr_mode_encrypted,
 )
 from legacy_tk.sm_helpers import (
+    MetastoreRevertOps,
+    apply_metastore_revert,
     apply_rr_crossref_tags,
+    cfreq_diff_tree_rows,
     cfreq_import_row_display,
     compute_cfreq_import_row,
+    compute_group_coverage_info,
     compute_tg_import_row,
+    crossref_summary_suffix,
+    filter_meta_events,
     filter_rr_import_changes,
     flatten_rr_cfreq_rows,
     flatten_rr_tg_rows,
+    gather_cfreq_import_selection,
+    gather_tg_import_selection,
+    import_selection_payload,
+    meta_event_passes_filters,
+    rr_pull_entry_row,
+    rr_pull_ident_and_url,
     summarize_cfreq_import_rows,
+    summarize_tg_import_rows,
+    system_matches_location,
     tg_import_confirm_prompt,
     tg_import_row_display,
+    workspace_clone_result,
 )
 
 
@@ -33,7 +48,7 @@ def test_flatten_rr_cfreq_rows_merges_categories() -> None:
     }
     rows = flatten_rr_cfreq_rows(parsed)
     assert len(rows) == 2
-    assert rows[0]["mhz"] == 154.0
+    assert rows[0]["mhz"] == pytest.approx(154.0)
 
 
 @pytest.mark.unit
@@ -87,7 +102,6 @@ def test_apply_rr_crossref_tags_counts() -> None:
 def test_compute_cfreq_import_row_new_entry() -> None:
     row = compute_cfreq_import_row(
         {"mhz": 154.28, "name": "Dispatch", "mode": "NFM", "tone": ""},
-        154_280_000,
         None,
         "Fire",
         filter_changes=lambda raw: raw,
@@ -144,7 +158,7 @@ def test_rr_html_extract_cfreq_rows() -> None:
     """
     rows = html.extract_cfreq_rows_from_html(fragment)
     assert len(rows) == 1
-    assert rows[0]["mhz"] == 154.28
+    assert rows[0]["mhz"] == pytest.approx(154.28)
     assert rows[0]["fcc_callsign"] == "W1ABC"
     assert rows[0]["tone"] == "TONE=C100.0"
 
@@ -183,3 +197,625 @@ def test_classify_rr_tg_import_skips_new_encrypted() -> None:
         include_encrypted=False,
     )
     assert action == "encrypted"
+
+
+@pytest.mark.unit
+def test_crossref_summary_suffix() -> None:
+    assert crossref_summary_suffix({}) == ""
+    suffix = crossref_summary_suffix({"callsign": 2, "fuzzy": 1})
+    assert "2 callsign" in suffix
+    assert "1 fuzzy" in suffix
+
+
+@pytest.mark.unit
+def test_summarize_tg_import_rows_encrypted_counts() -> None:
+    meta = {
+        "a": {
+            "type": "tg",
+            "action": "new",
+            "checked": True,
+            "data": {"encrypted": False},
+        },
+        "b": {
+            "type": "tg",
+            "action": "delete_encrypted",
+            "checked": True,
+            "data": {"encrypted": True},
+        },
+    }
+    summary = summarize_tg_import_rows(meta, {"callsign": 1, "fuzzy": 0})
+    assert "1 new" in summary
+    assert "1 delete-encrypted" in summary
+    assert "1 total encrypted" in summary
+    assert "xref: 1 callsign" in summary
+
+
+@pytest.mark.unit
+def test_import_selection_payload_freq_hz() -> None:
+    meta = {
+        "data": {"mhz": 154.28},
+        "changes": {"mode": ("NFM", "FM")},
+        "existing": None,
+        "freq_hz": 154_280_000,
+    }
+    payload = import_selection_payload(meta, "update", include_freq_hz=True)
+    assert payload["__action__"] == "update"
+    assert payload["__freq_hz__"] == 154_280_000
+    assert payload["__changes__"]["mode"] == ("NFM", "FM")
+
+
+@pytest.mark.unit
+def test_gather_import_selections() -> None:
+    item_meta = {
+        "r1": {
+            "type": "cfreq",
+            "parent": "cat1",
+            "checked": True,
+            "action": "new",
+            "data": {"mhz": 154.0},
+            "changes": {},
+            "existing": None,
+            "freq_hz": 154_000_000,
+        },
+        "r2": {
+            "type": "tg",
+            "parent": "cat1",
+            "checked": True,
+            "action": "update",
+            "data": {"tgid": 100},
+            "changes": {"name": ("a", "b")},
+            "existing": None,
+        },
+    }
+    cfreq_sel, new_n, upd_n = gather_cfreq_import_selection(
+        item_meta, ["cat1"], lambda _cid: "Fire"
+    )
+    tg_sel, tg_new, tg_upd, tg_del = gather_tg_import_selection(
+        item_meta, ["cat1"], lambda _cid: "Fire"
+    )
+    assert new_n == 1 and upd_n == 0
+    assert cfreq_sel[0][1][0]["__freq_hz__"] == 154_000_000
+    assert tg_new == 0 and tg_upd == 1 and tg_del == 0
+    assert tg_sel[0][0] == "Fire"
+
+
+@pytest.mark.unit
+def test_rr_pull_helpers() -> None:
+    ident, url = rr_pull_ident_and_url({"sid": "1234"}, "trs")
+    assert ident == "1234"
+    assert url == "https://www.radioreference.com/db/sid/1234"
+    title, kind, ident_field, pull_url = rr_pull_entry_row(
+        {"system_kind": "ctid", "ctid": "99", "title": "County TG"},
+        "cfreq",
+    )
+    assert title == "County TG"
+    assert kind == "ctid"
+    assert ident_field == "99"
+    assert pull_url.endswith("/ctid/99")
+
+
+@pytest.mark.unit
+def test_meta_event_filters_and_rows() -> None:
+    class _Ev:
+        op = "EDIT"
+        source = "user"
+        reverted = False
+        committed = True
+        target_name = "Dispatch"
+        summary = ""
+        target_id = "e1"
+        event_id = "ev1"
+        ts = "now"
+
+    assert meta_event_passes_filters(
+        _Ev(),
+        op_labels={"EDIT": "Edit"},
+        op_filter="All",
+        src_filter="All",
+        status_filter="All",
+        committed_filter="All",
+        search_lower="dispatch",
+    )
+    assert not meta_event_passes_filters(
+        _Ev(),
+        op_labels={"EDIT": "Edit"},
+        op_filter="All",
+        src_filter="All",
+        status_filter="All",
+        committed_filter="All",
+        search_lower="missing",
+    )
+
+    class _PendingEv(_Ev):
+        committed = False
+
+    rows, pending, saved = filter_meta_events(
+        [_Ev(), _PendingEv()],
+        op_labels={"EDIT": "Edit"},
+        op_filter="All",
+        src_filter="All",
+        status_filter="All",
+        committed_filter="All",
+        search="",
+    )
+    assert len(rows) == 2
+    assert pending == 1 and saved == 1
+    assert rows[1]["tags"] == ("pending",)
+
+
+@pytest.mark.unit
+def test_apply_metastore_revert_unknown_op() -> None:
+    class _Ev:
+        target_name = "x"
+        target_id = "1"
+
+    ops = MetastoreRevertOps(
+        find_entry_by_id=lambda _x: None,
+        find_group_by_key=lambda _x: None,
+        find_system_by_key=lambda _x: None,
+        apply_entry_snapshot=lambda _e, _s: None,
+        apply_group_snapshot=lambda _g, _s: None,
+        edit_system_name=lambda _s, _n: None,
+        delete_entry=lambda _e: None,
+        delete_group=lambda _g: None,
+        update_service_type=lambda _e, _t: None,
+        reinsert_system=lambda _b: None,
+        reinsert_entry=lambda _p: False,
+        reinsert_group=lambda _p: None,
+        revert_import=lambda _p: (False, "fail"),
+        clear_group_link=lambda _x: None,
+        restore_group_link=lambda _x, _l: None,
+    )
+    ok, msg = apply_metastore_revert("UNKNOWN", _Ev(), {}, ops)
+    assert ok is False
+    assert "Don't know how to revert" in msg
+
+
+@pytest.mark.unit
+def test_compute_group_coverage_info_in_range() -> None:
+    from core.hpd import GroupNode, HpdRecord
+
+    group = GroupNode(
+        record=HpdRecord(0, "", "C-Group", []),
+        name="Dispatch",
+        group_type="C-Group",
+        group_id="10",
+        parent_id="1",
+        system_id="1",
+        system_type="Conventional",
+        system_name="Test",
+        lat=29.67,
+        lon=-82.39,
+        range_miles=50.0,
+    )
+    info = compute_group_coverage_info(group, (29.67, -82.39), tolerance=10.0)
+    assert info["status"] == "in_range"
+    assert info["has_geo"] is True
+
+
+@pytest.mark.unit
+def test_system_matches_location_county_scope() -> None:
+    from core.hpd import HpdRecord, SystemNode
+
+    sys_node = SystemNode(
+        record=HpdRecord(0, "", "Conventional", []),
+        system_type="Conventional",
+        system_id="1",
+        name="Local",
+        groups=[],
+        sites=[],
+        area_records=[],
+        county_ids=[42],
+    )
+    assert system_matches_location(
+        sys_node,
+        active_coords=None,
+        active_county_id=42,
+        selected_state_id=None,
+        tolerance=50.0,
+    )
+    assert not system_matches_location(
+        sys_node,
+        active_coords=None,
+        active_county_id=99,
+        selected_state_id=None,
+        tolerance=50.0,
+    )
+
+
+@pytest.mark.unit
+def test_cfreq_diff_tree_rows_added_only() -> None:
+    rows, counts = cfreq_diff_tree_rows(
+        {},
+        [{"mhz": 154.28, "name": "Disp", "mode": "NFM"}],
+        diff_fn=diff_cfreq_with_rr,
+        status_added="+",
+        status_removed="-",
+        status_changed="~",
+        status_same="=",
+    )
+    assert counts == {"added": 1, "removed": 0, "changed": 0, "same": 0}
+    assert rows[0]["tags"] == ("added",)
+
+
+@pytest.mark.unit
+def test_workspace_clone_result_nonempty() -> None:
+    import os
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        ws = os.path.join(tmp, "My_Workspace")
+        os.makedirs(ws)
+        with open(os.path.join(ws, "marker"), "w", encoding="utf-8") as fh:
+            fh.write("x")
+        result = workspace_clone_result("My Workspace", tmp)
+        assert result is not None
+        assert result["needs_nonempty_confirm"] is True
+        assert result["workspace_dir"] == ws
+
+
+@pytest.mark.unit
+def test_sm_helpers_config_and_sync(tmp_path) -> None:
+    from legacy_tk.sm_helpers import (
+        apply_sync_conflict_decision,
+        default_state_combo_index,
+        find_hpdb_config,
+        resolve_script_dir,
+        sync_result_summary,
+    )
+
+    cfg = tmp_path / "HPDB" / "hpdb.cfg"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text("x", encoding="utf-8")
+    assert find_hpdb_config(str(tmp_path)) == str(cfg)
+    assert default_state_combo_index([5, 12, 99]) == 1
+    assert default_state_combo_index([]) is None
+    assert resolve_script_dir(lambda: tmp_path) == tmp_path
+
+    rel = "HPDB/s_000001.hpd"
+    src = tmp_path / rel
+    src.parent.mkdir(parents=True, exist_ok=True)
+    src.write_text("data", encoding="utf-8")
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    err = apply_sync_conflict_decision(
+        rel, "take_card", card_root=str(tmp_path), workspace_dir=str(ws)
+    )
+    assert err is None
+    assert (ws / rel).read_text(encoding="utf-8") == "data"
+
+    class _Report:
+        copied = ["a"]
+        skipped_same = ["b"]
+        conflicts = []
+        external_changes = ["c"]
+
+    summary = sync_result_summary("card→workspace", _Report())
+    assert "1 copied" in summary and "1 external" in summary
+
+
+@pytest.mark.unit
+def test_sm_helpers_tree_and_vsd_labels() -> None:
+    from core.hpd import GroupNode, HpdRecord, SystemNode
+    from legacy_tk.sm_helpers import (
+        entry_identity_display,
+        format_vsd_section,
+        group_coverage_tree_tag,
+        group_tree_label,
+        system_tree_label,
+    )
+
+    assert group_coverage_tree_tag("in_range") == "group_in_range"
+    sys_node = SystemNode(
+        record=HpdRecord(0, "", "Conventional", []),
+        system_type="Conventional",
+        system_id="1",
+        name="County",
+        groups=[],
+        sites=[],
+        area_records=[],
+    )
+    label = system_tree_label(
+        sys_node,
+        apply_location=True,
+        ranking_on=True,
+        rank=0,
+        distance=12.3,
+        scope_label_fn=lambda _s: "LOCAL",
+    )
+    assert "#1" in label and "12.3 mi" in label
+    group = GroupNode(
+        record=HpdRecord(0, "", "C-Group", []),
+        name="Dispatch",
+        group_type="C-Group",
+        group_id="10",
+        parent_id="1",
+        system_id="1",
+        system_type="Conventional",
+        system_name="County",
+        lat=29.0,
+        lon=-82.0,
+        range_miles=25.0,
+    )
+    glabel = group_tree_label(
+        group,
+        {"has_geo": True, "distance": 5.0, "range_miles": 25.0},
+        apply_location=True,
+        has_active_coords=True,
+    )
+    assert "5.0 mi" in glabel
+    from core.hpd import FreqEntry
+
+    entry = FreqEntry(
+        record=HpdRecord(
+            0,
+            "C-Freq",
+            "Primary",
+            ["C-Freq", "1", "10", "Primary", "On", "154280000", "NFM", "", "2"],
+        ),
+        entry_type="C-Freq",
+        name="Primary",
+        service_type=2,
+        system_id="1",
+        system_type="Conventional",
+        group_id="10",
+    )
+    ident, mode, tone = entry_identity_display(entry, lambda s: int(s))
+    assert ident.endswith("MHz")
+    assert mode == "NFM"
+    section = format_vsd_section(
+        {
+            "profile": {"name": "Test", "workspace_dir": "/tmp/ws", "last_sync_at": None},
+            "pending_events": 2,
+            "card": {"connected": True, "target_model": "BT885"},
+        }
+    )
+    assert "Pending (uncommitted) events: 2" in section
+    assert "connected (BT885)" in section
+
+
+@pytest.mark.unit
+def test_sm_helpers_rr_local_maps_and_changes() -> None:
+    from core.hpd import FreqEntry, GroupNode, HpdRecord
+    from legacy_tk.sm_helpers import (
+        changes_detail,
+        local_cfreq_by_hz,
+        local_tgid_by_id,
+        rr_diff_mode,
+    )
+
+    cf = FreqEntry(
+        record=HpdRecord(
+            0, "C-Freq", "A", ["C-Freq", "1", "10", "A", "On", "154280000", "NFM", "", "2"]
+        ),
+        entry_type="C-Freq",
+        name="A",
+        service_type=2,
+        system_id="1",
+        system_type="Conventional",
+        group_id="10",
+    )
+    tg = FreqEntry(
+        record=HpdRecord(
+            0, "TGID", "B", ["TGID", "2", "10", "B", "On", "100", "DIGITAL", "2"]
+        ),
+        entry_type="TGID",
+        name="B",
+        service_type=2,
+        system_id="1",
+        system_type="Trunk",
+        group_id="10",
+    )
+    group = GroupNode(
+        record=HpdRecord(0, "", "C-Group", []),
+        name="G",
+        group_type="C-Group",
+        group_id="10",
+        parent_id="1",
+        system_id="1",
+        system_type="Conventional",
+        system_name="S",
+        entries=[cf, tg],
+    )
+    assert rr_diff_mode(group, None) == "tgid"
+    assert 154_280_000 in local_cfreq_by_hz(group)
+    assert local_tgid_by_id(group)[100].name == "B"
+    assert "NFM" in changes_detail({"mode": ("NFM", "FM")})
+
+
+@pytest.mark.unit
+def test_sm_helpers_mode_audit_and_filters() -> None:
+    from core.hpd import FreqEntry, HpdRecord
+    from legacy_tk.sm_helpers import (
+        audit_mode_issue_with_rr,
+        audit_mode_issues,
+        entry_matches_bulk_filter,
+        entry_passes_button_filter,
+        suggest_mode_for_freq,
+    )
+
+    assert suggest_mode_for_freq(154_280_000) == "NFM"
+    entry = FreqEntry(
+        record=HpdRecord(
+            0, "C-Freq", "Disp", ["C-Freq", "1", "10", "Disp", "On", "154280000", "AM", "", "2"]
+        ),
+        entry_type="C-Freq",
+        name="Disp",
+        service_type=2,
+        system_id="1",
+        system_type="Conventional",
+        group_id="10",
+    )
+    band_issue = audit_mode_issues(entry)
+    assert band_issue is not None
+    rr_issue = audit_mode_issue_with_rr(
+        entry,
+        {154_280_000: {"mode": "FM", "name": "Dispatch"}},
+    )
+    assert rr_issue is not None and rr_issue[2] == "rr"
+    assert entry_passes_button_filter(2, {2, 3}, include_others=False)
+    assert not entry_passes_button_filter(99, {2}, include_others=False)
+    assert entry_matches_bulk_filter(entry, {"C-Freq"}, {2}, None, None)
+
+
+@pytest.mark.unit
+def test_sm_helpers_location_and_geo_helpers() -> None:
+    from core.hpd import GroupNode, HpdRecord, SystemNode
+    from legacy_tk.sm_helpers import group_geo_strings, location_scope_label
+
+    group = GroupNode(
+        record=HpdRecord(0, "", "C-Group", []),
+        name="Dispatch",
+        group_type="C-Group",
+        group_id="10",
+        parent_id="1",
+        system_id="1",
+        system_type="Conventional",
+        system_name="Test",
+        lat=29.67,
+        lon=-82.39,
+        range_miles=50.0,
+    )
+    lat, lon, rng = group_geo_strings(group)
+    assert lat.startswith("29.")
+    assert rng == "50.00"
+    sys_node = SystemNode(
+        record=HpdRecord(0, "", "Conventional", []),
+        system_type="Conventional",
+        system_id="1",
+        name="Local",
+        groups=[],
+        sites=[],
+        area_records=[],
+        county_ids=[42],
+    )
+    assert location_scope_label(
+        sys_node, active_coords=None, active_county_id=42, tolerance=50.0
+    ) == "LOCAL"
+
+
+@pytest.mark.unit
+def test_sm_helpers_tgid_diff_and_metastore_revert_edit() -> None:
+    from core.hpd import FreqEntry, HpdRecord
+    from legacy_tk.rr_parsing import diff_tgid_with_rr
+    from legacy_tk.sm_helpers import MetastoreRevertOps, apply_metastore_revert, tgid_diff_tree_rows
+
+    rows, counts = tgid_diff_tree_rows(
+        {},
+        [{"tgid": 100, "name": "Disp", "mode": "D"}],
+        diff_fn=diff_tgid_with_rr,
+        mode_label_fn=lambda m: m,
+        status_added="+",
+        status_removed="-",
+        status_changed="~",
+        status_same="=",
+    )
+    assert counts["added"] == 1
+    assert rows[0]["tags"] == ("added",)
+
+    entry = FreqEntry(
+        record=HpdRecord(
+            0, "C-Freq", "X", ["C-Freq", "1", "10", "X", "On", "460000000", "NFM", "", "2"]
+        ),
+        entry_type="C-Freq",
+        name="X",
+        service_type=2,
+        system_id="1",
+        system_type="Conventional",
+        group_id="10",
+    )
+    snapshots: list[dict] = []
+
+    def _apply_snapshot(target, snap) -> None:
+        snapshots.append(snap)
+
+    ops = MetastoreRevertOps(
+        find_entry_by_id=lambda _x: entry,
+        find_group_by_key=lambda _x: None,
+        find_system_by_key=lambda _x: None,
+        apply_entry_snapshot=_apply_snapshot,
+        apply_group_snapshot=lambda _g, _s: None,
+        edit_system_name=lambda _s, _n: None,
+        delete_entry=lambda _e: None,
+        delete_group=lambda _g: None,
+        update_service_type=lambda _e, _t: None,
+        reinsert_system=lambda _b: None,
+        reinsert_entry=lambda _p: False,
+        reinsert_group=lambda _p: None,
+        revert_import=lambda _p: (False, "fail"),
+        clear_group_link=lambda _x: None,
+        restore_group_link=lambda _x, _l: None,
+    )
+
+    class _Ev:
+        target_id = "1"
+        target_name = "X"
+
+    from core.metastore import OP_EDIT_ENTRY
+
+    ok, msg = apply_metastore_revert(OP_EDIT_ENTRY, _Ev(), {"before": {"name": "Old"}}, ops)
+    assert ok is True
+    assert snapshots == [{"name": "Old"}]
+    assert "Reverted edit" in msg
+
+
+@pytest.mark.unit
+def test_rr_html_parsers_extended() -> None:
+    from legacy_tk.rr_html_parsers import (
+        clean_rr_category_title,
+        enrich_fcc_callsign_from_url,
+        parse_rr_category_aid,
+        parse_rr_conventional_ctid,
+        parse_rr_fcc_callsign,
+        parse_rr_html_by_url,
+        parse_rr_trs_sid,
+        rr_mode_to_hpd,
+        rr_tone_to_hpd,
+        tag_to_service_type,
+    )
+
+    assert rr_mode_to_hpd("FMN") == "NFM"
+    assert rr_tone_to_hpd("100.0 PL") == "TONE=C100.0"
+    assert rr_tone_to_hpd("023 DPL") == "TONE=D023"
+    assert tag_to_service_type("Law Dispatch") == 2
+
+    title = clean_rr_category_title(
+        'Fire Dispatch <a href="#">View Talkgroup Category Details</a>'
+    )
+    assert title == "Fire Dispatch"
+
+    fcc_html = """
+    <tr><td>154.2800</td><td><a href="/db/fcc/callsign/W1ABC">County</a></td>
+    <td></td><td></td><td>DISP</td><td>Dispatch</td><td>FMN</td><td>Fire</td></tr>
+    """
+    assert parse_rr_fcc_callsign(fcc_html) is not None
+
+    cat_html = """
+    <h3>County Fire</h3>
+    <tr><td>154.2800</td><td><a href="/db/fcc/callsign/W1ABC">County</a></td>
+    <td></td><td></td><td>DISP</td><td>Dispatch</td><td>FMN</td><td>Fire</td></tr>
+    """
+    cat = parse_rr_category_aid(cat_html)
+    assert cat is not None
+    assert cat["frequencies"]
+
+    ctid = parse_rr_conventional_ctid(cat_html)
+    assert ctid is not None
+    assert ctid["categories"]
+
+    trs_html = """
+    <title>Example TRS, Florida</title>
+    <h5>Law Dispatch</h5>
+    <tr><th>DEC</th><th>HEX</th><th>Mode</th><th>Alpha</th><th>Description</th><th>Tag</th></tr>
+    <tr><td>200</td><td>0C8</td><td>D</td><td>DISP</td><td>Dispatch</td><td>Law Dispatch</td></tr>
+    """
+    trs = parse_rr_trs_sid(trs_html)
+    assert trs is not None
+    assert trs["categories"][0]["talkgroups"][0]["tgid"] == 200
+
+    parsed = {"callsign": ""}
+    enrich_fcc_callsign_from_url(parsed, "https://www.radioreference.com/db/fcc/callsign/W1ABC")
+    assert parsed["fcc_callsign"] == "W1ABC"
+
+    by_url = parse_rr_html_by_url(cat_html, "https://www.radioreference.com/db/aid/12345")
+    assert by_url is not None

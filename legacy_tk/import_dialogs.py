@@ -18,9 +18,8 @@ from legacy_tk.rr_parsing import (
     diff_tgid_with_rr,
 )
 from legacy_tk.sm_helpers import (
-    apply_rr_crossref_tags,
-    compute_cfreq_import_row,
-    compute_tg_import_row,
+    build_cfreq_import_tree_row,
+    build_tg_import_tree_row,
     filter_rr_import_changes,
     gather_cfreq_import_selection,
     gather_tg_import_selection,
@@ -202,6 +201,44 @@ class ConventionalImportSelectionDialog:
                     return group.name
         return "(existing)"
 
+    def _insert_cfreq_tree_item(
+        self,
+        cat_id: str,
+        freq: Dict[str, Any],
+        freq_hz: int,
+        existing: Optional[FreqEntry],
+        built: Dict[str, Any],
+    ) -> None:
+        row = built["row"]
+        iid = self.tree.insert(
+            cat_id, tk.END, text="",
+            values=(
+                self.CHECK_ON if row["checked"] else self.CHECK_OFF,
+                row["action_text"],
+                f"{freq['mhz']:.4f}",
+                freq.get("name") or freq.get("alpha") or "",
+                freq.get("mode") or "",
+                freq.get("tone") or "",
+                freq.get("tag", ""),
+                _service_label(row["service"]) if isinstance(row["service"], int) else "",
+                row["target_group"],
+                row["crossref_text"],
+            ),
+            tags=built["row_tags"],
+        )
+        self._item_meta[iid] = {
+            "type": "cfreq",
+            "parent": cat_id,
+            "data": freq,
+            "freq_hz": freq_hz,
+            "checked": row["checked"],
+            "action": row["action"],
+            "changes": row["changes"],
+            "raw_changes": row["raw_changes"],
+            "existing": existing,
+            "crossref": row["crossref"],
+        }
+
     def _populate(self):
         self._crossref_counts = {"callsign": 0, "fuzzy": 0}
         for cat in self.categories:
@@ -218,54 +255,23 @@ class ConventionalImportSelectionDialog:
                 except Exception:
                     continue
                 existing = self._existing_by_freq.get(freq_hz)
-                hint = self.app.crossref_hint_for_rr_row(
-                    freq, fallback_name=cat_name
-                ) if existing is None else None
-                row = compute_cfreq_import_row(
+                built = build_cfreq_import_tree_row(
                     freq,
-                    freq_hz,
                     existing,
                     cat_name,
-                    filter_changes=self._filter_changes_by_policy,
+                    crossref_fn=lambda row, cname: self.app.crossref_hint_for_rr_row(
+                        row, fallback_name=cname
+                    ),
+                    filter_changes_fn=self._filter_changes_by_policy,
                     diff_fn=diff_cfreq_with_rr,
                     target_group_fn=self._target_group_name_for_existing,
-                    crossref_hint=hint,
+                    crossref_counts=self._crossref_counts,
                 )
-                row_tags = apply_rr_crossref_tags(
-                    row["row_tags"], row["crossref"], self._crossref_counts
+                if built is None:
+                    continue
+                self._insert_cfreq_tree_item(
+                    cat_id, freq, freq_hz, existing, built,
                 )
-                service_text = (
-                    _service_label(row["service"])
-                    if isinstance(row["service"], int) else ""
-                )
-                iid = self.tree.insert(
-                    cat_id, tk.END, text="",
-                    values=(
-                        self.CHECK_ON if row["checked"] else self.CHECK_OFF,
-                        row["action_text"],
-                        f"{freq['mhz']:.4f}",
-                        freq.get("name") or freq.get("alpha") or "",
-                        freq.get("mode") or "",
-                        freq.get("tone") or "",
-                        freq.get("tag", ""),
-                        service_text,
-                        row["target_group"],
-                        row["crossref_text"],
-                    ),
-                    tags=row_tags,
-                )
-                self._item_meta[iid] = {
-                    "type": "cfreq",
-                    "parent": cat_id,
-                    "data": freq,
-                    "freq_hz": freq_hz,
-                    "checked": row["checked"],
-                    "action": row["action"],
-                    "changes": row["changes"],
-                    "raw_changes": row["raw_changes"],
-                    "existing": existing,
-                    "crossref": row["crossref"],
-                }
             self._refresh_category(cat_id)
 
     def _refresh_category(self, cat_id: str):
@@ -555,6 +561,40 @@ class TrunkedImportSelectionDialog:
             mode_text = f"{mode_text} (enc)"
         return mode_text
 
+    def _insert_tg_tree_item(
+        self,
+        cat_id: str,
+        tg: Dict[str, Any],
+        existing: Optional[FreqEntry],
+        built: Dict[str, Any],
+    ) -> None:
+        row = built["row"]
+        iid = self.tree.insert(
+            cat_id, tk.END, text="",
+            values=(
+                self.CHECK_ON if row["checked"] else self.CHECK_OFF,
+                row["action_text"],
+                tg["tgid"],
+                tg.get("name") or tg.get("alpha") or f"TGID {tg['tgid']}",
+                self._tg_mode_display(tg),
+                tg.get("tag", ""),
+                _service_label(row["service"]) if isinstance(row["service"], int) else "",
+                row["crossref_text"],
+            ),
+            tags=built["row_tags"],
+        )
+        self._item_meta[iid] = {
+            "type": "tg",
+            "parent": cat_id,
+            "data": tg,
+            "checked": row["checked"],
+            "action": row["action"],
+            "changes": row["changes"],
+            "raw_changes": row["raw_changes"],
+            "existing": existing,
+            "crossref": row["crossref"],
+        }
+
     def _populate(self):
         self._crossref_counts = {"callsign": 0, "fuzzy": 0}
         system_name_hint = (self.parsed.get("system_name") or "").strip()
@@ -568,52 +608,23 @@ class TrunkedImportSelectionDialog:
             for tg in cat.get("talkgroups", []):
                 tgid_val = tg.get("tgid")
                 existing = self._existing_by_tgid.get(int(tgid_val)) if tgid_val else None
-                hint = self.app.crossref_hint_for_rr_row(
-                    tg,
-                    fallback_name=cat_name or system_name_hint,
-                ) if existing is None else None
-                row = compute_tg_import_row(
+                built = build_tg_import_tree_row(
                     tg,
                     existing,
-                    filter_changes=self._filter_changes_by_policy,
+                    crossref_fn=lambda row, fb: self.app.crossref_hint_for_rr_row(
+                        row, fallback_name=fb
+                    ),
+                    filter_changes_fn=self._filter_changes_by_policy,
                     diff_fn=diff_tgid_with_rr,
                     classify_fn=classify_rr_tg_import_action,
                     encrypted_policy=self.encrypted_policy_var.get(),
                     include_encrypted=self.include_encrypted_var.get(),
-                    crossref_hint=hint,
+                    fallback_name=cat_name or system_name_hint,
+                    crossref_counts=self._crossref_counts,
                 )
-                row_tags = apply_rr_crossref_tags(
-                    row["row_tags"], row["crossref"], self._crossref_counts
-                )
-                service_label_text = (
-                    _service_label(row["service"])
-                    if isinstance(row["service"], int) else ""
-                )
-                iid = self.tree.insert(
-                    cat_id, tk.END, text="",
-                    values=(
-                        self.CHECK_ON if row["checked"] else self.CHECK_OFF,
-                        row["action_text"],
-                        tg["tgid"],
-                        tg.get("name") or tg.get("alpha") or f"TGID {tg['tgid']}",
-                        self._tg_mode_display(tg),
-                        tg.get("tag", ""),
-                        service_label_text,
-                        row["crossref_text"],
-                    ),
-                    tags=row_tags,
-                )
-                self._item_meta[iid] = {
-                    "type": "tg",
-                    "parent": cat_id,
-                    "data": tg,
-                    "checked": row["checked"],
-                    "action": row["action"],
-                    "changes": row["changes"],
-                    "raw_changes": row["raw_changes"],
-                    "existing": existing,
-                    "crossref": row["crossref"],
-                }
+                if built is None:
+                    continue
+                self._insert_tg_tree_item(cat_id, tg, existing, built)
             self._refresh_category(cat_id)
 
     def _filter_changes_by_policy(

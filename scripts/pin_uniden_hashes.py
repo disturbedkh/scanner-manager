@@ -27,7 +27,12 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from core.path_utils import PathTraversalError, safe_resolve_path  # noqa: E402
+from core.path_utils import (  # noqa: E402
+    PathTraversalError,
+    safe_open_for_write,
+    safe_resolve_path,
+    safe_write_text,
+)
 from core.uniden_tools import sha256_of_file  # noqa: E402  (after sys.path tweak)
 
 _MANIFEST_REL = Path("data/uniden_installers.json")
@@ -56,7 +61,7 @@ def _safe_temp_dest(tmp_root: Path, filename: str) -> Path:
 
 
 def _download(url: str, tmp_root: Path, filename: str) -> int:
-    dest = _safe_temp_dest(tmp_root, filename)
+    _safe_temp_dest(tmp_root, filename)
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     start = time.monotonic()
     bytes_seen = 0
@@ -64,7 +69,7 @@ def _download(url: str, tmp_root: Path, filename: str) -> int:
     with urllib.request.urlopen(req, timeout=60) as response:
         total_header = response.headers.get("Content-Length")
         total = int(total_header) if total_header and total_header.isdigit() else 0
-        with dest.open("wb") as f:
+        with safe_open_for_write(tmp_root, filename, "wb") as f:
             while True:
                 data = response.read(chunk)
                 if not data:
@@ -112,12 +117,13 @@ def _write_manifest(manifest: dict, *, dry_run: bool) -> None:
     if dry_run:
         print("\n[dry-run] manifest not written.")
         return
-    manifest_path = safe_resolve_path(REPO_ROOT, _MANIFEST_REL)
-    manifest_path.write_text(
-        json.dumps(manifest, indent=2, sort_keys=False) + "\n", encoding="utf-8"
+    safe_write_text(
+        REPO_ROOT,
+        _MANIFEST_REL,
+        json.dumps(manifest, indent=2, sort_keys=False) + "\n",
     )
     print(
-        f"\nWrote {manifest_path.relative_to(REPO_ROOT)} "
+        f"\nWrote {_MANIFEST_REL.as_posix()} "
         f"(manifest_version={manifest.get('manifest_version')})."
     )
 
