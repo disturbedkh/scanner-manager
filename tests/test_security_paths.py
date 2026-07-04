@@ -2,13 +2,28 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 from core.path_utils import PathTraversalError, safe_resolve_path
-from firmware.ftp_client import BT885_FTP, SENTINEL_FTP, _MANIFEST_PATH
+from firmware.ftp_client import _MANIFEST_PATH, BT885_FTP, SENTINEL_FTP, UnidenFtpClient
+
+
+def _load_re_module(name: str, rel_path: str):
+    path = REPO_ROOT / "Metacache" / "Dev" / "RE" / "tools" / rel_path
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
 
 
 @pytest.mark.unit
@@ -51,3 +66,95 @@ def test_uniden_tools_sha256_rejects_escape() -> None:
     bad_path = Path("../../outside.bin")
     with pytest.raises(PathTraversalError):
         sha256_of_file(bad_path)
+
+
+@pytest.mark.unit
+def test_sanitize_file_rejects_outside_repo(tmp_path: Path) -> None:
+    sys.path.insert(0, str(REPO_ROOT))
+    from scripts.sanitize_for_github import sanitize_file
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret", encoding="utf-8")
+    with pytest.raises(PathTraversalError):
+        sanitize_file(outside, repo)
+
+
+@pytest.mark.unit
+def test_sanitize_file_writes_under_repo(tmp_path: Path) -> None:
+    sys.path.insert(0, str(REPO_ROOT))
+    from scripts.sanitize_for_github import sanitize_file
+
+    repo = tmp_path / "repo"
+    target = repo / "Metacache" / "note.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("host khutt", encoding="utf-8")
+    sanitize_file(target, repo)
+    assert "<user>" in target.read_text(encoding="utf-8")
+
+
+@pytest.mark.unit
+def test_pin_uniden_manifest_path_under_repo() -> None:
+    sys.path.insert(0, str(REPO_ROOT))
+    from scripts import pin_uniden_hashes as pin
+
+    assert pin.MANIFEST_PATH.is_relative_to(pin.REPO_ROOT.resolve())
+
+
+@pytest.mark.unit
+def test_ftp_download_rejects_relative_traversal() -> None:
+    client = UnidenFtpClient(SENTINEL_FTP)
+    with pytest.raises(PathTraversalError):
+        client.download("test.bin", "../../../outside.bin")
+
+
+@pytest.mark.unit
+def test_ftp_download_accepts_temp_path(tmp_path: Path, monkeypatch) -> None:
+    payload = b"firmware-bytes"
+
+    class _FakeFTP:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args) -> None:
+            pass
+
+        def login(self, *args) -> None:
+            pass
+
+        def cwd(self, *args) -> None:
+            pass
+
+        def size(self, name: str) -> int:
+            return len(payload)
+
+        def retrbinary(self, cmd: str, callback, blocksize: int = 8192) -> None:
+            callback(payload)
+
+    monkeypatch.setattr("firmware.ftp_client.ftplib.FTP", _FakeFTP)
+    dst = tmp_path / "blob.bin"
+    written = UnidenFtpClient(SENTINEL_FTP).download("blob.bin", str(dst))
+    assert written == len(payload)
+    assert dst.read_bytes() == payload
+
+
+@pytest.mark.unit
+def test_serial_probe_output_rejects_traversal() -> None:
+    serial_probe = _load_re_module("sec_serial_probe", "probes/serial_probe.py")
+    args = SimpleNamespace(out=Path("../escape.txt"))
+    with pytest.raises(PathTraversalError):
+        serial_probe._resolve_output_path(args)
+
+
+@pytest.mark.unit
+def test_find_mdl_handler_rejects_traversal_dump(tmp_path: Path) -> None:
+    re_common = _load_re_module("sec_re_common", "_common.py")
+    sys.path.insert(0, str(REPO_ROOT))
+    outside = tmp_path / "outside.json"
+    outside.write_text("{}", encoding="utf-8")
+    with pytest.raises(PathTraversalError):
+        re_common.safe_user_path(re_common.RE_ROOT, outside)

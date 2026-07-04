@@ -285,29 +285,25 @@ class CoverageHeatmapDialog:
             active.add(1)
         return active
 
-    def _render_tiles(self, circles, span: float) -> None:
-        self._clear_overlays()
-
-        # Build the full cluster list first, so both the heat grid and
-        # the marker/circle overlays use the exact same "in-scope" set.
-        # This is what lets the Span box actually reduce the number of
-        # tower icons the user sees (previously it only affected the
-        # heat grid).
+    def _heatmap_filter_options(self) -> Tuple[bool, Set[int], bool]:
         include_deleted = bool(
             getattr(self, "show_deleted_var", tk.BooleanVar(value=False)).get()
         )
+        include_others = bool(
+            getattr(self, "btn_others", tk.BooleanVar(value=True)).get()
+        )
+        return include_deleted, self._active_button_types(), include_others
+
+    def _span_clusters_for_heatmap(self, span: float):
+        include_deleted, active_buttons, include_others = self._heatmap_filter_options()
         all_clusters = coverage_maps.cluster_tower_points(
             self.app.hpd.systems,
             metastore=getattr(self.app, "_meta", None),
             include_deleted=include_deleted,
             session_snapshot_path=self._session_snapshot_path(),
         )
-        active_buttons = self._active_button_types()
-        include_others = bool(
-            getattr(self, "btn_others", tk.BooleanVar(value=True)).get()
-        )
         scannable = set(get_active_profile().scannable_service_types())
-        filtered_clusters = [
+        filtered = [
             c
             for c in all_clusters
             if coverage_maps.cluster_passes_button_filter(
@@ -315,57 +311,66 @@ class CoverageHeatmapDialog:
             )
         ]
         span_clusters = coverage_maps.clusters_within_span(
-            filtered_clusters, self.center_lat, self.center_lon, span
+            filtered, self.center_lat, self.center_lon, span
         )
-
         live_clusters = [c for c in span_clusters if not c.deleted]
         deleted_clusters = [c for c in span_clusters if c.deleted]
+        return include_deleted, live_clusters, deleted_clusters
 
-        # The heat grid only ever reflects *live* coverage; deleted
-        # towers are annotations, not part of what the scanner will
-        # actually scan tonight.
-        heat_source = []
-        for c in live_clusters:
-            for m in c.members:
-                heat_source.append((c.lat, c.lon, m.range_mi))
+    def _heat_source_from_clusters(self, live_clusters) -> List[Tuple[float, float, float]]:
+        heat_source: List[Tuple[float, float, float]] = []
+        for cluster in live_clusters:
+            for member in cluster.members:
+                heat_source.append((cluster.lat, cluster.lon, member.range_mi))
+        return heat_source
 
+    def _draw_heat_rectangles(self, result, span: float) -> List[coverage_maps.HeatRectangle]:
+        rectangles: List[coverage_maps.HeatRectangle] = []
+        if result.max_count <= 0:
+            return rectangles
+        rectangles = coverage_maps.heat_rectangles(result, buckets=self.HEAT_BUCKETS)
+        for rect in rectangles:
+            pts = coverage_maps.rectangle_polygon(
+                rect,
+                self.center_lat,
+                self.center_lon,
+                span,
+                result.grid,
+            )
+            try:
+                poly = self.map.set_polygon(
+                    pts,
+                    outline_color=rect.color,
+                    fill_color=rect.color,
+                    border_width=0,
+                )
+                self._heat_polygons.append(poly)
+            except Exception:
+                pass
+        return rectangles
+
+    def _heatmap_deleted_note(self, include_deleted: bool, deleted_clusters) -> str:
+        if not include_deleted:
+            return ""
+        n = len(deleted_clusters)
+        return (
+            f"    {n} removed tower"
+            f"{'s' if n != 1 else ''} shown in gray"
+        )
+
+    def _render_tiles(self, circles, span: float) -> None:
+        self._clear_overlays()
+        include_deleted, live_clusters, deleted_clusters = self._span_clusters_for_heatmap(span)
         result = coverage_maps.heat_cells(
-            heat_source,
+            self._heat_source_from_clusters(live_clusters),
             self.center_lat,
             self.center_lon,
             span,
             grid=self.DEFAULT_GRID,
         )
-        rectangles: List[coverage_maps.HeatRectangle] = []
-        if result.max_count > 0:
-            rectangles = coverage_maps.heat_rectangles(
-                result, buckets=self.HEAT_BUCKETS
-            )
-            for rect in rectangles:
-                pts = coverage_maps.rectangle_polygon(
-                    rect,
-                    self.center_lat,
-                    self.center_lon,
-                    span,
-                    result.grid,
-                )
-                try:
-                    poly = self.map.set_polygon(
-                        pts,
-                        outline_color=rect.color,
-                        fill_color=rect.color,
-                        border_width=0,
-                    )
-                    self._heat_polygons.append(poly)
-                except Exception:
-                    pass
+        rectangles = self._draw_heat_rectangles(result, span)
 
-        # Per-tower coverage circles (optional - off by default since
-        # they clutter the view when there are many towers).
-        if (
-            getattr(self, "circles_var", None)
-            and self.circles_var.get()
-        ):
+        if getattr(self, "circles_var", None) and self.circles_var.get():
             self._draw_coverage_circles(live_clusters, deleted=False)
             if include_deleted:
                 self._draw_coverage_circles(deleted_clusters, deleted=True)
@@ -385,13 +390,7 @@ class CoverageHeatmapDialog:
             if include_deleted:
                 self._add_cluster_markers(deleted_clusters, deleted=True)
 
-        live_member_count = sum(c.size for c in live_clusters)
-        deleted_note = ""
-        if include_deleted:
-            deleted_note = (
-                f"    {len(deleted_clusters)} removed tower"
-                f"{'s' if len(deleted_clusters) != 1 else ''} shown in gray"
-            )
+        deleted_note = self._heatmap_deleted_note(include_deleted, deleted_clusters)
         if result.max_count == 0:
             self.legend.configure(
                 text=(
@@ -401,6 +400,7 @@ class CoverageHeatmapDialog:
                 )
             )
             return
+        live_member_count = sum(c.size for c in live_clusters)
         self.legend.configure(
             text=(
                 f"{result.circles_considered} coverage circles across "
@@ -466,10 +466,10 @@ class CoverageHeatmapDialog:
         for cluster in clusters:
             label = cluster.short_label()
             try:
-                kwargs: Dict[str, Any] = dict(
-                    text=label,
-                    command=self._make_cluster_click_handler(cluster),
-                )
+                kwargs: Dict[str, Any] = {
+                    "text": label,
+                    "command": self._make_cluster_click_handler(cluster),
+                }
                 if deleted:
                     kwargs["marker_color_circle"] = "#888888"
                     kwargs["marker_color_outside"] = "#bdbdbd"

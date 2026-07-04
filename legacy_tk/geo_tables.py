@@ -310,6 +310,38 @@ class FirmwareZipTable:
         return parsed["state_map"], parsed["coord_map"]
 
     @classmethod
+    def _parse_zip_record(
+        cls,
+        rec: bytes,
+        record_size: int,
+        state_map: Dict[str, str],
+        coord_map: Dict[str, Tuple[float, float]],
+        flag_bytes: Dict[str, int],
+        extras: Dict[str, bytes],
+    ) -> None:
+        key = rec[:7].decode("ascii", errors="ignore")
+        if not re.fullmatch(r"[A-Z]{2}\d{5}", key):
+            return
+        zip_code = key[2:]
+        state_map[zip_code] = key[:2]
+        if len(rec) >= 8:
+            flag_bytes[zip_code] = rec[7]
+        if len(rec) >= 16:
+            try:
+                lat_raw = struct.unpack(">I", rec[8:12])[0]
+                lon_raw = struct.unpack(">I", rec[12:16])[0]
+                lat = lat_raw / cls.COORD_SCALE - cls.LAT_OFFSET
+                lon = lon_raw / cls.COORD_SCALE - cls.LON_OFFSET
+                if -90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0:
+                    coord_map[zip_code] = (lat, lon)
+            except Exception:
+                pass
+        if record_size > 16:
+            tail = bytes(rec[16:])
+            if any(b != 0 for b in tail):
+                extras[zip_code] = tail
+
+    @classmethod
     def _parse_zip_file_full(cls, path: Path) -> Dict[str, object]:
         empty = {
             "state_map": {},
@@ -336,27 +368,9 @@ class FirmwareZipTable:
         extras: Dict[str, bytes] = {}
         for i in range(0, len(payload) - record_size + 1, record_size):
             rec = payload[i: i + record_size]
-            key = rec[:7].decode("ascii", errors="ignore")
-            if not re.fullmatch(r"[A-Z]{2}\d{5}", key):
-                continue
-            zip_code = key[2:]
-            state_map[zip_code] = key[:2]
-            if len(rec) >= 8:
-                flag_bytes[zip_code] = rec[7]
-            if len(rec) >= 16:
-                try:
-                    lat_raw = struct.unpack(">I", rec[8:12])[0]
-                    lon_raw = struct.unpack(">I", rec[12:16])[0]
-                    lat = lat_raw / cls.COORD_SCALE - cls.LAT_OFFSET
-                    lon = lon_raw / cls.COORD_SCALE - cls.LON_OFFSET
-                    if -90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0:
-                        coord_map[zip_code] = (lat, lon)
-                except Exception:
-                    pass
-            if record_size > 16:
-                tail = bytes(rec[16:])
-                if any(b != 0 for b in tail):
-                    extras[zip_code] = tail
+            cls._parse_zip_record(
+                rec, record_size, state_map, coord_map, flag_bytes, extras
+            )
         return {
             "state_map": state_map,
             "coord_map": coord_map,
@@ -423,11 +437,6 @@ class FirmwareCityTable:
         self.by_state: Dict[str, List[CityRecord]] = {}
         self.file_record_size: int = self.RECORD_SIZE
         self.source_path: Optional[Path] = None
-
-    @property
-    def record_size(self) -> int:
-        """Alias for :attr:`file_record_size` (tests and RE tools)."""
-        return self.file_record_size
 
     def load_from_sd(self, sd_root: str) -> bool:
         firmware_dir = Path(sd_root) / "firmware"
@@ -500,6 +509,53 @@ class FirmwareCityTable:
                 hits += 1
         return hits
 
+    @staticmethod
+    def _encode_city_record_body(rec: CityRecord, tail_pad: int) -> bytes:
+        lat_raw = int(round((rec.lat + FirmwareCityTable.LAT_OFFSET) * FirmwareCityTable.COORD_SCALE))
+        lon_raw = int(round((rec.lon + FirmwareCityTable.LON_OFFSET) * FirmwareCityTable.COORD_SCALE))
+        lat_raw = max(0, min(lat_raw, 0xFFFFFFFF))
+        lon_raw = max(0, min(lon_raw, 0xFFFFFFFF))
+        body = bytearray(rec.state_abbrev.encode("ascii"))
+        body.extend(struct.pack(">H", rec.city_id & 0xFFFF))
+        body.extend(struct.pack(">I", lat_raw))
+        body.extend(struct.pack(">I", lon_raw))
+        if tail_pad:
+            tail = rec.extras or b""
+            if len(tail) < tail_pad:
+                tail = tail + b"\x00" * (tail_pad - len(tail))
+            else:
+                tail = tail[:tail_pad]
+            body.extend(tail)
+        return bytes(body)
+
+    @classmethod
+    def _parse_city_record(cls, rec: bytes, record_size: int) -> Optional[CityRecord]:
+        state_bytes = rec[:2]
+        try:
+            state_abbrev = state_bytes.decode("ascii", errors="ignore")
+        except Exception:
+            return None
+        if not re.fullmatch(r"[A-Z]{2}", state_abbrev):
+            return None
+        try:
+            city_id = struct.unpack(">H", rec[2:4])[0]
+            lat_raw = struct.unpack(">I", rec[4:8])[0]
+            lon_raw = struct.unpack(">I", rec[8:12])[0]
+        except Exception:
+            return None
+        lat = lat_raw / cls.COORD_SCALE - cls.LAT_OFFSET
+        lon = lon_raw / cls.COORD_SCALE - cls.LON_OFFSET
+        if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+            return None
+        extras = bytes(rec[12:]) if record_size > 12 else b""
+        return CityRecord(
+            state_abbrev=state_abbrev,
+            city_id=city_id,
+            lat=lat,
+            lon=lon,
+            extras=extras,
+        )
+
     @classmethod
     def _parse_file_with_size(cls, path: Path) -> Tuple[List[CityRecord], int]:
         try:
@@ -514,34 +570,9 @@ class FirmwareCityTable:
         record_size = cls._detect_city_record_size(payload)
         records: List[CityRecord] = []
         for i in range(0, len(payload) - record_size + 1, record_size):
-            rec = payload[i: i + record_size]
-            state_bytes = rec[:2]
-            try:
-                state_abbrev = state_bytes.decode("ascii", errors="ignore")
-            except Exception:
-                continue
-            if not re.fullmatch(r"[A-Z]{2}", state_abbrev):
-                continue
-            try:
-                city_id = struct.unpack(">H", rec[2:4])[0]
-                lat_raw = struct.unpack(">I", rec[4:8])[0]
-                lon_raw = struct.unpack(">I", rec[8:12])[0]
-            except Exception:
-                continue
-            lat = lat_raw / cls.COORD_SCALE - cls.LAT_OFFSET
-            lon = lon_raw / cls.COORD_SCALE - cls.LON_OFFSET
-            if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
-                continue
-            extras = bytes(rec[12:]) if record_size > 12 else b""
-            records.append(
-                CityRecord(
-                    state_abbrev=state_abbrev,
-                    city_id=city_id,
-                    lat=lat,
-                    lon=lon,
-                    extras=extras,
-                )
-            )
+            parsed = cls._parse_city_record(payload[i: i + record_size], record_size)
+            if parsed is not None:
+                records.append(parsed)
         return records, record_size
 
     def export_patched(
@@ -566,21 +597,7 @@ class FirmwareCityTable:
         for rec in extra_records:
             if len(rec.state_abbrev) != 2:
                 continue
-            lat_raw = int(round((rec.lat + self.LAT_OFFSET) * self.COORD_SCALE))
-            lon_raw = int(round((rec.lon + self.LON_OFFSET) * self.COORD_SCALE))
-            lat_raw = max(0, min(lat_raw, 0xFFFFFFFF))
-            lon_raw = max(0, min(lon_raw, 0xFFFFFFFF))
-            body.extend(rec.state_abbrev.encode("ascii"))
-            body.extend(struct.pack(">H", rec.city_id & 0xFFFF))
-            body.extend(struct.pack(">I", lat_raw))
-            body.extend(struct.pack(">I", lon_raw))
-            if tail_pad:
-                tail = rec.extras or b""
-                if len(tail) < tail_pad:
-                    tail = tail + b"\x00" * (tail_pad - len(tail))
-                else:
-                    tail = tail[:tail_pad]
-                body.extend(tail)
+            body.extend(self._encode_city_record_body(rec, tail_pad))
         if target_path == self.source_path and make_backup:
             # Single-snapshot pattern (same as HPD's .session.bak). One
             # overwrite per session keeps recovery possible without
@@ -596,23 +613,26 @@ class FirmwareCityTable:
 class ScannerCityIndex:
     """Name-to-coordinate index derived from HPD C-Group names per state."""
 
-    CITY_TOKEN_RE = re.compile(r"^([A-Za-z][A-Za-z .'-]{0,60})$")
+    CITY_TOKEN_RE = re.compile(r"^[A-Za-z][\w .'-]{0,60}$")
 
     def __init__(self):
         self.by_state_name: Dict[Tuple[int, str], Tuple[float, float]] = {}
+
+    def _index_group(self, group: Any, state_id: int) -> None:
+        if group.lat is None or group.lon is None:
+            return
+        coords = (group.lat, group.lon)
+        for token in self._extract_city_tokens(group.name or ""):
+            key = (state_id, self._norm(token))
+            if key not in self.by_state_name:
+                self.by_state_name[key] = coords
 
     def build(self, hpd: "HpdFile", state_id: Optional[int]):
         if state_id is None:
             return
         for system in hpd.systems:
             for group in system.groups:
-                if group.lat is None or group.lon is None:
-                    continue
-                name = group.name or ""
-                for token in self._extract_city_tokens(name):
-                    key = (state_id, self._norm(token))
-                    if key not in self.by_state_name:
-                        self.by_state_name[key] = (group.lat, group.lon)
+                self._index_group(group, state_id)
 
     def lookup(self, state_id: int, city_name: str) -> Optional[Tuple[float, float]]:
         return self.by_state_name.get((state_id, self._norm(city_name)))
@@ -649,6 +669,21 @@ class CustomLocationsStore:
     def path(self) -> Path:
         return self.script_dir / self.FILENAME
 
+    @staticmethod
+    def _parse_location_item(item: Any) -> Optional[Dict[str, Any]]:
+        if not isinstance(item, dict):
+            return None
+        try:
+            name = str(item.get("name", "")).strip()
+            state_id = int(item.get("state_id"))
+            lat = float(item.get("lat"))
+            lon = float(item.get("lon"))
+        except Exception:
+            return None
+        if not name:
+            return None
+        return {"name": name, "state_id": state_id, "lat": lat, "lon": lon}
+
     def load(self):
         self.locations = []
         if not self.path.exists():
@@ -664,22 +699,14 @@ class CustomLocationsStore:
             items = payload
         else:
             items = []
-        if isinstance(items, list):
-            cleaned: List[Dict[str, Any]] = []
-            for item in items:
-                if not isinstance(item, dict):
-                    continue
-                try:
-                    name = str(item.get("name", "")).strip()
-                    state_id = int(item.get("state_id"))
-                    lat = float(item.get("lat"))
-                    lon = float(item.get("lon"))
-                except Exception:
-                    continue
-                if not name:
-                    continue
-                cleaned.append({"name": name, "state_id": state_id, "lat": lat, "lon": lon})
-            self.locations = cleaned
+        if not isinstance(items, list):
+            return
+        cleaned: List[Dict[str, Any]] = []
+        for item in items:
+            parsed = self._parse_location_item(item)
+            if parsed is not None:
+                cleaned.append(parsed)
+        self.locations = cleaned
 
     def save(self):
         data = {"locations": self.locations}
@@ -725,7 +752,7 @@ def resolve_city_offline(
     name: str,
     config: HpdConfig,
     custom: CustomLocationsStore,
-    firmware_city: FirmwareCityTable,
+    _firmware_city: FirmwareCityTable,
     city_index: ScannerCityIndex,
     state_id: Optional[int] = None,
     state_abbrev: Optional[str] = None,

@@ -571,7 +571,7 @@ def _byte_diff(a: bytes, b: bytes, max_lines: int = 32) -> list[str]:
 
 def _resolve_output_path(args) -> Path:
     if args.out:
-        return Path(args.out)
+        return _c.safe_user_path(_c.RE_ROOT, args.out)
     _c.SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
     ts = _dt.datetime.now().strftime("%Y%m%dT%H%M%S")
     return _c.SESSIONS_DIR / f"sds100_serial_{ts}.txt"

@@ -541,7 +541,6 @@ def test_sync_pull_skips_changed_workspace_and_resolves_ancillary_both(tmp_path:
 
 def test_snapshot_disk_usage_and_delete_payload(tmp_path: Path):
     from core.sdcard import (
-        Snapshot,
         delete_snapshot_payload,
         snapshot_disk_usage,
         snapshot_workspace,

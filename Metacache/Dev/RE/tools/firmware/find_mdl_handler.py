@@ -118,7 +118,8 @@ def main() -> int:
     fw = fw_path.read_bytes()
     print(f"# Scanning {fw_path.relative_to(_c.REPO_ROOT)}  ({len(fw):,} bytes)")
 
-    funcs = _load_analysis_funcs(args.analysis_dump)
+    analysis_dump = _c.safe_user_path(_c.RE_ROOT, args.analysis_dump)
+    funcs = _load_analysis_funcs(analysis_dump)
 
     for tgt, label in DEFAULT_TARGETS.items():
         _print_target_refs(fw, funcs, tgt, label)

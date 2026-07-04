@@ -96,10 +96,10 @@ jobs:
           sudo apt-get install -y xvfb python3-tk
 
       - name: Run tests with coverage
-        run: xvfb-run -a pytest -m "not requires_serial and not slow" --cov --cov-report=xml:coverage.xml --cov-fail-under=85 -q
+        run: xvfb-run -a pytest -m "not requires_serial and not slow" --cov --cov-report=xml:coverage.xml --cov-fail-under=88 -q
 
       - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@v2
+        uses: SonarSource/sonarcloud-github-action@e44258b109568baa0df60ed515909fc6c72cba92 # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -109,3 +109,10 @@ jobs:
             -Dsonar.projectKey=disturbedkh_scanner-manager
             -Dsonar.python.coverage.reportPaths=coverage.xml
             -Dsonar.qualitygate.wait=true
+
+      - name: Check Cloud quality gate
+        shell: pwsh
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONARCLOUD_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: ./scripts/check_quality_gate.ps1 -Cloud -MaxOpenIssues 0

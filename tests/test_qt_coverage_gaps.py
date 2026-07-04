@@ -624,7 +624,6 @@ def test_add_device_dialog_autodetect_success(
 def test_add_device_dialog_accept_creates_device(
     qtbot, tmp_devices: Path, monkeypatch
 ) -> None:
-    from PySide6.QtWidgets import QMessageBox
 
     mgr = DeviceManager(devices_path=tmp_devices)
     dlg = AddDeviceDialog(mgr)
@@ -1041,9 +1040,8 @@ def test_group_edit_dialog_save(qtbot, loaded_hpd) -> None:
 
 
 def test_tgid_entry_edit_dialog_save(qtbot, tmp_path: Path) -> None:
-    from legacy_tk.scanner_manager import HpdFile
-
     from gui.editor.entry_dialog import EntryEditDialog
+    from legacy_tk.scanner_manager import HpdFile
 
     hpd_path = tmp_path / "trunk.hpd"
     hpd_path.write_text(

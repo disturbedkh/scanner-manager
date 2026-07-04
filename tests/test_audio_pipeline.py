@@ -16,7 +16,7 @@ from audio.encoder import (  # noqa: E402
 def _make_sounddevice_fake(input_stream):
     """Build a fake sounddevice module; InputStream mirrors the production API."""
     fake = type("_fake_sd", (), {"input_stream": classmethod(input_stream), "last_stream": None})
-    setattr(fake, "InputStream", fake.input_stream)
+    fake.InputStream = fake.input_stream
     return fake
 
 

@@ -13,10 +13,14 @@ from __future__ import annotations
 import ftplib
 import json
 import logging
+import sys
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, FrozenSet, List, Optional
+
+from core.path_utils import PathTraversalError, safe_resolve_path
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +67,40 @@ def _build_endpoints() -> tuple[FtpEndpoint, FtpEndpoint, FrozenSet[str]]:
 SENTINEL_FTP, BT885_FTP, _FTP_ALLOWED_HOSTS = _build_endpoints()
 
 
+def _allowed_download_roots() -> tuple[Path, ...]:
+    """Roots where ``download`` may write firmware blobs."""
+    roots = [Path(tempfile.gettempdir()).resolve(strict=False)]
+    if sys.platform == "win32":
+        import os
+
+        base = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local")))
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Caches"
+    else:
+        import os
+
+        base = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache")))
+    roots.append((base / "scanner-manager" / "firmware_cache").resolve(strict=False))
+    return tuple(roots)
+
+
+def _resolve_download_dst(dst_path: str | Path) -> Path:
+    """Resolve ``dst_path`` for writing; reject paths outside allowed roots."""
+    path = Path(dst_path)
+    if not path.is_absolute():
+        return safe_resolve_path(Path.cwd(), path)
+    resolved = path.expanduser().resolve(strict=False)
+    for root in _allowed_download_roots():
+        try:
+            resolved.relative_to(root)
+            return resolved
+        except ValueError:
+            continue
+    raise PathTraversalError(
+        f"Refusing to write FTP download outside allowed roots: {resolved}"
+    )
+
+
 @dataclass
 class FtpEntry:
     """One file in the FTP listing."""
@@ -100,19 +138,11 @@ class UnidenFtpClient:
             out: List[FtpEntry] = []
             for name in names:
                 size = 0
-                modified: Optional[datetime] = None
                 try:
                     size = ftp.size(name) or 0
                 except ftplib.error_perm:
                     pass
-                try:
-                    mdtm_response = ftp.sendcmd(f"MDTM {name}")
-                    parts = mdtm_response.split()
-                    if len(parts) >= 2:
-                        modified = self._parse_mdtm(parts[1])
-                except ftplib.error_perm:
-                    pass
-                out.append(FtpEntry(name=name, size_bytes=size, modified=modified))
+                out.append(FtpEntry(name=name, size_bytes=size, modified=None))
             return out
 
     def download(
@@ -131,7 +161,8 @@ class UnidenFtpClient:
             except ftplib.error_perm:
                 total = 0
             written = 0
-            with open(dst_path, "wb") as f:
+            dst = _resolve_download_dst(dst_path)
+            with dst.open("wb") as f:
                 def write_chunk(chunk: bytes) -> None:
                     nonlocal written
                     f.write(chunk)

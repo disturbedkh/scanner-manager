@@ -134,7 +134,8 @@ def _write_dispatch_report(
     entries: list,
     valid: list,
 ) -> None:
-    _c.ensure_dir(out.parent)
+    safe_out = _c.safe_user_path(_c.RE_ROOT, out)
+    _c.ensure_dir(safe_out.parent)
     lines = ["# SUB-port dispatch table (extracted)", ""]
     lines.append(f"- Firmware: `{fw_path.relative_to(_c.REPO_ROOT)}`")
     lines.append(f"- Table base: 0x{table_base:08X}")
@@ -146,7 +147,7 @@ def _write_dispatch_report(
     lines.append("|---:|---:|---|---|")
     for i, b, ch, h in valid:
         lines.append(f"| {i} | 0x{b:02X} | `{ch}` | `FUN_{h:08x}` |")
-    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    safe_out.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def main() -> int:

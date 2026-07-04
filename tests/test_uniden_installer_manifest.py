@@ -19,8 +19,9 @@ import json
 import re
 from pathlib import Path
 
-import core.uniden_tools as uniden_tools
 import pytest
+
+import core.uniden_tools as uniden_tools
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 

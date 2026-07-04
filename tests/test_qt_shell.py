@@ -415,7 +415,7 @@ def test_main_window_add_manage_and_firmware_menu(
             self._dm.add_device(self.created_device)
             return self.accepted
 
-    setattr(_FakeAddDlg, "Accepted", _FakeAddDlg.accepted)
+    _FakeAddDlg.Accepted = _FakeAddDlg.accepted
 
     class _FakeManageDlg:
         class _Sig:

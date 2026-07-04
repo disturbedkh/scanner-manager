@@ -394,7 +394,7 @@ def test_firmware_city_table_preserves_extras_round_trip(tmp_path: Path):
     )
     fct = FirmwareCityTable()
     assert fct.load_from_sd(str(sd_root)) is True
-    assert fct.record_size == 16
+    assert fct.file_record_size == 16
     assert fct.records[0].extras == rec_tail
 
     target = source_path.with_name(source_path.stem + ".custom.dat")

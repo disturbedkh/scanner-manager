@@ -38,16 +38,24 @@ Quick status:
 
 Linux/macOS: use `./scripts/sonar_truststore.sh` then `./scripts/sonar_scan.sh`.
 
-## Baseline (2026-07-04, Round 2 remediation in progress)
+## Baseline (2026-07-04, Round 3 complete — pending Cloud re-scan)
 
 | Metric | VPS (`scanner-manager`) | SonarCloud (`disturbedkh_scanner-manager`) |
 | --- | --- | --- |
 | Host | `https://217.216.48.172:18443` | `https://sonarcloud.io` |
 | Scope | Full tree (no legacy/Metacache/scripts exclusions) | Same — `sonar-project.properties` aligned |
-| OPEN issues (`main`) | TBD after full-scope upload | **160 → target 0** (export: `.sonar/issues_checklist_r2.json`) |
-| Coverage (`main`) | **91.9%** (prior product-only upload) | TBD until GitHub Actions upload with `coverage.xml` |
-| Quality gate | TBD full-scope | **ERROR** until OPEN = 0 |
-| CI floor | GitLab `--cov-fail-under=88` | GitHub `sonarcloud` job (blocking on `main` push) |
+| OPEN issues (`main`) | TBD after GitLab push | **88 → 0 target** (export: `.sonar/issues_checklist_r3.json`) |
+| Coverage (`main`) | **91.9%** (prior product-only upload) | **≥ 88%** via GitHub Actions `coverage.xml` upload |
+| Quality gate | TBD full-scope | **OK target** (`new_security_rating`, `new_duplicated_lines_density` ≤ 3%) |
+| CI floor | GitLab `--cov-fail-under=88` | GitHub `sonarcloud` job + `check_quality_gate.ps1 -Cloud -MaxOpenIssues 0` |
+
+Round 3 highlights:
+
+- GitHub [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml): pinned `sonarcloud-github-action` SHA, `--cov-fail-under=88`, post-scan Cloud gate.
+- `legacy_tk/sm_helpers.py` + `rr_html_parsers.py`: extracted complexity from `scanner_manager.py`, `rr_parsing.py`, `import_dialogs.py`, `coverage_ui.py`.
+- Security: `safe_resolve_path` / `safe_user_path` on scripts + RE tools; `tests/test_security_paths.py` extended.
+- Duplication: shared `core/hpd.py` geo helpers; thin `rr_parsing` facade re-exports parsers.
+- **`text:S8565` (`pyproject.toml`):** project uses committed [`requirements.lock`](../../requirements.lock) (pip-tools SSOT) instead of `uv.lock`/`poetry.lock` — documented here; no Sonar suppression.
 
 Local developer loop:
 
@@ -78,7 +86,7 @@ pytest -m "not requires_serial and not slow" --cov --cov-report=xml:coverage.xml
 
 - User-global MCP: **`Sonarcloud`** (primary) + **`Sonarqube`** (VPS fallback). See [`CURSOR.md`](CURSOR.md).
 - Sonar skills: `sonar-list-issues`, `sonar-quality-gate`, `sonar-coverage`, `sonar-analyze`.
-- Issue checklist export: `.sonar/issues_checklist.json` (gitignored).
+- Issue checklist export: `.sonar/issues_checklist_r3.json` (gitignored).
 
 ## GitLab CI
 

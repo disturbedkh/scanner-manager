@@ -571,7 +571,6 @@ def test_firmware_dock_mock_download_flow(
 def test_firmware_dock_stage_sub_firmware(
     qtbot, monkeypatch, sds_profile, device, tmp_path, auto_msgbox
 ):
-    from virtual_sd import StageKind
 
     monkeypatch.setenv("SCANNER_MANAGER_VIRTUAL_SD_ROOT", str(tmp_path / "vcards"))
     dock = FirmwareDock()
@@ -1064,6 +1063,7 @@ def test_firmware_dock_stage_virtual_card_error(
     qtbot, monkeypatch, sds_profile, device, tmp_path, auto_msgbox
 ):
     from PySide6.QtWidgets import QMessageBox
+
     from virtual_sd import VirtualCardError
 
     monkeypatch.setenv("SCANNER_MANAGER_VIRTUAL_SD_ROOT", str(tmp_path / "vcards"))
@@ -1137,6 +1137,7 @@ def test_firmware_dock_apply_staged_user_declines(
     qtbot, monkeypatch, sds_profile, device, tmp_path
 ):
     from PySide6.QtWidgets import QMessageBox
+
     from virtual_sd import StageKind
 
     monkeypatch.setenv("SCANNER_MANAGER_VIRTUAL_SD_ROOT", str(tmp_path / "vcards"))
@@ -1207,6 +1208,7 @@ def test_firmware_dock_discard_all_user_declines(
     qtbot, monkeypatch, sds_profile, device, tmp_path
 ):
     from PySide6.QtWidgets import QMessageBox
+
     from virtual_sd import StageKind
 
     monkeypatch.setenv("SCANNER_MANAGER_VIRTUAL_SD_ROOT", str(tmp_path / "vcards"))
@@ -1309,6 +1311,7 @@ def test_firmware_dock_update_wizard_user_declines_confirm(
     qtbot, monkeypatch, sds_profile, device, tmp_path
 ):
     from PySide6.QtWidgets import QMessageBox
+
     from firmware.updater import PreflightResult
 
     dock = FirmwareDock()

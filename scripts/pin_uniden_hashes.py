@@ -27,14 +27,36 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from core.path_utils import safe_resolve_path  # noqa: E402
+from core.path_utils import PathTraversalError, safe_resolve_path  # noqa: E402
 from core.uniden_tools import sha256_of_file  # noqa: E402  (after sys.path tweak)
 
-MANIFEST_PATH = safe_resolve_path(REPO_ROOT, REPO_ROOT / "data" / "uniden_installers.json")
+_MANIFEST_REL = Path("data/uniden_installers.json")
+MANIFEST_PATH = safe_resolve_path(REPO_ROOT, _MANIFEST_REL)
 USER_AGENT = "scanner-manager/pin-uniden-hashes (+https://github.com/disturbedkh/scanner-manager)"
 
 
-def _download(url: str, dest: Path) -> int:
+def _format_download_progress(bytes_seen: int, total: int, start: float) -> str:
+    elapsed = max(time.monotonic() - start, 1e-6)
+    speed = bytes_seen / elapsed / (1024 * 1024)
+    mb = bytes_seen / 1e6
+    if total:
+        pct = bytes_seen * 100 / total
+        return (
+            f"\r  {mb:8.2f} MB / {total / 1e6:.2f} MB "
+            f"({pct:5.1f}%)  {speed:5.2f} MB/s"
+        )
+    return f"\r  {mb:8.2f} MB  {speed:5.2f} MB/s"
+
+
+def _safe_temp_dest(tmp_root: Path, filename: str) -> Path:
+    try:
+        return safe_resolve_path(tmp_root, filename)
+    except PathTraversalError as exc:
+        raise ValueError(f"Refusing unsafe download filename {filename!r}") from exc
+
+
+def _download(url: str, tmp_root: Path, filename: str) -> int:
+    dest = _safe_temp_dest(tmp_root, filename)
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     start = time.monotonic()
     bytes_seen = 0
@@ -49,18 +71,7 @@ def _download(url: str, dest: Path) -> int:
                     break
                 f.write(data)
                 bytes_seen += len(data)
-                elapsed = max(time.monotonic() - start, 1e-6)
-                speed = bytes_seen / elapsed / (1024 * 1024)
-                if total:
-                    pct = bytes_seen * 100 / total
-                    sys.stdout.write(
-                        f"\r  {bytes_seen / 1e6:8.2f} MB / {total / 1e6:.2f} MB "
-                        f"({pct:5.1f}%)  {speed:5.2f} MB/s"
-                    )
-                else:
-                    sys.stdout.write(
-                        f"\r  {bytes_seen / 1e6:8.2f} MB  {speed:5.2f} MB/s"
-                    )
+                sys.stdout.write(_format_download_progress(bytes_seen, total, start))
                 sys.stdout.flush()
     sys.stdout.write("\n")
     return bytes_seen
@@ -72,9 +83,10 @@ def _pin_tool_entry(key: str, entry: dict) -> tuple[str, bool]:
     print(f"[{key}] {entry['display_name']} v{entry['version']}")
     print(f"  URL: {url}")
     with tempfile.TemporaryDirectory(prefix="pin-uniden-") as tmpdir:
-        tmp_path = Path(tmpdir) / f"{key}.bin"
-        size = _download(url, tmp_path)
-        digest = sha256_of_file(tmp_path)
+        tmp_base = Path(tmpdir)
+        filename = f"{key}.bin"
+        size = _download(url, tmp_base, filename)
+        digest = sha256_of_file(_safe_temp_dest(tmp_base, filename))
     old_sha = entry.get("sha256") or ""
     old_size = int(entry.get("size_bytes") or 0)
     changed = old_sha != digest or old_size != size
@@ -85,6 +97,29 @@ def _pin_tool_entry(key: str, entry: dict) -> tuple[str, bool]:
     print(f"  size_bytes: {size}")
     line = f"- `{key}` v{entry['version']}: sha256 `{digest}`, {size} bytes"
     return line, changed
+
+
+def _resolve_target_keys(tools: dict, tool: str | None) -> list[str] | int:
+    if tool:
+        if tool not in tools:
+            print(f"ERROR: unknown tool key {tool!r}. Known: {list(tools)}", file=sys.stderr)
+            return 2
+        return [tool]
+    return list(tools)
+
+
+def _write_manifest(manifest: dict, *, dry_run: bool) -> None:
+    if dry_run:
+        print("\n[dry-run] manifest not written.")
+        return
+    manifest_path = safe_resolve_path(REPO_ROOT, _MANIFEST_REL)
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=False) + "\n", encoding="utf-8"
+    )
+    print(
+        f"\nWrote {manifest_path.relative_to(REPO_ROOT)} "
+        f"(manifest_version={manifest.get('manifest_version')})."
+    )
 
 
 def main() -> int:
@@ -99,15 +134,11 @@ def main() -> int:
 
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     tools = manifest.get("tools") or {}
-    if args.tool:
-        if args.tool not in tools:
-            print(f"ERROR: unknown tool key {args.tool!r}. Known: {list(tools)}", file=sys.stderr)
-            return 2
-        target_keys = [args.tool]
-    else:
-        target_keys = list(tools)
+    target_keys = _resolve_target_keys(tools, args.tool)
+    if isinstance(target_keys, int):
+        return target_keys
 
-    verification_lines = []
+    verification_lines: list[str] = []
     changed = False
 
     for key in target_keys:
@@ -118,13 +149,7 @@ def main() -> int:
     if changed and not args.dry_run:
         manifest["manifest_version"] = int(manifest.get("manifest_version") or 1) + 1
 
-    if args.dry_run:
-        print("\n[dry-run] manifest not written.")
-    else:
-        MANIFEST_PATH.write_text(
-            json.dumps(manifest, indent=2, sort_keys=False) + "\n", encoding="utf-8"
-        )
-        print(f"\nWrote {MANIFEST_PATH.relative_to(REPO_ROOT)} (manifest_version={manifest.get('manifest_version')}).")
+    _write_manifest(manifest, dry_run=args.dry_run)
 
     print("\n--- CHANGELOG verification block ---")
     for line in verification_lines:

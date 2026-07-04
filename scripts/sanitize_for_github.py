@@ -22,10 +22,10 @@ except ImportError as exc:  # pragma: no cover
 
 _RULES_NAME = "metacache_export_rules.yaml"
 
-_HOST_RE = re.compile(r"^# Host\s*:?\s*.*$", re.IGNORECASE | re.MULTILINE)
-_OUTPUT_RE = re.compile(r"^# Output\s*:?\s*.*$", re.IGNORECASE | re.MULTILINE)
-_WIN_USER_PATH = re.compile(r"[A-Za-z]:\\Users\\[^\\/\s\"']+", re.IGNORECASE)
-_WIN_DRIVE_REPO = re.compile(r"[A-Za-z]:\\scanner-manager", re.IGNORECASE)
+_HOST_RE = re.compile(r"^# Host\s*:?\s*[^\r\n]*", re.IGNORECASE | re.MULTILINE)
+_OUTPUT_RE = re.compile(r"^# Output\s*:?\s*[^\r\n]*", re.IGNORECASE | re.MULTILINE)
+_WIN_USER_PATH = re.compile(r"[a-z]:\\Users\\[^\\/ \t\r\n\"']+", re.IGNORECASE)
+_WIN_DRIVE_REPO = re.compile(r"[a-z]:\\scanner-manager", re.IGNORECASE)
 _KNOWN_HOSTS = re.compile(r"\b(?:MAINGAMINGPC|MINILAPTOP)\b", re.IGNORECASE)
 _KHUTT = re.compile(r"\bkhutt\b", re.IGNORECASE)
 _JSONL_KEYS = ("host", "hostname", "output", "output_path", "repo_root", "path")
@@ -106,6 +106,17 @@ def _collect_rglob(repo_root: Path, pattern: str) -> list[Path]:
     return out
 
 
+def _glob_simple_matches(repo_root: Path, norm: str) -> list[Path]:
+    out: list[Path] = []
+    for candidate in repo_root.glob(norm):
+        if not candidate.is_file():
+            continue
+        safe = _safe_path_under(repo_root, candidate)
+        if safe is not None:
+            out.append(safe)
+    return out
+
+
 def _matching_files(repo_root: Path, globs: list[str]) -> list[Path]:
     out: list[Path] = []
     for pattern in globs:
@@ -113,12 +124,7 @@ def _matching_files(repo_root: Path, globs: list[str]) -> list[Path]:
         if "**" in norm or norm.startswith("*"):
             out.extend(_collect_rglob(repo_root, norm))
         else:
-            for candidate in repo_root.glob(norm):
-                if not candidate.is_file():
-                    continue
-                safe = _safe_path_under(repo_root, candidate)
-                if safe is not None:
-                    out.append(safe)
+            out.extend(_glob_simple_matches(repo_root, norm))
     return sorted(set(out))
 
 
@@ -166,21 +172,29 @@ def sanitize_analysis_dump(text: str) -> str:
 
 
 def sanitize_file(path: Path, repo_root: Path) -> None:
-    rel = path.relative_to(repo_root).as_posix()
-    raw = path.read_text(encoding="utf-8", errors="replace")
-    if rel.endswith(".jsonl"):
+    root = repo_root.resolve(strict=False)
+    try:
+        rel = path.resolve(strict=False).relative_to(root)
+    except ValueError as exc:
+        raise PathTraversalError(
+            f"Refusing to sanitize path outside repo: {path}"
+        ) from exc
+    safe_path = safe_resolve_path(root, rel)
+    rel_posix = rel.as_posix()
+    raw = safe_path.read_text(encoding="utf-8", errors="replace")
+    if rel_posix.endswith(".jsonl"):
         sanitized = "".join(
-            sanitize_jsonl_line(line, rel) for line in raw.splitlines(keepends=True)
+            sanitize_jsonl_line(line, rel_posix) for line in raw.splitlines(keepends=True)
         )
-    elif rel.endswith(".json"):
+    elif rel_posix.endswith(".json"):
         sanitized = sanitize_analysis_dump(raw)
     else:
-        sanitized = sanitize_session_text(raw, rel)
-    path.write_text(sanitized, encoding="utf-8")
+        sanitized = sanitize_session_text(raw, rel_posix)
+    safe_path.write_text(sanitized, encoding="utf-8")
 
 
 def _audit_skip(rel: str) -> bool:
-    if rel.startswith(".git/") or rel.startswith("tests/"):
+    if rel.startswith((".git/", "tests/")):
         return True
     return rel in (
         "scripts/publish_github.ps1",

@@ -120,7 +120,7 @@ def run_city_parser(card_root: Path) -> Dict[str, object]:
     return {
         "present": True,
         "ok": ok,
-        "record_size": ct.record_size,
+        "record_size": ct.file_record_size,
         "record_count": len(ct.records),
         "states": sorted(ct.by_state.keys()),
         "state_counts": {s: len(rs) for s, rs in sorted(ct.by_state.items())},

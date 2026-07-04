@@ -19,7 +19,6 @@ pytest.importorskip("pytestqt")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtWidgets import QInputDialog, QTextEdit  # noqa: E402
 
 from gui.dialogs.changes import ChangesPanelDialog  # noqa: E402
@@ -489,8 +488,9 @@ def test_profile_snapshots_take_without_card(qtbot, auto_msgbox):
 def test_profile_snapshots_restore_and_delete_cancel(
     qtbot, tmp_path: Path, monkeypatch, auto_msgbox
 ):
-    from gui.dialogs import profile_snapshots as ps
     from PySide6.QtWidgets import QMessageBox
+
+    from gui.dialogs import profile_snapshots as ps
 
     card = tmp_path / "card"
     bcd = card / "BCDx36HP"

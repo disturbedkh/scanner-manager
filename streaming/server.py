@@ -144,7 +144,7 @@ class StreamingServer:
 
     def _build_app(self):
         from fastapi import FastAPI
-        from fastapi.responses import HTMLResponse, StreamingResponse
+        from fastapi.responses import HTMLResponse
 
         app = FastAPI(title="Scanner Manager", version="1.0")
 

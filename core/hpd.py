@@ -156,6 +156,10 @@ class _BuildState:
     current_site: Optional[SiteNode] = None
 
 
+_STATE_ID_RE = re.compile(r"StateId=(-?\d+)")
+_COUNTY_ID_RE = re.compile(r"CountyId=(-?\d+)")
+
+
 class HpdFile:
     """Parses and manages an HPD file."""
 
@@ -807,11 +811,8 @@ class HpdFile:
             entry = self._lookup_custom_entry(custom, entry_map, fallback_map)
 
             if entry is not None:
-                changed = False
                 if entry.service_type != custom.service_type:
                     self.update_service_type(entry, custom.service_type)
-                    changed = True
-                if changed:
                     reapplied += 1
                 continue
 
@@ -951,11 +952,11 @@ class HpdFile:
         county_id = None
         for field_value in fields:
             if "StateId=" in field_value:
-                match = re.search(r"StateId=(-?\d+)", field_value)
+                match = _STATE_ID_RE.search(field_value)
                 if match:
                     state_id = HpdFile._parse_int(match.group(1))
             if "CountyId=" in field_value:
-                match = re.search(r"CountyId=(-?\d+)", field_value)
+                match = _COUNTY_ID_RE.search(field_value)
                 if match:
                     county_id = HpdFile._parse_int(match.group(1))
         return state_id, county_id

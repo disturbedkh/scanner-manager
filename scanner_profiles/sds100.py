@@ -34,7 +34,7 @@ References:
 from __future__ import annotations
 
 import re
-from typing import Dict, FrozenSet, List, Optional, Sequence, Set, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from .base import ScannerProfile
 

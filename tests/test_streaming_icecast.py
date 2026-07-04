@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import socket
-import threading
 import time
 from typing import List, Optional
 

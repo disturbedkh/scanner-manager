@@ -8,10 +8,10 @@ from core.metastore import (
     Event,
     GlobalMetaStore,
     MetaStore,
+    _safe_iso_timestamp,
     entry_id_for,
     has_session_snapshot,
     write_session_snapshot,
-    _safe_iso_timestamp,
 )
 
 

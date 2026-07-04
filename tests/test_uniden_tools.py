@@ -34,6 +34,7 @@ from core.uniden_tools import (
     run_tool,
 )
 
+
 # Windows four-part file-version strings for mocks (not network addresses).
 def _win_file_version(*parts: int) -> str:
     return ".".join(str(p) for p in parts)
