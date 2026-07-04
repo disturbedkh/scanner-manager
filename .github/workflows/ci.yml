@@ -108,6 +108,7 @@ jobs:
             -Dsonar.organization=disturbedkh
             -Dsonar.projectKey=disturbedkh_scanner-manager
             -Dsonar.python.version=3.12
+            -Dsonar.sourceEncoding=UTF-8
             -Dsonar.python.coverage.reportPaths=coverage.xml
             -Dsonar.qualitygate.wait=true
 

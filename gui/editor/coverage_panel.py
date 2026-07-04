@@ -1,4 +1,4 @@
-﻿"""Coverage panel: heatmap + map (popout-only).
+"""Coverage panel: heatmap + map (popout-only).
 
 Two visualisations:
 

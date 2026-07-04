@@ -426,7 +426,7 @@ function Invoke-SonarCloudScannerUpload {
     try {
         $env:SONAR_HOST_URL = $hostUrl
         $env:SONAR_TOKEN = $Token
-        $env:SONAR_SCANNER_OPTS = "-Dsonar.organization=$($script:SonarCloudOrganization) -Dsonar.projectKey=$($script:SonarCloudProjectKey)"
+        $env:SONAR_SCANNER_OPTS = "-Dsonar.organization=$($script:SonarCloudOrganization) -Dsonar.projectKey=$($script:SonarCloudProjectKey) -Dsonar.python.version=3.12 -Dsonar.sourceEncoding=UTF-8"
         Invoke-SonarScannerUpload -HostUrl $hostUrl -Token $Token
     } finally {
         $env:SONAR_HOST_URL = $prevHost

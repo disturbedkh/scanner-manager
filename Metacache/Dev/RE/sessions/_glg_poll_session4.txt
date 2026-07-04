@@ -1,4 +1,4 @@
-﻿# SDS100 passive serial probe
+# SDS100 passive serial probe
 # When     : 2026-04-27T18:47:26
 # Host     : MAINGAMINGPC
 # Port     : COM4  (baud=115200, 8N1)
