@@ -8,7 +8,7 @@ Quality + coverage analysis for **active product code** (Qt default path).
 ## Quick start (any dev machine)
 
 ```powershell
-# Run from repo root: cd g:\scanner-manager
+# Run from repository root (your checkout directory)
 
 # 1. One-time TLS truststore (self-signed cert)
 .\sonar_truststore.ps1
@@ -163,7 +163,7 @@ Re-review after scan: SonarQube â†’ **Security Hotspots** (expect 100% revi
 | Quality gate `new_violations=1` | Ensure `sonar.branch.name=main`; re-upload; check OPEN on branch with PS token |
 | `coverage.xml` `__init__.py` ambiguity | Omit `**/__init__.py` in `[tool.coverage.run]` (`pyproject.toml`) |
 | `docker ... cannot find the file specified` | Start Docker Desktop, or use native `sonar-scanner` on PATH (auto-fallback) |
-| Script not found | `cd g:\scanner-manager` first; use `.\sonar_scan.ps1` not from `$HOME` |
+| Script not found | Run from repository root; use `.\sonar_scan.ps1` not from `$HOME` |
 | Missing truststore | `keytool` requires JDK on PATH |
 | `sonar scan` not found | Use `.\scripts\sonar_scan.ps1` (Docker scanner CLI) â€” sonarqube-cli v1 has no full-project scan |
 | MCP: no project key | Check [`.sonarlint/connectedMode.json`](../../.sonarlint/connectedMode.json); reload MCP |

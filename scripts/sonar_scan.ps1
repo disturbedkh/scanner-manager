@@ -8,7 +8,7 @@
 $ErrorActionPreference = "Stop"
 Set-Location (Split-Path -Parent $PSScriptRoot)
 if (-not (Test-Path "sonar-project.properties")) {
-    throw "Run this from the scanner-manager repo root: cd g:\scanner-manager; .\sonar_scan.ps1"
+    throw "Run this from the repository root (directory containing sonar-project.properties)."
 }
 . "$PSScriptRoot\sonar_config.ps1"
 
@@ -49,7 +49,7 @@ if (-not $sonarToken) {
 No VPS token for scanner-manager. Machine SONAR_* env vars point at a different server.
   sonar auth login -s https://217.216.48.172:18443
   OR: `$env:SCANNER_MANAGER_SONAR_TOKEN = '<token from SonarQube UI>'
-Run from repo root: cd g:\scanner-manager; .\sonar_scan.ps1
+Run from repository root: .\scripts\sonar_scan.ps1
 "@
 }
 

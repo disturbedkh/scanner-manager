@@ -6,7 +6,7 @@
 $ErrorActionPreference = "Stop"
 Set-Location (Split-Path -Parent $PSScriptRoot)
 if (-not (Test-Path "sonar-project.properties")) {
-    throw "Run this from the scanner-manager repo root: cd g:\scanner-manager; .\sonar_truststore.ps1"
+    throw "Run this from the repository root (directory containing sonar-project.properties)."
 }
 . "$PSScriptRoot\sonar_config.ps1"
 

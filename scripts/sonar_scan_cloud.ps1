@@ -9,7 +9,7 @@
 $ErrorActionPreference = "Stop"
 Set-Location (Split-Path -Parent $PSScriptRoot)
 if (-not (Test-Path "sonar-project.properties")) {
-    throw "Run from repo root: cd g:\scanner-manager; .\scripts\sonar_scan_cloud.ps1"
+    throw "Run from repository root (directory containing sonar-project.properties)."
 }
 . "$PSScriptRoot\sonar_config.ps1"
 

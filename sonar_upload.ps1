@@ -4,7 +4,7 @@
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 if (-not (Test-Path "sonar-project.properties")) {
-    throw "Run this from the scanner-manager repo root: cd g:\scanner-manager; .\sonar_upload.ps1"
+    throw "Run this from the repository root (directory containing sonar-project.properties)."
 }
 if (-not (Test-Path "coverage.xml")) {
     throw "Missing coverage.xml. Run .\sonar_scan.ps1 first or generate with pytest --cov."
