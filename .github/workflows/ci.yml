@@ -151,6 +151,12 @@ jobs:
         with:
           name: coverage-xml
 
+      - name: Disable SonarCloud Automatic Analysis (CI scanner prerequisite)
+        shell: bash
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: bash ./scripts/sonarcloud_disable_autoscan.sh
+
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@e44258b109568baa0df60ed515909fc6c72cba92 # v2
         env:
