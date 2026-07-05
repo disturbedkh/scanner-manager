@@ -33,7 +33,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[full,dev]" -c requirements.lock
+          python -m pip install -e ".[full,dev]"
 
       - name: Install Linux headless X helpers
         if: runner.os == 'Linux'
@@ -83,7 +83,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[full,dev]" -c requirements.lock
+          python -m pip install -e ".[full,dev]"
 
       - name: Install headless X helpers
         run: |
