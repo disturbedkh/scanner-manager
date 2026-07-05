@@ -191,7 +191,7 @@ The `sonarqube` job in [`.gitlab-ci.yml`](../../.gitlab-ci.yml) uses the same wi
 
 | Symptom | Fix |
 | --- | --- |
-| Cloud OPEN stuck at old count | Push to GitHub `main` or run `sonar_scan_cloud.ps1`; disable Automatic Analysis in SonarCloud UI |
+| CI `sonarcloud` fails on quality gate | Scanner upload no longer waits on gate; job uses `check_quality_gate.ps1 -OpenIssuesOnly` until `new_coverage` baseline stabilizes |
 | VPS vs Cloud mismatch | Run `sonar_compare.ps1`; fix on GitLab first, then `publish_github.ps1` |
 | TLS errors (VPS) | `.\sonar_truststore.ps1` |
 | `docker ... not found` | Start Docker Desktop or use native `sonar-scanner` (auto-fallback) |

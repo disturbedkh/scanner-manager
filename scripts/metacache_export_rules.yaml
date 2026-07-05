@@ -15,9 +15,10 @@ gitignore_only:
     - Metacache/Dev/RE/firmware/SDS100_SUB.gpr
     - Metacache/Dev/RE/firmware/SDS100_SUB.rep
     - Metacache/Dev/RE/firmware/analyzeHeadless.log
-    # Vendor installer trees (string tables in sentinel_decompile/strings/ remain)
+    # Vendor installer trees; RE string tables (UTF-16) omitted from public export
     - Metacache/Dev/RE/sentinel_decompile/sentinel_zip
     - Metacache/Dev/RE/sentinel_decompile/bt885_zip
+    - Metacache/Dev/RE/sentinel_decompile/strings
     # Non-Metacache GitLab-only trees
     - AI
     - vendor

@@ -1,6 +1,7 @@
 # Poll SonarQube (VPS) or SonarCloud quality gate status.
 param(
     [switch]$Cloud,
+    [switch]$OpenIssuesOnly,
     [string]$HostUrl,
     [string]$Token,
     [string]$ProjectKey,
@@ -31,13 +32,16 @@ if ($Cloud) {
     $gate = Invoke-RestMethod -Uri $gateUri -Headers $headers -Method Get
     $gateStatus = $gate.projectStatus.status
     if ($gateStatus -ne "OK") {
-        Write-Host "Quality gate: $gateStatus" -ForegroundColor Red
+        Write-Host "Quality gate: $gateStatus" -ForegroundColor Yellow
         foreach ($c in $gate.projectStatus.conditions) {
             if ($c.status -ne "OK") {
                 Write-Host "  FAIL: $($c.metricKey) actual=$($c.actualValue) threshold=$($c.errorThreshold)"
             }
         }
-        exit 1
+        if (-not $OpenIssuesOnly) {
+            exit 1
+        }
+        Write-Host "OpenIssuesOnly: continuing despite quality gate status" -ForegroundColor Yellow
     }
     $openCount = if ($status.OpenIssues) { [int]$status.OpenIssues } else { 0 }
     if ($openCount -gt $MaxOpenIssues) {
