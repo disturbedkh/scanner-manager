@@ -222,7 +222,7 @@ The `sonarqube` job in [`.gitlab-ci.yml`](../../.gitlab-ci.yml) uses `-Dproject.
 | --- | --- |
 | CI `sonarcloud` fails on quality gate | Scanner upload no longer waits on gate; job uses `check_quality_gate.ps1 -OpenIssuesOnly` until `new_coverage` baseline stabilizes |
 | VPS vs Cloud mismatch | Run `sonar_compare.ps1`; fix on GitLab first, then `publish_github.ps1` |
-| `sonar_scan.ps1` not found | Run from repo root: `cd g:\scanner-manager` then `.\sonar_scan.ps1` |
+| `sonar_scan.ps1` not found | Run from repository root (directory containing `sonar-project.properties`) |
 | VPS profile ignored (low ncloc) | Comma-separated `-D` args break on Windows CLI; use `sonar-project.vps.properties` |
 | TLS errors (VPS) | `.\sonar_truststore.ps1` |
 | `docker ... not found` | Start Docker Desktop or use native `sonar-scanner` (auto-fallback) |
