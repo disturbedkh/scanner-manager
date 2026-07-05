@@ -53,7 +53,7 @@ Run from repository root: .\scripts\sonar_scan.ps1
 "@
 }
 
-Invoke-SonarScannerUpload -HostUrl $sonarHostUrl -Token $sonarToken
+Invoke-SonarScannerUpload -HostUrl $sonarHostUrl -Token $sonarToken -Profile Vps
 
 Write-Host "==> Verifying VPS analysis landed on branch '$(Get-SonarBranchName)'..." -ForegroundColor Cyan
 Start-Sleep -Seconds 5

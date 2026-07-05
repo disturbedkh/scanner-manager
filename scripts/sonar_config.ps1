@@ -99,6 +99,58 @@ function Test-SonarHttpsUrl {
     return $Url -match '^https://'
 }
 
+# Scanner profiles (Option A): Cloud = full tree + tests; VPS = product only, no tests.
+$script:SonarProductSources = @(
+    'core', 'gui', 'scanner_profiles', 'scanner_drivers', 'firmware',
+    'streaming', 'audio', 'virtual_sd', 'legacy_tk', 'Metacache', 'scripts', '.github'
+) -join ','
+
+$script:SonarSharedFileExclusions = @(
+    'dev_mcp/**', 'vendor/**', 'build/**', 'dist/**', '**/__pycache__/**',
+    '**/*.pdf', '**/*.gbf', '**/*.msi', '**/*.bin', '**/*.firm', '**/*.pcap',
+    '**/*.zip', '**/*.exe', '**/*.java', '**/*.utf16.txt',
+    'Metacache/Dev/RE/firmware/SDS100_SUB.rep/**',
+    'Metacache/Dev/RE/sentinel_decompile/**',
+    'Metacache/Dev/RE/sentinel_decompile/strings/**',
+    '.github/workflows/**'
+) -join ','
+
+function Get-SonarCloudScannerArgs {
+    return @(
+        "-Dsonar.organization=$($script:SonarCloudOrganization)"
+        "-Dsonar.projectKey=$($script:SonarCloudProjectKey)"
+        "-Dsonar.python.version=3.12"
+        "-Dsonar.sourceEncoding=UTF-8"
+    )
+}
+
+function Get-SonarVpsScannerArgs {
+    $exclusions = "$($script:SonarSharedFileExclusions),tests/**"
+    return @(
+        "-Dsonar.projectKey=$($script:SonarDefaultProjectKey)"
+        "-Dsonar.python.version=3.12"
+        "-Dsonar.sourceEncoding=UTF-8"
+        "-Dsonar.sources=$($script:SonarProductSources)"
+        '-Dsonar.tests='
+        "-Dsonar.exclusions=$exclusions"
+    )
+}
+
+function Join-SonarScannerOpts {
+    param([string[]]$Parts)
+    ($Parts | Where-Object { $_ }) -join ' '
+}
+
+function Get-SonarTruststoreOpts {
+    param(
+        [string]$HostUrl,
+        [ValidateSet('Docker', 'Native')]
+        [string]$Runtime = 'Docker'
+    )
+    if ($HostUrl -match 'sonarcloud\.io') { return $null }
+    return Get-SonarScannerOpts -HostUrl $HostUrl -Runtime $Runtime
+}
+
 function Get-SonarScannerOpts {
     param(
         [string]$HostUrl = (Get-SonarHostUrl),
@@ -131,10 +183,18 @@ function Test-DockerAvailable {
 function Invoke-SonarScannerUpload {
     param(
         [string]$HostUrl,
-        [string]$Token
+        [string]$Token,
+        [ValidateSet('Default', 'Vps', 'Cloud')]
+        [string]$Profile = 'Default'
     )
+    $profileArgs = switch ($Profile) {
+        'Vps' { Get-SonarVpsScannerArgs }
+        'Cloud' { Get-SonarCloudScannerArgs }
+        default { @() }
+    }
     if (Test-DockerAvailable) {
-        $scannerOpts = Get-SonarScannerOpts -HostUrl $HostUrl -Runtime Docker
+        $trustOpts = Get-SonarTruststoreOpts -HostUrl $HostUrl -Runtime Docker
+        $scannerOpts = Join-SonarScannerOpts @($profileArgs) @($trustOpts)
         $dockerEnv = @(
             "-e", "SONAR_HOST_URL=$HostUrl",
             "-e", "SONAR_TOKEN=$Token"
@@ -156,7 +216,8 @@ function Invoke-SonarScannerUpload {
     }
 
     Show-Info "==> Docker unavailable; using native sonar-scanner at $($native.Source)" -Color Yellow
-    $scannerOpts = Get-SonarScannerOpts -HostUrl $HostUrl -Runtime Native
+    $trustOpts = Get-SonarTruststoreOpts -HostUrl $HostUrl -Runtime Native
+    $scannerOpts = Join-SonarScannerOpts @($profileArgs) @($trustOpts)
     $prevHost = $env:SONAR_HOST_URL
     $prevToken = $env:SONAR_TOKEN
     $prevOpts = $env:SONAR_SCANNER_OPTS
@@ -417,20 +478,42 @@ function Confirm-SonarCloudAnalysisFresh {
     return $status
 }
 
+function Get-SonarProductOpenIssueCount {
+    param(
+        [string]$HostUrl,
+        [string]$Token,
+        [string]$ProjectKey,
+        [string]$Branch = (Get-SonarBranchName)
+    )
+    $headers = Get-SonarAuthHeaders -Token $Token
+    $branchParam = [Uri]::EscapeDataString($Branch)
+    $uri = "$HostUrl/api/issues/search?componentKeys=$ProjectKey&branch=$branchParam&statuses=OPEN&ps=500"
+    if ($HostUrl -match 'sonarcloud\.io') {
+        $issues = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get
+    } else {
+        $issues = Invoke-SonarRestMethod -Uri $uri -Headers $headers -Method Get
+    }
+    $productOpen = 0
+    foreach ($issue in $issues.issues) {
+        $path = ($issue.component -split ':', 2)[-1]
+        if ($path -notmatch '^tests(/|$)') {
+            $productOpen++
+        }
+    }
+    return $productOpen
+}
+
 function Invoke-SonarCloudScannerUpload {
     param([string]$Token)
     $hostUrl = Get-SonarCloudHostUrl
     $prevHost = $env:SONAR_HOST_URL
     $prevToken = $env:SONAR_TOKEN
-    $prevOpts = $env:SONAR_SCANNER_OPTS
     try {
         $env:SONAR_HOST_URL = $hostUrl
         $env:SONAR_TOKEN = $Token
-        $env:SONAR_SCANNER_OPTS = "-Dsonar.organization=$($script:SonarCloudOrganization) -Dsonar.projectKey=$($script:SonarCloudProjectKey) -Dsonar.python.version=3.12 -Dsonar.sourceEncoding=UTF-8"
-        Invoke-SonarScannerUpload -HostUrl $hostUrl -Token $Token
+        Invoke-SonarScannerUpload -HostUrl $hostUrl -Token $Token -Profile Cloud
     } finally {
         $env:SONAR_HOST_URL = $prevHost
         $env:SONAR_TOKEN = $prevToken
-        $env:SONAR_SCANNER_OPTS = $prevOpts
     }
 }

@@ -1,9 +1,35 @@
 # SonarQube / SonarCloud
 
-Quality + coverage analysis for the **full analyzed tree** (product, `legacy_tk/`, `Metacache/`, `scripts/`, `.github/`). No path exclusions or rule suppressions — real fixes only.
+Quality + coverage for scanner-manager uses **two servers, two roles** (Option A, 2026-07-05). Issue scans stay wide on SonarCloud; coverage headline matches pytest product packages (~91%). No path-based rule suppressions — real fixes only.
 
 **Primary gate:** SonarCloud on GitHub `main` (`disturbedkh_scanner-manager`).  
-**Parity check:** self-hosted VPS at `https://217.216.48.172:18443` (`scanner-manager`).
+**Local compliance:** self-hosted VPS at `https://217.216.48.172:18443` (`scanner-manager`).
+
+## Two servers, two roles (Option A)
+
+| | SonarCloud (GitHub CI) | VPS (`.\sonar_scan.ps1`) |
+| --- | --- | --- |
+| **Issue scan** | Full product tree + `tests/` + `.github/` | Product tree only — **no tests** |
+| **Coverage metric** | Product packages only (`sonar.coverage.exclusions`) | Same exclusions |
+| **Upload profile** | [`Get-SonarCloudScannerArgs`](../../scripts/sonar_config.ps1) | [`Get-SonarVpsScannerArgs`](../../scripts/sonar_config.ps1) |
+| **CI gate** | OPEN = 0 product (`-OpenIssuesOnly`) | Product OPEN = 0; pytest `--cov-fail-under=88` |
+| **Expected `ncloc`** | ~37K sources + ~15K tests | ~35–40K product |
+| **Expected coverage** | ~88–92% | ~88–92% |
+
+Coverage alignment: we **re-scope Sonar's coverage denominator** (`legacy_tk/**`, `Metacache/**`, `scripts/**`, `.github/**` excluded from coverage metric). We do **not** lower the 88% pytest gate or expand pytest to legacy_tk in this phase. [`coverage.xml`](../../coverage.xml) is unchanged; only Sonar's headline % changes.
+
+Compare VPS vs Cloud: [`scripts/sonar_compare.ps1`](../../scripts/sonar_compare.ps1) (product OPEN + coverage delta ≤ 1%).
+
+## Baseline (2026-07-05, Option A + VPS refresh)
+
+| Metric | VPS (`scanner-manager`) | SonarCloud (`disturbedkh_scanner-manager`) |
+| --- | --- | --- |
+| Host | `https://217.216.48.172:18443` | `https://sonarcloud.io` |
+| Issue scope | Product only (VPS profile) | Product + tests |
+| OPEN (`main`, product) | 0 target | 0 target |
+| Coverage (`main`) | ~88–92% (product-scoped) | ~88–92% (product-scoped; was 44% pre-Option A) |
+| `ncloc` | ~35–40K | ~37K sources + tests |
+| Stale note | Pre-2026-07-05 VPS (~13K ncloc / June 19) superseded by full product rescan | Autoscan disabled; CI scanner authoritative |
 
 ## Quick start (any dev machine)
 
@@ -185,7 +211,7 @@ The `sonarqube` job in [`.gitlab-ci.yml`](../../.gitlab-ci.yml) uses the same wi
 3. Add tests under `tests/` (keep `test_bt885_parity.py` green)
 4. Re-scan until MCP OPEN = 0
 
-**pytest-cov scope:** [`pyproject.toml`](../../pyproject.toml) measures product packages (`core`, `gui`, …). `legacy_tk/*` is omitted from the 88% gate (Tk monolith); Sonar still analyzes `legacy_tk/` for issues via `sonar.sources`. GitHub CI runs `pytest -m qt` then full coverage (mirrors GitLab `test:qt` + `test:coverage`).
+**pytest-cov scope:** [`pyproject.toml`](../../pyproject.toml) measures product packages (`core`, `gui`, …). `legacy_tk/*` is omitted from the 88% gate (Tk monolith). Sonar still analyzes `legacy_tk/`, `Metacache/`, `scripts/` for **issues** via `sonar.sources`; Option A `sonar.coverage.exclusions` keeps the Sonar **coverage headline** aligned with pytest. GitHub CI runs `pytest -m qt` then full coverage (mirrors GitLab `test:qt` + `test:coverage`).
 
 ## Troubleshooting
 

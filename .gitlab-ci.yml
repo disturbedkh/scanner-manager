@@ -144,6 +144,9 @@ sonarqube:
       -Dsonar.python.version=3.12
       -Dsonar.sourceEncoding=UTF-8
       -Dsonar.python.coverage.reportPaths=coverage.xml
+      -Dsonar.sources=core,gui,scanner_profiles,scanner_drivers,firmware,streaming,audio,virtual_sd,legacy_tk,Metacache,scripts,.github
+      -Dsonar.tests=
+      -Dsonar.exclusions=dev_mcp/**,vendor/**,build/**,dist/**,**/__pycache__/**,**/*.pdf,**/*.gbf,**/*.msi,**/*.bin,**/*.firm,**/*.pcap,**/*.zip,**/*.exe,**/*.java,**/*.utf16.txt,Metacache/Dev/RE/firmware/SDS100_SUB.rep/**,Metacache/Dev/RE/sentinel_decompile/**,Metacache/Dev/RE/sentinel_decompile/strings/**,.github/workflows/**,tests/**
       -Dsonar.qualitygate.wait=true
   rules:
     - if: $SONAR_HOST_URL && $SONAR_TOKEN && ($CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH)
