@@ -11,7 +11,7 @@ Quality + coverage for scanner-manager uses **two servers, two roles** (Option A
 | --- | --- | --- |
 | **Issue scan** | Full product tree + `tests/` + `.github/` | Product tree only — **no tests** |
 | **Coverage metric** | Product packages only (`sonar.coverage.exclusions`) | Same exclusions |
-| **Upload profile** | [`Get-SonarCloudScannerArgs`](../../scripts/sonar_config.ps1) | [`Get-SonarVpsScannerArgs`](../../scripts/sonar_config.ps1) |
+| **Upload profile** | [`Get-SonarCloudScannerArgs`](../../scripts/sonar_config.ps1) | [`Get-SonarVpsScannerArgs`](../../scripts/sonar_config.ps1) → [`sonar-project.vps.properties`](../../sonar-project.vps.properties) |
 | **CI gate** | OPEN = 0 product (`-OpenIssuesOnly`) | Product OPEN = 0; pytest `--cov-fail-under=88` |
 | **Expected `ncloc`** | ~37K sources + ~15K tests | ~35–40K product |
 | **Expected coverage** | ~88–92% | ~88–92% |
@@ -27,9 +27,11 @@ Compare VPS vs Cloud: [`scripts/sonar_compare.ps1`](../../scripts/sonar_compare.
 | Host | `https://217.216.48.172:18443` | `https://sonarcloud.io` |
 | Issue scope | Product only (VPS profile) | Product + tests |
 | OPEN (`main`, product) | 0 target | 0 target |
-| Coverage (`main`) | ~88–92% (product-scoped) | ~88–92% (product-scoped; was 44% pre-Option A) |
-| `ncloc` | ~35–40K | ~37K sources + tests |
-| Stale note | Pre-2026-07-05 VPS (~13K ncloc / June 19) superseded by full product rescan | Autoscan disabled; CI scanner authoritative |
+| Coverage (`main`) | **91.4%** (2026-07-05) | **91.3%** (CI 28731205089) |
+| `ncloc` | **35,494** | ~37K sources + tests |
+| `lines_to_cover` | **11,576** | **11,576** |
+| Python source files | **126** | (includes tests in scan) |
+| Stale note | June-era narrow scope (~13K ncloc) **superseded** | Autoscan disabled; CI scanner authoritative |
 
 ## Quick start (any dev machine)
 
@@ -185,7 +187,8 @@ pytest -m "not requires_serial and not slow" --cov --cov-report=xml:coverage.xml
 
 | File | Purpose |
 | --- | --- |
-| [`sonar-project.properties`](../../sonar-project.properties) | Project key, full `sonar.sources`, `coverage.xml` path |
+| [`sonar-project.properties`](../../sonar-project.properties) | Project key, full `sonar.sources`, `coverage.xml` path (Cloud + default) |
+| [`sonar-project.vps.properties`](../../sonar-project.vps.properties) | VPS profile: product only, no tests (`-Dproject.settings=…`) |
 | [`scripts/sonar_config.ps1`](../../scripts/sonar_config.ps1) | VPS + Cloud URLs, truststore, REST helpers |
 | [`scripts/sonar_scan.ps1`](../../scripts/sonar_scan.ps1) | pytest → `coverage.xml` → VPS upload |
 | [`scripts/sonar_scan_cloud.ps1`](../../scripts/sonar_scan_cloud.ps1) | pytest → `coverage.xml` → Cloud upload |
@@ -202,7 +205,7 @@ pytest -m "not requires_serial and not slow" --cov --cov-report=xml:coverage.xml
 
 ## GitLab CI
 
-The `sonarqube` job in [`.gitlab-ci.yml`](../../.gitlab-ci.yml) uses the same widened `sonar-project.properties`. `test:coverage` enforces `--cov-fail-under=85`.
+The `sonarqube` job in [`.gitlab-ci.yml`](../../.gitlab-ci.yml) uses `-Dproject.settings=sonar-project.vps.properties` (same profile as `.\sonar_scan.ps1`). `test:coverage` enforces `--cov-fail-under=85`.
 
 ## Coverage workflow
 
@@ -219,6 +222,8 @@ The `sonarqube` job in [`.gitlab-ci.yml`](../../.gitlab-ci.yml) uses the same wi
 | --- | --- |
 | CI `sonarcloud` fails on quality gate | Scanner upload no longer waits on gate; job uses `check_quality_gate.ps1 -OpenIssuesOnly` until `new_coverage` baseline stabilizes |
 | VPS vs Cloud mismatch | Run `sonar_compare.ps1`; fix on GitLab first, then `publish_github.ps1` |
+| `sonar_scan.ps1` not found | Run from repo root: `cd g:\scanner-manager` then `.\sonar_scan.ps1` |
+| VPS profile ignored (low ncloc) | Comma-separated `-D` args break on Windows CLI; use `sonar-project.vps.properties` |
 | TLS errors (VPS) | `.\sonar_truststore.ps1` |
 | `docker ... not found` | Start Docker Desktop or use native `sonar-scanner` (auto-fallback) |
 | MCP shows stale data | Clear `SONAR_HOST_URL`; re-auth for correct server; reload MCP |

@@ -125,15 +125,14 @@ function Get-SonarCloudScannerArgs {
 }
 
 function Get-SonarVpsScannerArgs {
-    $exclusions = "$($script:SonarSharedFileExclusions),tests/**"
-    return @(
-        "-Dsonar.projectKey=$($script:SonarDefaultProjectKey)"
-        "-Dsonar.python.version=3.12"
-        "-Dsonar.sourceEncoding=UTF-8"
-        "-Dsonar.sources=$($script:SonarProductSources)"
-        '-Dsonar.tests='
-        "-Dsonar.exclusions=$exclusions"
-    )
+    $repoRoot = Split-Path -Parent $PSScriptRoot
+    $vpsProps = Join-Path $repoRoot 'sonar-project.vps.properties'
+    if (-not (Test-Path $vpsProps)) {
+        throw "Missing VPS Sonar profile: $vpsProps"
+    }
+    # Comma-separated -D values break on Windows/native CLI; use project.settings instead.
+    # Relative path works in Docker (/usr/src mount) and native (repo root cwd).
+    return @('-Dproject.settings=sonar-project.vps.properties')
 }
 
 function Join-SonarScannerOpts {
@@ -141,23 +140,14 @@ function Join-SonarScannerOpts {
     ($Parts | Where-Object { $_ }) -join ' '
 }
 
-function Get-SonarTruststoreOpts {
+function Get-SonarTruststoreArgs {
     param(
         [string]$HostUrl,
         [ValidateSet('Docker', 'Native')]
         [string]$Runtime = 'Docker'
     )
-    if ($HostUrl -match 'sonarcloud\.io') { return $null }
-    return Get-SonarScannerOpts -HostUrl $HostUrl -Runtime $Runtime
-}
-
-function Get-SonarScannerOpts {
-    param(
-        [string]$HostUrl = (Get-SonarHostUrl),
-        [ValidateSet('Docker', 'Native')]
-        [string]$Runtime = 'Docker'
-    )
-    if (-not (Test-SonarHttpsUrl $HostUrl)) { return $null }
+    if ($HostUrl -match 'sonarcloud\.io') { return @() }
+    if (-not (Test-SonarHttpsUrl $HostUrl)) { return @() }
     if (-not (Test-Path $script:SonarTruststorePath)) {
         throw "Missing truststore at $($script:SonarTruststorePath). Run: .\sonar_truststore.ps1"
     }
@@ -166,7 +156,30 @@ function Get-SonarScannerOpts {
     } else {
         ($script:SonarTruststorePath -replace '\\', '/')
     }
-    return "-Dsonar.scanner.truststorePath=$trustPath -Dsonar.scanner.truststorePassword=$($script:SonarTruststorePassword)"
+    return @(
+        "-Dsonar.scanner.truststorePath=$trustPath"
+        "-Dsonar.scanner.truststorePassword=$($script:SonarTruststorePassword)"
+    )
+}
+
+function Get-SonarTruststoreOpts {
+    param(
+        [string]$HostUrl,
+        [ValidateSet('Docker', 'Native')]
+        [string]$Runtime = 'Docker'
+    )
+    $args = Get-SonarTruststoreArgs -HostUrl $HostUrl -Runtime $Runtime
+    if (-not $args) { return $null }
+    return Join-SonarScannerOpts @($args)
+}
+
+function Get-SonarScannerOpts {
+    param(
+        [string]$HostUrl = (Get-SonarHostUrl),
+        [ValidateSet('Docker', 'Native')]
+        [string]$Runtime = 'Docker'
+    )
+    return Get-SonarTruststoreOpts -HostUrl $HostUrl -Runtime $Runtime
 }
 
 function Test-DockerAvailable {
@@ -193,8 +206,8 @@ function Invoke-SonarScannerUpload {
         default { @() }
     }
     if (Test-DockerAvailable) {
-        $trustOpts = Get-SonarTruststoreOpts -HostUrl $HostUrl -Runtime Docker
-        $scannerOpts = Join-SonarScannerOpts @($profileArgs) @($trustOpts)
+        $scannerArgs = @($profileArgs) + @(Get-SonarTruststoreArgs -HostUrl $HostUrl -Runtime Docker)
+        $scannerOpts = Join-SonarScannerOpts @($scannerArgs)
         $dockerEnv = @(
             "-e", "SONAR_HOST_URL=$HostUrl",
             "-e", "SONAR_TOKEN=$Token"
@@ -204,28 +217,33 @@ function Invoke-SonarScannerUpload {
         }
         & docker run --rm @dockerEnv -v "${PWD}:/usr/src" sonarsource/sonar-scanner-cli
         if ($LASTEXITCODE -ne 0) {
-            throw "sonar-scanner-cli (Docker) failed with exit code $LASTEXITCODE"
+            Show-Info "==> Docker scanner failed; retrying with native sonar-scanner..." -Color Yellow
+        } else {
+            return
         }
-        return
     }
 
     $native = Get-Command sonar-scanner.bat -ErrorAction SilentlyContinue
     if (-not $native) { $native = Get-Command sonar-scanner -ErrorAction SilentlyContinue }
     if (-not $native) {
+        if ($Profile -ne 'Default') {
+            throw "Docker and native sonar-scanner unavailable. Start Docker Desktop or install sonar-scanner-cli."
+        }
         throw "Docker is not running and sonar-scanner was not found on PATH. Start Docker Desktop or install sonar-scanner-cli."
     }
 
-    Show-Info "==> Docker unavailable; using native sonar-scanner at $($native.Source)" -Color Yellow
-    $trustOpts = Get-SonarTruststoreOpts -HostUrl $HostUrl -Runtime Native
-    $scannerOpts = Join-SonarScannerOpts @($profileArgs) @($trustOpts)
+    if (-not (Test-DockerAvailable)) {
+        Show-Info "==> Using native sonar-scanner at $($native.Source)" -Color Yellow
+    }
+    $scannerArgs = @($profileArgs) + @(Get-SonarTruststoreArgs -HostUrl $HostUrl -Runtime Native)
     $prevHost = $env:SONAR_HOST_URL
     $prevToken = $env:SONAR_TOKEN
     $prevOpts = $env:SONAR_SCANNER_OPTS
     try {
         $env:SONAR_HOST_URL = $HostUrl
         $env:SONAR_TOKEN = $Token
-        if ($scannerOpts) { $env:SONAR_SCANNER_OPTS = $scannerOpts }
-        & $native.Source
+        Remove-Item Env:SONAR_SCANNER_OPTS -ErrorAction SilentlyContinue
+        & $native.Source @scannerArgs
         if ($LASTEXITCODE -ne 0) {
             throw "sonar-scanner failed with exit code $LASTEXITCODE"
         }
