@@ -254,50 +254,59 @@ function Invoke-SonarScannerUpload {
     }
 }
 
-function Invoke-SonarRestMethod {
+function Invoke-SonarRestMethodPs7 {
     param(
         [string]$Uri,
         [hashtable]$Headers,
         [ValidateSet('Get', 'Post')]
-        [string]$Method = 'Get',
+        [string]$Method,
         [hashtable]$Body
     )
-    if ($PSVersionTable.PSVersion.Major -ge 7) {
-        if ($Method -eq 'Post' -and $Body) {
-            Invoke-RestMethod -Uri $Uri -Headers $Headers -Method Post -Body $Body -SkipCertificateCheck | Out-Null
-            return $null
-        }
-        return Invoke-RestMethod -Uri $Uri -Headers $Headers -Method $Method -SkipCertificateCheck
+    if ($Method -eq 'Post' -and $Body) {
+        Invoke-RestMethod -Uri $Uri -Headers $Headers -Method Post -Body $Body -SkipCertificateCheck | Out-Null
+        return $null
     }
-    # PowerShell 5.1: curl.exe fallback (Invoke-RestMethod often fails on self-signed TLS).
-    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
-    if ($curl) {
-        $auth = $Headers.Authorization
-        $curlArgs = @('-k', '-s')
-        if ($Method -eq 'Post') {
-            $curlArgs += '-X', 'POST'
-            foreach ($key in $Body.Keys) {
-                $curlArgs += '-d', "${key}=$($Body[$key])"
-            }
+    return Invoke-RestMethod -Uri $Uri -Headers $Headers -Method $Method -SkipCertificateCheck
+}
+
+function Invoke-SonarRestMethodCurl {
+    param(
+        [string]$Uri,
+        [hashtable]$Headers,
+        [ValidateSet('Get', 'Post')]
+        [string]$Method,
+        [hashtable]$Body
+    )
+    $auth = $Headers.Authorization
+    $curlArgs = @('-k', '-s', '-H', "Authorization: $auth")
+    if ($Method -eq 'Post') {
+        $curlArgs += '-X', 'POST'
+        foreach ($key in $Body.Keys) {
+            $curlArgs += '-d', "${key}=$($Body[$key])"
         }
-        $curlArgs += '-H', "Authorization: $auth"
-        if ($Method -eq 'Post') {
-            $curlArgs += '-w', '%{http_code}', '-o', 'NUL'
+        $curlArgs += '-w', '%{http_code}', '-o', 'NUL', $Uri
+        $httpCode = & curl.exe @curlArgs
+        if ($httpCode -ne '204') {
+            throw "curl.exe POST failed with HTTP $httpCode ($Uri)"
         }
-        $curlArgs += $Uri
-        if ($Method -eq 'Post') {
-            $httpCode = & curl.exe @curlArgs
-            if ($httpCode -ne '204') {
-                throw "curl.exe POST failed with HTTP $httpCode ($Uri)"
-            }
-            return $null
-        }
-        $json = & curl.exe @curlArgs
-        if ($LASTEXITCODE -ne 0) {
-            throw "curl.exe failed calling SonarQube API"
-        }
-        return ($json | ConvertFrom-Json)
+        return $null
     }
+    $curlArgs += $Uri
+    $json = & curl.exe @curlArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "curl.exe failed calling SonarQube API"
+    }
+    return ($json | ConvertFrom-Json)
+}
+
+function Invoke-SonarRestMethodLegacyTls {
+    param(
+        [string]$Uri,
+        [hashtable]$Headers,
+        [ValidateSet('Get', 'Post')]
+        [string]$Method,
+        [hashtable]$Body
+    )
     $prevCallback = [System.Net.ServicePointManager]::ServerCertificateValidationCallback
     $prevProtocol = [System.Net.ServicePointManager]::SecurityProtocol
     try {
@@ -311,6 +320,24 @@ function Invoke-SonarRestMethod {
         [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $prevCallback
         [System.Net.ServicePointManager]::SecurityProtocol = $prevProtocol
     }
+}
+
+function Invoke-SonarRestMethod {
+    param(
+        [string]$Uri,
+        [hashtable]$Headers,
+        [ValidateSet('Get', 'Post')]
+        [string]$Method = 'Get',
+        [hashtable]$Body
+    )
+    if ($PSVersionTable.PSVersion.Major -ge 7) {
+        return Invoke-SonarRestMethodPs7 -Uri $Uri -Headers $Headers -Method $Method -Body $Body
+    }
+    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+    if ($curl) {
+        return Invoke-SonarRestMethodCurl -Uri $Uri -Headers $Headers -Method $Method -Body $Body
+    }
+    return Invoke-SonarRestMethodLegacyTls -Uri $Uri -Headers $Headers -Method $Method -Body $Body
 }
 
 function Get-SonarSecurityHotspotSummary {
