@@ -168,9 +168,9 @@ function Get-SonarTruststoreOpts {
         [ValidateSet('Docker', 'Native')]
         [string]$Runtime = 'Docker'
     )
-    $args = Get-SonarTruststoreArgs -HostUrl $HostUrl -Runtime $Runtime
-    if (-not $args) { return $null }
-    return Join-SonarScannerOpts @($args)
+    $truststoreArgs = Get-SonarTruststoreArgs -HostUrl $HostUrl -Runtime $Runtime
+    if (-not $truststoreArgs) { return $null }
+    return Join-SonarScannerOpts @($truststoreArgs)
 }
 
 function Get-SonarScannerOpts {
@@ -259,16 +259,40 @@ function Invoke-SonarRestMethod {
         [string]$Uri,
         [hashtable]$Headers,
         [ValidateSet('Get', 'Post')]
-        [string]$Method = 'Get'
+        [string]$Method = 'Get',
+        [hashtable]$Body
     )
     if ($PSVersionTable.PSVersion.Major -ge 7) {
+        if ($Method -eq 'Post' -and $Body) {
+            Invoke-RestMethod -Uri $Uri -Headers $Headers -Method Post -Body $Body -SkipCertificateCheck | Out-Null
+            return $null
+        }
         return Invoke-RestMethod -Uri $Uri -Headers $Headers -Method $Method -SkipCertificateCheck
     }
     # PowerShell 5.1: curl.exe fallback (Invoke-RestMethod often fails on self-signed TLS).
     $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
-    if ($curl -and $Method -eq 'Get') {
+    if ($curl) {
         $auth = $Headers.Authorization
-        $json = & curl.exe -k -s -H "Authorization: $auth" $Uri
+        $curlArgs = @('-k', '-s')
+        if ($Method -eq 'Post') {
+            $curlArgs += '-X', 'POST'
+            foreach ($key in $Body.Keys) {
+                $curlArgs += '-d', "${key}=$($Body[$key])"
+            }
+        }
+        $curlArgs += '-H', "Authorization: $auth"
+        if ($Method -eq 'Post') {
+            $curlArgs += '-w', '%{http_code}', '-o', 'NUL'
+        }
+        $curlArgs += $Uri
+        if ($Method -eq 'Post') {
+            $httpCode = & curl.exe @curlArgs
+            if ($httpCode -ne '204') {
+                throw "curl.exe POST failed with HTTP $httpCode ($Uri)"
+            }
+            return $null
+        }
+        $json = & curl.exe @curlArgs
         if ($LASTEXITCODE -ne 0) {
             throw "curl.exe failed calling SonarQube API"
         }
@@ -279,10 +303,76 @@ function Invoke-SonarRestMethod {
     try {
         [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
         [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+        if ($Method -eq 'Post' -and $Body) {
+            return Invoke-RestMethod -Uri $Uri -Headers $Headers -Method Post -Body $Body
+        }
         return Invoke-RestMethod -Uri $Uri -Headers $Headers -Method $Method
     } finally {
         [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $prevCallback
         [System.Net.ServicePointManager]::SecurityProtocol = $prevProtocol
+    }
+}
+
+function Get-SonarSecurityHotspotSummary {
+    param(
+        [string]$HostUrl,
+        [string]$Token,
+        [string]$ProjectKey,
+        [string]$Branch = (Get-SonarBranchName)
+    )
+    $headers = Get-SonarAuthHeaders -Token $Token
+    $branchParam = [Uri]::EscapeDataString($Branch)
+    $measureUri = "$HostUrl/api/measures/component?component=$ProjectKey&branch=$branchParam&metricKeys=security_hotspots,security_hotspots_reviewed,security_review_rating"
+    if ($HostUrl -match 'sonarcloud\.io') {
+        $measures = Invoke-RestMethod -Uri $measureUri -Headers $headers -Method Get
+    } else {
+        $measures = Invoke-SonarRestMethod -Uri $measureUri -Headers $headers -Method Get
+    }
+    $toReview = 0
+    $reviewed = 0
+    $hotspotUri = "$HostUrl/api/hotspots/search?projectKey=$ProjectKey&branch=$branchParam&status=TO_REVIEW&ps=1"
+    $reviewedUri = "$HostUrl/api/hotspots/search?projectKey=$ProjectKey&branch=$branchParam&status=REVIEWED&ps=1"
+    if ($HostUrl -match 'sonarcloud\.io') {
+        $open = Invoke-RestMethod -Uri $hotspotUri -Headers $headers -Method Get
+        $done = Invoke-RestMethod -Uri $reviewedUri -Headers $headers -Method Get
+    } else {
+        $open = Invoke-SonarRestMethod -Uri $hotspotUri -Headers $headers -Method Get
+        $done = Invoke-SonarRestMethod -Uri $reviewedUri -Headers $headers -Method Get
+    }
+    if ($open.paging) { $toReview = [int]$open.paging.total }
+    if ($done.paging) { $reviewed = [int]$done.paging.total }
+    $pct = ($measures.component.measures | Where-Object { $_.metric -eq 'security_hotspots_reviewed' } | Select-Object -First 1).value
+    $count = ($measures.component.measures | Where-Object { $_.metric -eq 'security_hotspots' } | Select-Object -First 1).value
+    return [PSCustomObject]@{
+        ToReview  = $toReview
+        Reviewed  = $reviewed
+        Total     = $toReview + $reviewed
+        ReviewPct = $pct
+        OpenCount = $count
+    }
+}
+
+function Set-SonarHotspotReviewed {
+    param(
+        [string]$HostUrl,
+        [string]$Token,
+        [string]$HotspotKey,
+        [ValidateSet('SAFE', 'FIXED', 'ACKNOWLEDGED')]
+        [string]$Resolution = 'SAFE',
+        [string]$Comment
+    )
+    $headers = Get-SonarAuthHeaders -Token $Token
+    $body = @{
+        hotspot    = $HotspotKey
+        status     = 'REVIEWED'
+        resolution = $Resolution
+    }
+    if ($Comment) { $body.comment = $Comment }
+    $uri = "$HostUrl/api/hotspots/change_status"
+    if ($HostUrl -match 'sonarcloud\.io') {
+        Invoke-RestMethod -Uri $uri -Headers $headers -Method Post -Body $body | Out-Null
+    } else {
+        Invoke-SonarRestMethod -Uri $uri -Headers $headers -Method Post -Body $body | Out-Null
     }
 }
 

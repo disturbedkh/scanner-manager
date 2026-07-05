@@ -34,6 +34,8 @@ $cloudOpenProduct = Get-SonarProductOpenIssueCount -HostUrl $cloudHost -Token $c
 $vpsCov = if ($vps.Coverage) { [double]$vps.Coverage } else { 0.0 }
 $cloudCov = if ($cloud.Coverage) { [double]$cloud.Coverage } else { 0.0 }
 $covDelta = [Math]::Abs($vpsCov - $cloudCov)
+$vpsHotspots = Get-SonarSecurityHotspotSummary -HostUrl $vpsHost -Token $vpsToken -ProjectKey $script:SonarDefaultProjectKey -Branch $branch
+$cloudHotspots = Get-SonarSecurityHotspotSummary -HostUrl $cloudHost -Token $cloudToken -ProjectKey $script:SonarCloudProjectKey -Branch $branch
 
 Write-Host ""
 Write-Host "=== Sonar VPS vs Cloud (branch: $branch) ===" -ForegroundColor Cyan
@@ -43,9 +45,15 @@ Write-Host ("{0,-22} {1,12} {2,12}" -f "--------", "--------", "--------")
 Write-Host ("{0,-22} {1,12} {2,12}" -f "OPEN (all)", $vpsOpenAll, $cloudOpenAll)
 Write-Host ("{0,-22} {1,12} {2,12}" -f "OPEN (product)", $vpsOpenProduct, $cloudOpenProduct)
 Write-Host ("{0,-22} {1,12:N1} {2,12:N1}" -f "Coverage %", $vpsCov, $cloudCov)
+Write-Host ("{0,-22} {1,12} {2,12}" -f "Hotspots (open)", $vpsHotspots.ToReview, $cloudHotspots.ToReview)
+Write-Host ("{0,-22} {1,12} {2,12}" -f "Hotspots (reviewed)", $vpsHotspots.Reviewed, $cloudHotspots.Reviewed)
+$vpsPct = if ($vpsHotspots.ReviewPct) { "$($vpsHotspots.ReviewPct)%" } else { "n/a" }
+$cloudPct = if ($cloudHotspots.ReviewPct) { "$($cloudHotspots.ReviewPct)%" } else { "n/a" }
+Write-Host ("{0,-22} {1,12} {2,12}" -f "Hotspot review %", $vpsPct, $cloudPct)
 Write-Host ("{0,-22} {1,12} {2,12}" -f "Quality gate", $vps.QualityGate, $cloud.QualityGate)
 Write-Host ("{0,-22} {1,12} {2,12}" -f "Last analysis", $vps.AnalysisDate, $cloud.AnalysisDate)
 Write-Host ""
+Write-Host "Hotspot note: Cloud autoscan may report 0 hotspots while VPS flags tarfile.create (S5042) in build_release.py; review VPS TO_REVIEW as SAFE when only packaging local build output." -ForegroundColor DarkGray
 Write-Host "Coverage delta: $([Math]::Round($covDelta, 2))%" -ForegroundColor $(if ($covDelta -le 1.0) { "Green" } else { "Yellow" })
 
 $failed = $false

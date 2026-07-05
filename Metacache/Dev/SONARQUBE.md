@@ -31,7 +31,38 @@ Compare VPS vs Cloud: [`scripts/sonar_compare.ps1`](../../scripts/sonar_compare.
 | `ncloc` | **35,494** | ~37K sources + tests |
 | `lines_to_cover` | **11,576** | **11,576** |
 | Python source files | **126** | (includes tests in scan) |
+| Hotspot review % | **100%** (3 reviewed SAFE) | **100%** (0 hotspots on autoscan) |
 | Stale note | June-era narrow scope (~13K ncloc) **superseded** | Autoscan disabled; CI scanner authoritative |
+
+## CLI auth (do not duplicate tokens)
+
+Check what is already stored before running `sonar auth login` again:
+
+```powershell
+Get-Content "$env:USERPROFILE\.sonar\sonarqube-cli\state.json" | ConvertFrom-Json | Select-Object -ExpandProperty auth
+cmdkey /list | Select-String sonarqube
+sonar auth status   # reads SONARQUBE_CLI_* env when set — may not match state.json
+```
+
+| Server | Typical CLI storage | This machine (2026-07-05) |
+| --- | --- | --- |
+| **VPS** `https://217.216.48.172:18443` | `state.json` connection + `cmdkey` `sonarqube-cli/217.216.48.172` | **Authenticated** — do **not** re-login unless upload returns HTTP 401 |
+| **SonarCloud** `https://sonarcloud.io` | Separate `sonarqube-cli/sonarcloud.io` entry | **Not in CLI keychain** — login only when `check_quality_gate.ps1 -Cloud` or `sonar_compare.ps1` needs it |
+| **localhost:9000** | Machine/user `SONARQUBE_CLI_*` env vars | **Different project** (housekeeping) — confuses `sonar auth status`; clear env before VPS/Cloud work |
+
+Upload scripts (`.\sonar_scan.ps1`, `Get-SonarToken`) use the VPS keychain entry and ignore localhost env when `SCANNER_MANAGER_SONAR_*` is unset.
+
+## Security hotspot parity (VPS vs Cloud)
+
+**Hotspot review %** is not comparable to **line coverage %**. Cloud autoscan on the full ~52K tree may report **0 security hotspots** while VPS (Community Build 26.x, product profile) flags `python:S5042` on `scripts/build_release.py` (`tarfile.open(..., "w:gz")` when packaging local PyInstaller output).
+
+| | VPS | Cloud (autoscan) |
+| --- | --- | --- |
+| Mechanism | Manual review required per hotspot | Often 0 hotspots raised for the same tar-create paths |
+| Expected | Review `build_release.py` S5042 as **SAFE** (create-only, trusted local artifacts) | 100% with 0 hotspots is vacuously true |
+| API | `Set-SonarHotspotReviewed` in [`sonar_config.ps1`](../../scripts/sonar_config.ps1) | Same helper when Cloud token present |
+
+After VPS profile rescan, re-review any new `TO_REVIEW` hotspots (vendor FTP was already SAFE). [`sonar_compare.ps1`](../../scripts/sonar_compare.ps1) prints hotspot counts side-by-side.
 
 ## Quick start (any dev machine)
 
@@ -222,8 +253,11 @@ The `sonarqube` job in [`.gitlab-ci.yml`](../../.gitlab-ci.yml) uses `-Dproject.
 | --- | --- |
 | CI `sonarcloud` fails on quality gate | Scanner upload no longer waits on gate; job uses `check_quality_gate.ps1 -OpenIssuesOnly` until `new_coverage` baseline stabilizes |
 | VPS vs Cloud mismatch | Run `sonar_compare.ps1`; fix on GitLab first, then `publish_github.ps1` |
-| `sonar_scan.ps1` not found | Run from repository root (directory containing `sonar-project.properties`) |
 | VPS profile ignored (low ncloc) | Comma-separated `-D` args break on Windows CLI; use `sonar-project.vps.properties` |
+| `sonar_scan.ps1` not found | Run from repository root (directory containing `sonar-project.properties`) |
+| `sonar auth status` shows localhost | Machine `SONARQUBE_CLI_SERVER=http://localhost:9000` — not VPS/Cloud; clear env or check `state.json` |
+| Cloud gate needs login but VPS already authed | **Separate** keychain entries — only run `sonar auth login -o disturbedkh -s https://sonarcloud.io` for Cloud |
+| VPS hotspot review stuck below 100% | Review `scripts/build_release.py` S5042 as SAFE (local tar create) via UI or `Set-SonarHotspotReviewed` |
 | TLS errors (VPS) | `.\sonar_truststore.ps1` |
 | `docker ... not found` | Start Docker Desktop or use native `sonar-scanner` (auto-fallback) |
 | MCP shows stale data | Clear `SONAR_HOST_URL`; re-auth for correct server; reload MCP |

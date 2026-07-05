@@ -137,7 +137,9 @@ def test_detect_from_card_cache_invalidates_on_scanner_inf_mtime_change(
     ):
         detect_from_card(bt885_card)
         reads_after_first = read_count
-        os.utime(inf_path, None)
+        stat = inf_path.stat()
+        # Windows mtime resolution can leave utime(None) unchanged within the same tick.
+        os.utime(inf_path, (stat.st_atime, stat.st_mtime + 2.0))
         detect_from_card(bt885_card)
 
     assert read_count > reads_after_first
