@@ -1,8 +1,14 @@
 # ZIP and GPS Simulation
 
-Enter a ZIP code or GPS coordinate and see exactly what the BearTracker
-885 will scan at that location - **including** statewide and national
-channels that show up on top of the local ones.
+> Status: shipped (v0.11.x)
+
+Enter a ZIP code or GPS coordinate and see exactly what the scanner will
+scan at that location — **including** statewide and national channels
+that show up on top of the local ones.
+
+Primary UI today: **BearTracker 885** profiles in both shells. SDS100/200
+use different location semantics; the Qt editor hides the location sim
+bar for SDS profiles.
 
 ## How it works
 
@@ -20,12 +26,18 @@ files haven't been decoded yet.
 
 ## Enabling it
 
+### Qt (`scanner-manager`)
+
+1. Select a BearTracker 885 device with HPDB loaded.
+2. Tick **Apply location filter** in the location simulation bar.
+3. Enter a ZIP (fastest) or use county / GPS spinners.
+4. Adjust **Tolerance** to widen or narrow the radius.
+
+### Legacy Tk (`scanner-manager-tk`)
+
 1. Tick **Enable Location Filter** in the toolbar.
-2. Enter a ZIP (fastest) or pick **City...** / **GPS...** for other
-   input modes.
-3. Optionally widen or narrow the radius via the **Tolerance** slider
-   (adds or subtracts miles from the firmware default).
-4. Click **Apply**.
+2. Enter a ZIP or pick **City...** / **GPS...**.
+3. Click **Apply**.
 
 ## Reading the results
 
@@ -46,24 +58,20 @@ hidden by default.
 
 ## Nearest-systems ranking
 
-When **Enable Location Filter** is on, systems are sorted by distance
-from the center point and re-labeled with `#N` prefixes. The ranking
-respects which button filters are active (Police/EMS/Fire/DOT/Multi),
-so toggling buttons visibly re-ranks the tree.
+With the location filter on, systems sort by distance from the center
+point and re-label with `#N` prefixes. The ranking respects active
+button filters (Police/EMS/Fire/DOT/Multi).
 
 ## Exporting the effective scan set
 
-Click **Export Effective Scan Set...** to write a CSV/TXT containing:
+**Legacy Tk:** **Export Effective Scan Set...** writes CSV/TXT with
+System, Group, Entry, service type, frequency/TGID, Lat, Lon, Range
+(mi), Distance (mi).
 
-- System, Group, Entry
-- Service Type
-- Frequency / TGID
-- Lat, Lon, Range (mi), Distance (mi)
-
-Useful for sanity-checking a deployment or sharing with another
-scanner owner.
+**Qt:** not ported yet — use legacy Tk for export, or copy visible tree
+rows manually.
 
 ## Under the hood
 
 See [Architecture](Architecture) for how the simulator plugs into the
-HPD tree and how it coexists with the MetaStore event log.
+HPD tree and MetaStore. Coverage visualization: [Coverage Tools](Coverage-Tools).

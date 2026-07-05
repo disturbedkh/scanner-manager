@@ -43,9 +43,9 @@ and a full revertable change log.**
 - **ZIP / GPS simulation.** Enter a ZIP or GPS point; see the exact
   systems, groups, and channels your scanner will scan, ranked by
   distance, with per-group coverage tags.
-- **Coverage tools.** Pure-Tk coverage heatmap, optional real-tile map
-  (OSM/Google via `tkintermapview`), alerts viewer, effective scan-set
-  CSV export.
+- **Coverage tools.** Qt editor coverage views plus legacy Tk heatmap
+  and optional real-tile map (OSM/Google via `tkintermapview`), alerts
+  viewer, effective scan-set CSV export.
 - **RadioReference import.** Categories, FCC callsigns, and trunked
   talkgroups via both HTML scraping and the official SOAP API (`zeep`).
   Composite import events collapse to a single revertable log entry.
@@ -92,7 +92,8 @@ Every asset ships with a matching `.sha256`. Verify if you like:
 
 Once installed, future updates are one click: open **Help → Check for
 Updates...** from inside the app. No git required. The full flow is
-documented at [Updating](../../wiki/Updating).
+documented at
+[Updating](https://github.com/disturbedkh/scanner-manager/wiki/Updating).
 
 ```powershell
 # Windows
@@ -149,53 +150,62 @@ Detailed walkthroughs for every feature are in the
 
 ## Docs
 
-| Page                                                              | For                                      |
-| ----------------------------------------------------------------- | ---------------------------------------- |
-| [Install](../../wiki/Install)                                     | EXE + source install, troubleshooting    |
-| [Quickstart](../../wiki/Quickstart)                               | First 10 minutes with the app            |
-| [ZIP & GPS Simulation](../../wiki/ZIP-and-GPS-Simulation)         | How the simulator models your scanner   |
-| [Coverage Tools](../../wiki/Coverage-Tools)                       | Heatmap, Map, nearest systems, exports   |
-| [RadioReference Import](../../wiki/RadioReference-Import)         | HTML scrape and SOAP API flows           |
-| [Workspaces & Sync](../../wiki/Workspaces-and-Sync)               | Virtual SD card, conflict resolution     |
-| [Uniden Tools](../../wiki/Uniden-Tools-Integration)               | Sentinel / Update Manager orchestration  |
-| [Channel List Management](../../wiki/Channel-List-Management)     | Edit/bulk/delete + reverting changes     |
-| [CityTable](../../wiki/CityTable-and-Custom-Locations)            | Custom locations, patched CityTable      |
-| [Service Types](../../wiki/Scanner-Button-Service-Types)          | Which service types map to which button  |
-| [Alerts](../../wiki/Alerts)                                       | Alerts folder viewer                     |
-| [Architecture](../../wiki/Architecture)                           | MetaStore, batching, revert semantics    |
-| [Troubleshooting](../../wiki/Troubleshooting)                     | Recovering from `.session.bak`           |
-| [Glossary](../../wiki/Glossary)                                   | HPD, TRS, TGID, Service Type, etc.       |
+| Page | For |
+| --- | --- |
+| [Install](https://github.com/disturbedkh/scanner-manager/wiki/Install) | EXE + source install, troubleshooting |
+| [Quickstart](https://github.com/disturbedkh/scanner-manager/wiki/Quickstart) | First 10 minutes with the app |
+| [Updating](https://github.com/disturbedkh/scanner-manager/wiki/Updating) | In-app updates, release downloads |
+| [Qt UI](https://github.com/disturbedkh/scanner-manager/wiki/Qt-UI) | Faceplate, Live/Monitoring, device selector |
+| [Streaming Server](https://github.com/disturbedkh/scanner-manager/wiki/Streaming-Server) | LAN audio + telemetry streaming |
+| [Firmware Updater](https://github.com/disturbedkh/scanner-manager/wiki/Firmware-Updater) | FTP discovery, SD-card flash workflow |
+| [ZIP & GPS Simulation](https://github.com/disturbedkh/scanner-manager/wiki/ZIP-and-GPS-Simulation) | How the simulator models your scanner |
+| [Coverage Tools](https://github.com/disturbedkh/scanner-manager/wiki/Coverage-Tools) | Heatmap, Map, nearest systems, exports |
+| [RadioReference Import](https://github.com/disturbedkh/scanner-manager/wiki/RadioReference-Import) | HTML scrape and SOAP API flows |
+| [Workspaces & Sync](https://github.com/disturbedkh/scanner-manager/wiki/Workspaces-and-Sync) | Virtual SD card, conflict resolution |
+| [Uniden Tools](https://github.com/disturbedkh/scanner-manager/wiki/Uniden-Tools-Integration) | Sentinel / Update Manager orchestration |
+| [Channel List Management](https://github.com/disturbedkh/scanner-manager/wiki/Channel-List-Management) | Edit/bulk/delete + reverting changes |
+| [CityTable](https://github.com/disturbedkh/scanner-manager/wiki/CityTable-and-Custom-Locations) | Custom locations, patched CityTable |
+| [Service Types](https://github.com/disturbedkh/scanner-manager/wiki/Scanner-Button-Service-Types) | Which service types map to which button |
+| [Alerts](https://github.com/disturbedkh/scanner-manager/wiki/Alerts) | Alerts folder viewer |
+| [Architecture](https://github.com/disturbedkh/scanner-manager/wiki/Architecture) | MetaStore, batching, revert semantics |
+| [Troubleshooting](https://github.com/disturbedkh/scanner-manager/wiki/Troubleshooting) | Recovering from `.session.bak` |
+| [Glossary](https://github.com/disturbedkh/scanner-manager/wiki/Glossary) | HPD, TRS, TGID, Service Type, etc. |
 
 ## Project status
 
-**0.9.0 alpha.** The core is feature-complete and tested. Polish,
-packaging, and documentation are being finalized in the 0.9.x series.
-See [CHANGELOG.md](CHANGELOG.md) for details. Please file
+**0.11.x beta.** The default `scanner-manager` entry launches the Qt
+UI (PySide6); legacy Tk remains as `scanner-manager-tk`. BearTracker 885
+and SDS100/200 profiles ship with multi-device switching, live serial
+mirror, streaming, and firmware updates. See [CHANGELOG.md](CHANGELOG.md)
+for release notes. Please file
 [issues](https://github.com/disturbedkh/scanner-manager/issues) — that
 is the most useful thing testers can do right now.
 
 ## Community
 
 Talk to other users and contributors on
-[**GitHub Discussions**](../../discussions). The forum has nine
-categories (alphabetical, GitHub-locked); the full guide lives at
-[`.github/DISCUSSIONS.md`](.github/DISCUSSIONS.md). Quick map:
+[**GitHub Discussions**](https://github.com/disturbedkh/scanner-manager/discussions).
+The forum has nine categories (alphabetical, GitHub-locked); the full
+guide lives at [`.github/DISCUSSIONS.md`](.github/DISCUSSIONS.md).
+Quick map:
 
 | Category | Use it for |
-|---|---|
-| [Announcements](../../discussions/categories/announcements) | Maintainer-only releases + project-direction posts. |
-| [General](../../discussions/categories/general) | Catch-all for things that don't fit elsewhere. |
-| [Hardware](../../discussions/categories/hardware) | Scanner hardware - antennas, mods, jigs, USB cabling, PCB photos. |
-| [Help](../../discussions/categories/help) | "How do I X?" / install / setup / "scanner won't show up". Answerable - mark a reply as the accepted answer. |
-| [Ideas](../../discussions/categories/ideas) | Half-formed feature ideas to brainstorm before opening a feature request. |
-| [Polls](../../discussions/categories/polls) | Maintainer-run quick polls (release timing, naming, defaults). |
-| [Reverse Engineering](../../discussions/categories/reverse-engineering) | Findings, captures, decoded protocols, firmware analysis. |
-| [Show and tell](../../discussions/categories/show-and-tell) | Show off a setup, recording, or custom favorites build. |
-| [Tooling/Development](../../discussions/categories/tooling-development) | Developer-facing talk: CI, build system, refactors, RE tool architecture. |
+| --- | --- |
+| [Announcements](https://github.com/disturbedkh/scanner-manager/discussions/categories/announcements) | Maintainer-only releases + project-direction posts. |
+| [General](https://github.com/disturbedkh/scanner-manager/discussions/categories/general) | Catch-all for things that don't fit elsewhere. |
+| [Hardware](https://github.com/disturbedkh/scanner-manager/discussions/categories/hardware) | Scanner hardware - antennas, mods, jigs, USB cabling, PCB photos. |
+| [Help](https://github.com/disturbedkh/scanner-manager/discussions/categories/help) | "How do I X?" / install / setup / "scanner won't show up". Answerable - mark a reply as the accepted answer. |
+| [Ideas](https://github.com/disturbedkh/scanner-manager/discussions/categories/ideas) | Half-formed feature ideas to brainstorm before opening a feature request. |
+| [Polls](https://github.com/disturbedkh/scanner-manager/discussions/categories/polls) | Maintainer-run quick polls (release timing, naming, defaults). |
+| [Reverse Engineering](https://github.com/disturbedkh/scanner-manager/discussions/categories/reverse-engineering) | Findings, captures, decoded protocols, firmware analysis. |
+| [Show and tell](https://github.com/disturbedkh/scanner-manager/discussions/categories/show-and-tell) | Show off a setup, recording, or custom favorites build. |
+| [Tooling/Development](https://github.com/disturbedkh/scanner-manager/discussions/categories/tooling-development) | Developer-facing talk: CI, build system, refactors, RE tool architecture. |
 
 The **wiki** is the long-form companion: human-readable feature
-tours, the [reverse-engineering narrative](../../wiki/Reverse-Engineering),
-and the [virtual scanner roadmap](../../wiki/Virtual-Scanner-Roadmap).
+tours, the
+[reverse-engineering narrative](https://github.com/disturbedkh/scanner-manager/wiki/Reverse-Engineering),
+and the
+[virtual scanner roadmap](https://github.com/disturbedkh/scanner-manager/wiki/Virtual-Scanner-Roadmap).
 
 ## Contributing
 
@@ -203,7 +213,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, test commands,
 lint rules, and PR expectations. Security issues: see [SECURITY.md](SECURITY.md).
 For RE / firmware / protocol contributions specifically, start at
 [`Metacache/Dev/RE/tools/README.md`](Metacache/Dev/RE/tools/README.md) and the
-[RE wiki](../../wiki/Reverse-Engineering).
+[RE wiki](https://github.com/disturbedkh/scanner-manager/wiki/Reverse-Engineering).
 
 ## License
 

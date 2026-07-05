@@ -1,5 +1,7 @@
 # RE: USB Modes
 
+> Status: shipped (v0.11.x) — Mass Storage vs Serial mode reference.
+
 > Where this fits: how the SDS100 presents itself to the host PC,
 > and which surface (filesystem vs serial) you get from each mode.
 > For the consolidated narrative start at

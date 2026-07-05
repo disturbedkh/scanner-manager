@@ -6,7 +6,7 @@
 > [`wiki/RE-Workflows.md`](../../../wiki/RE-Workflows.md).
 
 > **RECOMMENDED PATH (automated):** run
-> `py Metacache\Dev\RE\_sentinel_session.py` and follow the prompts. It
+> `py Metacache\Dev\RE\tools\sentinel\sentinel_session.py` and follow the prompts. It
 > auto-detects the USBPcap interface, drives `dumpcap.exe` for each
 > of the six operations, and (optionally) decodes the resulting
 > `.pcapng` files immediately. See [`AUTOMATION.md`](AUTOMATION.md).

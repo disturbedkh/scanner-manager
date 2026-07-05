@@ -10,7 +10,7 @@
 
 **Features**
 
-- [Qt UI (PySide6 rebuild)](Qt-UI)
+- [Qt UI (0.11.x)](Qt-UI)
 - [Streaming Server](Streaming-Server)
 - [Firmware Updater](Firmware-Updater)
 - [ZIP & GPS Simulation](ZIP-and-GPS-Simulation)
@@ -39,6 +39,7 @@
 - [Serial Protocol](RE-Serial-Protocol)
 - [Inter-MCU Bus](RE-Inter-MCU-Bus)
 - [Firmware](RE-Firmware)
+- [Update Endpoints](RE-Update-Endpoints)
 - [Sentinel](RE-Sentinel)
 - [Toolchain](RE-Toolchain)
 - [Workflows](RE-Workflows)

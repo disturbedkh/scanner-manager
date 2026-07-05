@@ -1,17 +1,22 @@
 # Uniden Tools Integration
 
+> Status: shipped (v0.11.x)
+
 Scanner Manager detects Uniden's official desktop apps and can drive a
 full **push → update → pull** cycle without you leaving the Scanner
 Manager window.
 
+Open **Tools → Uniden tools…** in Qt or the legacy Tk Tools menu.
+
 ## Supported tools
 
-- **BCDx36HP Sentinel** - the long-standing Uniden programming tool.
-- **BT885 Update Manager** - the BearTracker 885-specific updater.
+- **BCDx36HP Sentinel** — the long-standing Uniden programming tool
+  (SDS100/200 and related).
+- **BT885 Update Manager** — the BearTracker 885-specific updater.
 
 ## Detection
 
-Open **Uniden Tools...** to see a table with one row per tool:
+The dialog shows one row per tool:
 
 - Installed path + version (or "not installed").
 - Scanner family.
@@ -24,8 +29,7 @@ under `uniden_tools_overrides`.
 
 ## Installers are not redistributed
 
-Previous pre-alpha builds shipped the Uniden installer archives inside
-the repo. The alpha no longer does that. Instead:
+The app does not ship Uniden installer archives in the repo. Instead:
 
 - A pinned manifest at `data/uniden_installers.json` lists the
   download URL, expected SHA-256, and archive layout for each tool.
@@ -41,7 +45,7 @@ copy and skip the download.
 
 ## Launch + Auto-Sync
 
-This is the powerful one. Clicking **Launch + Auto-Sync**:
+Clicking **Launch + Auto-Sync**:
 
 1. Snapshots the current state of the HPD file (session backup).
 2. Launches the Uniden tool (Sentinel or BT885 Update Manager).
@@ -51,6 +55,9 @@ This is the powerful one. Clicking **Launch + Auto-Sync**:
 5. Replays Scanner Manager's MetaStore event log on top of the new
    HPD so your edits survive the Uniden tool's write.
 6. Logs the whole pipeline as a **single revertable event**.
+
+The full orchestration is most mature in legacy Tk; Qt exposes detection,
+launch, and installer download.
 
 ## Overrides
 
@@ -66,10 +73,12 @@ files the tool caches (e.g. Sentinel's `ZipListUs.txt`).
 
 ## Troubleshooting
 
-- **"Hash mismatch" on download** - the manifest has a pinned SHA-256
+- **"Hash mismatch" on download** — the manifest has a pinned SHA-256
   which did not match. Don't run the file; open a GitHub issue with
   the hash you got and the URL so the maintainers can update the
   manifest.
-- **Installer runs but nothing is detected afterwards** - Uniden
+- **Installer runs but nothing is detected afterwards** — Uniden
   installs sometimes land in `C:\Uniden\` rather than `Program Files`;
   click **Refresh**. If it's still not found, use **Override Path...**.
+- **"Windows only" on macOS/Linux** — expected; Uniden does not publish
+  Mac or Linux builds of these tools.

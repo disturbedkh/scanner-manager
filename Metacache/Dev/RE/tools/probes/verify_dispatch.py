@@ -144,7 +144,7 @@ def load_candidates(path: Path) -> list[str]:
     safe_path = _c.safe_user_path(_c.RE_ROOT, path)
     if not safe_path.exists():
         sys.exit(f"[X] candidates file not found: {safe_path}\n"
-                 f"    Run _analyze_ghidra_dump.py first.")
+                 f"    Run Metacache/Dev/RE/tools/firmware/analyze_ghidra_dump.py first.")
     raw = safe_path.read_text(encoding="utf-8").splitlines()
     out: list[str] = []
     seen: set[str] = set()

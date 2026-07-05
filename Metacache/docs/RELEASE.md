@@ -1,7 +1,11 @@
 # Release checklist
 
-Follow this file every time you cut a new version. Build-system design:
-[`../Dev/BUILD_SYSTEM.md`](../Dev/BUILD_SYSTEM.md).
+> Status: shipped (v0.11.x) — follow every tagged release.
+> User-facing update notes:
+> [Updating wiki](https://github.com/disturbedkh/scanner-manager/wiki/Updating).
+
+Build-system design: [`../Dev/BUILD_SYSTEM.md`](../Dev/BUILD_SYSTEM.md).
+Sonar gates: [`../Dev/SONARQUBE.md`](../Dev/SONARQUBE.md).
 
 ## 0. Pre-flight
 
@@ -15,10 +19,11 @@ Follow this file every time you cut a new version. Build-system design:
   ```
 - [ ] `requirements.lock` is fresh (`.\scripts\refresh_lockfile.ps1` if
       `pyproject.toml` deps changed).
-- [ ] Optional: `.\scripts\sonar_scan.ps1` passes quality gate locally.
+- [ ] Sonar: SonarCloud gate green on GitHub `main`; optional local
+      `.\scripts\sonar_scan.ps1` (VPS compliance) + `.\scripts\sonar_compare.ps1`.
 - [ ] `CHANGELOG.md` has a heading for the new version (move content
       from `[Unreleased]`).
-- [ ] `pyproject.toml` `version` matches.
+- [ ] `pyproject.toml` `version` matches (e.g. `0.11.1`).
 - [ ] `data/uniden_installers.json` hashes are pinned when rotating
       installers (re-run `scripts/pin_uniden_hashes.py` or verify
       against freshly downloaded files).
@@ -33,13 +38,13 @@ pip install -e . --no-deps
 ## 1. GitLab CI (primary gate)
 
 Every push to `main` runs `.gitlab-ci.yml` (lint + tiered tests + coverage
-gate + optional SonarQube).
+gate + optional SonarQube VPS).
 
 For a release candidate or final tag:
 
 ```bash
-git tag -a v0.10.1 -m "v0.10.1 - description"
-git push origin v0.10.1
+git tag -a v0.11.1 -m "v0.11.1 - description"
+git push origin v0.11.1
 ```
 
 GitLab CI on `v*` tags:
@@ -82,7 +87,8 @@ On a clean Windows 10 / 11 machine:
 3. Run the EXE. SmartScreen warns because it's unsigned; click
    *More info → Run anyway*.
 4. Optional CLI smoke: `ScannerManager.exe --smoke`
-5. Full UI: first-run notice, load an SD card, `Help → About` version.
+5. Full UI: first-run notice, load an SD card, `Help → About` version
+   (`0.11.x`).
 6. Import smoke (dev/CI also runs this):
 
    ```bash
@@ -93,7 +99,16 @@ On a clean Windows 10 / 11 machine:
 If anything fails, fix on `main`, bump to `-rc2` or a new beta tag, and
 repeat. Do **not** re-use a tag for a second attempt.
 
-## 3. Public mirror (optional)
+## 3. Public GitHub mirror
+
+After GitLab-validated tag, publish the filtered public tree:
+
+```powershell
+.\scripts\publish_github.ps1 -Tag v0.11.1 -Force
+```
+
+See [`../EXPORT_POLICY.md`](../EXPORT_POLICY.md) for Metacache export
+tiers (`public_original` / `public_sanitize` / `gitignore_only`).
 
 **Secondary:** manually dispatch `.github/workflows/release.yml` on the
 public GitHub mirror when intentionally publishing lean release assets.
@@ -101,8 +116,8 @@ Draft release notes from `CHANGELOG.md`.
 
 ## 4. Announce
 
-- Post `Metacache/docs/forum-announcement.md` to the RadioReference Forums and
-  /r/scanners when ready for a public beta.
+- Post [`forum-announcement.md`](forum-announcement.md) to RadioReference
+  Forums and /r/scanners when ready for a public beta.
 - Pin the release announcement on the repo.
 - Reply to any "is this tool still maintained?" threads you've been
   saving for this moment.
@@ -112,3 +127,11 @@ Draft release notes from `CHANGELOG.md`.
 - [ ] Add a new empty `[Unreleased]` section to `CHANGELOG.md`.
 - [ ] Bump `pyproject.toml` to the next development version.
 - [ ] Close the release milestone; open the next.
+
+## Related
+
+| Doc | Purpose |
+| --- | --- |
+| [`README.md`](README.md) | Ops doc index |
+| [`../ROADMAP.md`](../ROADMAP.md) | Build Phase 2 (SonarCloud + VPS) |
+| [Updating wiki](https://github.com/disturbedkh/scanner-manager/wiki/Updating) | End-user update instructions |

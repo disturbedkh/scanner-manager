@@ -1,88 +1,81 @@
 # Coverage Tools
 
+> Status: shipped (v0.11.x)
+
 Four complementary ways to visualize what the scanner will scan around
-a given point.
+a given point. Wording below covers **both shells** where they differ.
 
 ## Nearest Systems (tree annotations)
 
-When **Enable Location Filter** is active, the top-level tree view
-prefixes each system with its distance-rank (`#1`, `#2`, ...) and sorts
-groups inside by distance from the center point. No extra dialog
-needed.
+When the **location filter** is active, the HPDB tree prefixes each
+system with its distance-rank (`#1`, `#2`, ...) and sorts groups
+inside by distance from the center point.
+
+- **Qt (BearTracker 885):** tick **Apply location filter** in the
+  location simulation bar.
+- **Legacy Tk:** tick **Enable Location Filter** in the toolbar.
 
 ## Coverage Heatmap
 
-**Heatmap...** opens a heatmap overlaid on a real tile-server map. Each
-cell's color shows how many coverage circles overlap that point, so
-hotspots jump out on top of familiar geography instead of floating in a
-black square.
+### Qt default (`scanner-manager`)
 
-Controls in the dialog:
+**View → Coverage / heatmap…** opens a popout window with two tabs:
 
-- **Span (mi)** - how far out from the center the heat grid extends.
-  The span also prunes tower markers and coverage circles, so zooming
-  in on a 5-mile radius genuinely shows only towers inside that box
-  instead of every tower in the file.
-- **Tile server** - OpenStreetMap (default), Google map, Google satellite.
-- **Show tower markers** - overlay the individual tower / group pins so
-  you can correlate hotspots with named sites.
-- **Show coverage circles** - outline each tower's advertised range as
-  a circle. Off by default so a dense file doesn't turn the map blue.
-- **Scanner buttons** - Police / Fire / EMS / DOT / Multi checkboxes
-  and an **Other types** toggle. These mirror the main toolbar's
-  button simulation, so the heatmap shows exactly what the scanner
-  will scan with that button combo held.
-- **Show removed towers (grayed)** - when on, any group or system the
-  user has deleted since the last SD-card sync is drawn as a gray
-  marker (and optionally a gray coverage circle), so it's easy to see
-  what was pruned vs. what still lives on the card. The diff is
-  comprehensive: it compares the live tree against the session
-  snapshot (the real HPD file as it was when you opened it) and also
-  replays any unreverted delete events, so whole-system deletions,
-  bulk cleanups, and per-entry removals all surface uniformly.
+- **Heatmap** — `pyqtgraph` density grid of scannable groups.
+- **Map** — Leaflet tile map via QtWebEngine when available; text
+  fallback when WebEngine is missing.
 
-The heatmap renders the intensity grid as a small number of
-merged-rectangle overlays rather than one polygon per cell, so pan and
-zoom stay smooth even on systems with hundreds of coverage circles.
-Repeater sites shared by several systems collapse into one marker;
-click it to see the full list of systems and groups that live at that
-tower in a tree dialog.
+Controls include span (miles), tile provider, tower markers, coverage
+circles, and button-filter checkboxes (Police / Fire / EMS / DOT /
+Multi) that mirror BT885 hardware semantics.
 
-Install the optional map dependency to enable tile support:
+No extra pip package is required beyond the base Qt install; WebEngine
+ships with many PySide6 builds.
+
+### Legacy Tk (`scanner-manager-tk`)
+
+**Heatmap...** opens a heatmap overlaid on a real tile-server map when
+`tkintermapview` is installed:
 
 ```bash
-python -m pip install tkintermapview
+python -m pip install -e .[map]
+# or: pip install tkintermapview
 ```
 
-If `tkintermapview` isn't available, the heatmap falls back to the
-legacy pure-Tk density grid (no map tiles) so the feature still works
-in headless or locked-down environments.
+If `tkintermapview` isn't available, the heatmap falls back to a
+pure-Tk density grid (no map tiles).
+
+Shared behavior (both shells):
+
+- **Span (mi)** prunes tower markers and coverage circles to the
+  visible radius.
+- **Show removed towers (grayed)** — deleted groups/systems since
+  session open appear as gray markers when enabled.
+- Repeater sites shared by several systems collapse into one marker.
 
 ## Coverage Map
 
-**Map...** opens the tile-server map with each tower drawn as a
-coverage-circle polygon plus a marker. It uses the same tile providers
-as the heatmap (OSM, Google, Google satellite) and the same
-tower-clustering logic, so a repeater shared by several systems shows
-up as one marker that opens a tree listing every system and group
-homed on it.
+- **Qt:** the **Map** tab inside the coverage popout (Leaflet).
+- **Legacy Tk:** **Map...** toolbar button (`tkintermapview`).
+
+Both use OSM / Google tile providers and tower-clustering logic.
 
 ## Export Effective Scan Set
 
-**Export Effective Scan Set...** writes a CSV or TXT of *exactly* the
-rows visible under the current filter, with extra columns useful for
-analysis:
+**Legacy Tk only** today — **Export Effective Scan Set...** on the
+toolbar writes a CSV or TXT of rows visible under the current filter,
+with `Lat`, `Lon`, `Range (mi)`, `Distance (mi)` columns.
 
-- `Lat`, `Lon`, `Range (mi)`, `Distance (mi)`.
-
-Great for spreadsheet triage or sharing a layout with another scanner
-owner.
+Qt backlog: export from the location filter / coverage popout.
 
 ## Tuning the filter
 
-- **Tolerance slider** (toolbar) widens / narrows the effective radius
-  by +/- miles. Positive values include more distant groups; negative
-  values trim aggressively.
+- **Tolerance** widens / narrows the effective radius by ± miles.
 - **Button filters** (Police/EMS/Fire/DOT/Multi) restrict to service
   types that map to those physical buttons; see
   [Scanner Button Service Types](Scanner-Button-Service-Types).
+
+## Cross-references
+
+- [ZIP & GPS Simulation](ZIP-and-GPS-Simulation)
+- [Qt UI](Qt-UI) — location simulation bar

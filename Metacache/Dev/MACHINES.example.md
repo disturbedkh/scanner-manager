@@ -1,5 +1,7 @@
 # Machines (template)
 
+> Status: **active plan** — copy locally; do not commit real hostnames.
+
 One row per developer desktop. Copy this file to `MACHINES.md` locally
 if you want a private machine table on the GitLab mirror — do **not**
 commit real hostnames or absolute home paths to a public branch.

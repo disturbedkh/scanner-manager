@@ -1,5 +1,7 @@
 # SD card side-by-side: BT885 vs SDS100
 
+> Status: shipped (v0.11.x) — family diff reference for both profiles.
+
 > **Canonical narrative is in the wiki**:
 > [`wiki/RE-SD-Card.md`](../../../wiki/RE-SD-Card.md). This file is
 > the lab notebook with the exhaustive byte-level diff.
@@ -7,7 +9,8 @@
 > Captured 2026-04-27 on `<HOST>` from real cards. BT885 mounted
 > at `E:\`, SDS100 at `H:\`. Both FAT32, both BCDx36HP-family.
 >
-> Reproduce with: `py Metacache\Dev\RE\compare_cards.py --bt E:\ --sds H:\`
+> Reproduce with:
+> `py Metacache\Dev\RE\tools\sentinel\compare_cards.py --bt E:\ --sds H:\`
 > (read-only; full session is at
 > `Metacache/Dev/RE/sessions/card_compare_20260427T171130.txt`).
 
@@ -126,7 +129,7 @@ BCDx36HP\discovery\Trunk\
 BCDx36HP\favorites_lists\
 ```
 
-Earlier RE notes (and `RE/SDS100.md` before this diff was run)
+Earlier RE notes (and [`docs/SDS100.md`](SDS100.md) before this diff was run)
 described these as "what's new on SDS100" - that was wrong. The
 folders are part of the BCDx36HP firmware spec; the BT885 just never
 populates them because it has no UI for favorites / discovery /
@@ -299,7 +302,7 @@ Site			Simulcast	Off	<LAT>	<LON>	24.0	AUTO	Standard	Wide	Circle	Off	400	Auto	8	O
 | `data/scanner_profiles.json` `match_target_model` for BT885 = `["Beartracker885", ...]` | Stale. | Add `match_scanner_inf: ["BT885-SCN", "BT885*"]` and demote `match_target_model` to a fallback. |
 | Tests use `TargetModel\tBeartracker885` fixtures (`tests/test_sdcard.py`, `tests/test_metastore.py`, `tests/test_merge_and_zip.py`) | BT885 firmware writes `TargetModel\tBCDx36HP` | Update fixtures to match real hardware. The change is mechanical but touches several test files. |
 | `_PREFERRED_INSTALLERS` for BT885 includes `bt885_update_manager` | Confirmed: shipped at `E:\Setup\setup.exe` on the BT885 SD card | No change. Optional: detect the in-card installer path and surface a "run installer from card" shortcut. |
-| `RE/SDS100.md` "what's new on SDS100" lists `activity_log/`, `alert/`, `audio/`, `discovery/`, `favorites_lists/` empty dirs | These dirs exist on the BT885 too | Move those out of the "new" list - they're family-wide. The "new" list shrinks to: `app_data.cfg`, `discvery.cfg`, `profile.cfg`, populated favorites HPDs, populated `f_list.cfg`, populated `discovery/` payload (when in use). |
+| [`docs/SDS100.md`](SDS100.md) "what's new on SDS100" lists `activity_log/`, `alert/`, `audio/`, `discovery/`, `favorites_lists/` empty dirs | These dirs exist on the BT885 too | Move those out of the "new" list - they're family-wide. The "new" list shrinks to: `app_data.cfg`, `discvery.cfg`, `profile.cfg`, populated favorites HPDs, populated `f_list.cfg`, populated `discovery/` payload (when in use). |
 | `_content_fingerprint` digests first 1 MB of `ZipTable*.dat` + `CityTable*.dat` + TargetModel | Both cards have the same firmware tables and the same TargetModel | Confirmed: **the content fingerprint will collide between BT885 and SDS100 cards**. Already documented; reaffirmed here. Volume serial + `scanner.inf` is the real fingerprint. |
 
 The full TODO list lives in `WORKSTREAMS.md` and `MULTI_SCANNER_BACKEND.md`.
@@ -311,7 +314,7 @@ The full TODO list lives in `WORKSTREAMS.md` and `MULTI_SCANNER_BACKEND.md`.
 Everything in this doc is reproducible by running:
 
 ```powershell
-py Metacache\Dev\RE\compare_cards.py --bt E:\ --sds H:\ --sample-hpd s_000010.hpd
+py Metacache\Dev\RE\tools\sentinel\compare_cards.py --bt E:\ --sds H:\ --sample-hpd s_000010.hpd
 ```
 
 The script is read-only. It hashes the binary firmware tables, runs

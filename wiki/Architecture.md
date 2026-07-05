@@ -1,25 +1,40 @@
 # Architecture
 
-Notes for contributors and anyone trying to understand why Scanner
-Manager behaves the way it does.
+> Status: shipped (v0.11.x)
 
-## File layout
+Notes for contributors and anyone trying to understand why Scanner
+Manager behaves the way it does. For release checklists and file-format
+specs, see
+[`Metacache/docs/`](https://github.com/disturbedkh/scanner-manager/tree/main/Metacache/docs).
+
+## Product layout (v0.11.x)
+
+Scanner Manager is no longer a single `scanner_manager.py` monolith.
+The default entry (`scanner-manager`) launches the PySide6 shell under
+`gui/`. Domain logic lives in UI-free packages so both Qt and the legacy
+Tk fallback can share it.
 
 ```
-scanner_manager.py   # Tkinter GUI + HPD parser/writer + pipelines
-metastore.py         # Event-sourced change log
-rr_api.py            # RadioReference SOAP client (zeep)
-sdcard.py            # Virtual SD card / workspace helpers
-uniden_tools.py      # Sentinel / BT885 detection + installer resolver
+core/                 # HPD model, MetaStore, device manager, RR SOAP, sdcard helpers
+gui/                  # PySide6 default shell (editor, live, streaming, firmware docks)
+legacy_tk/            # Tkinter fallback (`scanner-manager-tk`)
+scanner_profiles/     # BearTracker 885 + SDS100/200 profile classes + registry
+scanner_drivers/      # SDS100/200 serial MAIN/SUB drivers + USB port detection
+firmware/             # FTP discovery, SHA-256 cache, card apply pipeline
+streaming/            # FastAPI LAN server + Icecast/Broadcastify push
+audio/                # Soundcard capture + Opus/MP3/WAV encoders
 data/
-  uniden_installers.json   # Pinned URL + SHA-256 per Uniden installer
-tests/               # pytest-based headless tests
-packaging/           # PyInstaller spec + icon
-wiki/                # This wiki; authored in-repo so CI can validate
-.github/workflows/   # CI + Release pipelines
+  devices.json        # Default device manifest (overridden per workspace)
+  scanner_profiles.json
+  uniden_installers.json
+tests/                # pytest headless tests
+packaging/            # PyInstaller specs + Qt entry shim
+wiki/                 # In-repo wiki SSOT (published to GitHub wiki)
 ```
 
 ## Data model
+
+HPD parsing and the tree model live in `core/hpd.py`:
 
 ```
 HpdFile
@@ -30,24 +45,26 @@ HpdFile
 ```
 
 Every node carries a stable `uid` field so the MetaStore can reference
-it across renames and re-parses.
+it across renames and re-parses. `legacy_tk/scanner_manager.py`
+re-exports these types for backward compatibility; new code should
+import from `core.hpd`.
 
 ## MetaStore event log
 
-`metastore.py` defines an `Event` dataclass plus a `MetaStore`
+`core/metastore.py` defines an `Event` dataclass plus a `MetaStore`
 singleton backed by a sidecar JSON file (`<hpdname>.meta.json`).
 
 ### Event types
 
-- `OP_ADD_GROUP`, `OP_ADD_CFREQ`, `OP_ADD_TGID` - additions.
-- `OP_EDIT_ENTRY`, `OP_EDIT_GROUP`, `OP_EDIT_SYSTEM` - in-place edits.
-- `OP_DELETE_ENTRY`, `OP_DELETE_GROUP`, `OP_DELETE_SYSTEM` - removals.
-- `OP_SET_SERVICE` - low-level field mutation the bulk ops route
+- `OP_ADD_GROUP`, `OP_ADD_CFREQ`, `OP_ADD_TGID` — additions.
+- `OP_EDIT_ENTRY`, `OP_EDIT_GROUP`, `OP_EDIT_SYSTEM` — in-place edits.
+- `OP_DELETE_ENTRY`, `OP_DELETE_GROUP`, `OP_DELETE_SYSTEM` — removals.
+- `OP_SET_SERVICE` — low-level field mutation the bulk ops route
   through. (An older `set_avoid` op exists in v0.9.0a2 sidecars; the
   replayer silently skips it for forward compatibility.)
-- `OP_IMPORT_APPLY` - **composite** event summarising a whole import
+- `OP_IMPORT_APPLY` — **composite** event summarising a whole import
   so it reverts in one click.
-- `OP_EXTERNAL_CHANGE` - wraps a Uniden-updater pass; the replayer
+- `OP_EXTERNAL_CHANGE` — wraps a Uniden-updater pass; the replayer
   re-applies pre-existing events on top.
 
 ### Batching
@@ -65,63 +82,116 @@ write regardless of mutation count.
 
 ### `log=False`
 
-Every `_do_*` mutation method in `ScannerManagerApp` accepts an
-optional `log: bool = True`. Inside a batch the caller can opt out of
-the per-mutation event and rely on a single composite event (e.g. the
-import apply). This keeps the change log small and human-readable.
+Mutation helpers accept an optional `log: bool = True`. Inside a batch
+the caller can opt out of the per-mutation event and rely on a single
+composite event (e.g. the import apply). This keeps the change log
+small and human-readable.
 
 ### Revert semantics
 
 `Event.revert(tree)` is responsible for undoing itself. For composite
 events, that means walking the payload and reversing every sub-
-mutation in reverse order. For simple events it's a direct
-counter-mutation. The UI never re-derives revert logic; it just calls
-`Event.revert()`.
+mutation in reverse order. The UI never re-derives revert logic; it
+just calls `Event.revert()`.
+
+## Multi-scanner backend
+
+`scanner_profiles/` registers concrete profiles at import time via
+`register_profile()`. The active profile is a runtime singleton
+(`get_active_profile()` / `set_active_profile()`).
+
+Shipping profiles (v0.11.1):
+
+| ID | Scanner | Notes |
+| --- | --- | --- |
+| `uniden_bt885` | BearTracker 885 | Default profile; hardware button semantics |
+| `uniden_sds100` | SDS100 / SDS200 | Serial live mirror, streaming, firmware FTP |
+
+`detect_from_card(sd_path)` reads `BCDx36HP/scanner.inf` field 1 and
+returns the matching profile. The Qt editor shows a mismatch banner when
+the card fingerprint disagrees with the configured device profile
+(`gui/editor/editor_dock.py`). **Legacy Tk does not call
+`detect_from_card()` today** — auto profile switch on card load remains
+backlog (banner only in Qt).
+
+`data/scanner_profiles.json` is the manifest of known models;
+`data/devices.json` holds user device rows (label, profile id, SD path).
+
+## Device manager
+
+`core/device_manager.py` loads and persists the device manifest.
+The Qt header combobox (`gui/header.py`) lists registered devices and
+emits `deviceChanged`; `gui/main_window.py` rebroadcasts
+`activeDeviceChanged` so every dock reloads HPDB state for the new
+device.
 
 ## Import pipeline
 
-`ScannerManagerApp._apply_cfreq_import` / `_apply_trs_import`:
+RadioReference import (HTML scrape + optional SOAP via `core/rr_api.py`)
+is implemented in `legacy_tk/scanner_manager.py` and its helper
+modules. The Qt shell exposes **Recent changes…** for the MetaStore log
+but does not yet port the full RR import UI — use `scanner-manager-tk`
+for import workflows until the Qt editor catches up.
+
+Typical import flow (Tk):
 
 1. Open a `MetaStore.batch()`.
-2. For each row in the diff:
-   - `_do_add_cfreq(..., log=False)` / `_do_add_tgid(..., log=False)`.
-   - Or edit / delete as needed, all `log=False`.
-3. Build an `OP_IMPORT_APPLY` payload capturing enough state to
-   reverse the whole operation.
-4. `self._meta.record(payload)` once.
-5. End the batch; exactly one sidecar write.
+2. For each row in the diff: add/edit/delete with `log=False`.
+3. Build an `OP_IMPORT_APPLY` payload capturing enough state to reverse
+   the whole operation.
+4. `record(payload)` once; end the batch (one sidecar write).
 
 ## Update pipeline
 
-`_run_update_pipeline` wraps Uniden tool runs in an
-`OP_EXTERNAL_CHANGE` event and uses `_replay_events_after_update` to
-re-apply pre-existing user events (renames, service-type overrides,
-deletions) on top of whatever the tool wrote.
+`_run_update_pipeline` (legacy Tk) wraps Uniden tool runs in an
+`OP_EXTERNAL_CHANGE` event and replays pre-existing user events on top
+of whatever the tool wrote. Qt exposes the same Uniden Tools dialog
+(`gui/dialogs/uniden_tools.py`) for launch/detection; the full
+push → update → pull orchestration remains strongest in legacy Tk.
 
 ## Session snapshot
 
-On every save, `write_session_snapshot()` copies the current HPD to
+On every save, the app copies the current HPD to
 `<hpdname>.session.bak`. This is a single-file safety net; it is
-deliberately not timestamped or rotated, because that was the old
-pattern that made backups-of-bulk-ops pathologically slow.
+deliberately not timestamped or rotated.
 
-## UI notes
+## Qt shell structure
 
-- Toolbars are split across **three** rows to fit 1080p monitors.
-- The Help menu is the *only* top-level menu; all functionality is
-  also reachable from toolbars / context menus so users on touch
-  displays (where menus are awkward) aren't stuck.
-- Every long-running op (imports, downloads) runs on a worker thread
-  and uses `root.after()` to marshal results back to the Tk thread.
+`gui/main_window.py` hosts:
+
+- **Header** — device selector, connection LED, firmware pill, mode
+  toggle (Storage vs Live).
+- **Editor dock** — HPDB tree, profile panels, location sim bar (BT885),
+  profile mismatch banner.
+- **Live dock** — Control (virtual faceplate) + Monitoring (GSI, meters,
+  GLG, waterfall) tabs; SDS100/200 only.
+- **Streaming dock** — soundcard + LAN server + push targets.
+- **Firmware** — standalone window from Tools menu (`FirmwareDock`).
+
+Coverage heatmap/map opens as a popout window (`View → Coverage /
+heatmap…`) using `pyqtgraph` + QtWebEngine/Leaflet — not the legacy
+Tk `tkintermapview` path.
+
+See [Qt UI](Qt-UI) for the user-facing tour.
+
+## Legacy Tk fallback
+
+`legacy_tk/scanner_manager.py` is the original monolith, split into
+helper modules (`sm_helpers.py`, `geo_tables.py`, `import_dialogs.py`,
+etc.) but still one process. It retains features not yet ported to Qt:
+
+- RadioReference import and group linking
+- Virtual SD card clone / push / pull
+- CityTable editor, Alerts viewer, Export Effective Scan Set
+- Pure-Tk coverage heatmap with optional `tkintermapview`
+
+Launch with `scanner-manager-tk`. Parity constants for BT885 remain
+locked by `tests/test_bt885_parity.py`.
 
 ## Tests
 
-- `tests/test_metastore.py` - event logging, batching, revert, and
-  `log=False` semantics against a `_HeadlessApp`.
-- `tests/test_merge_and_zip.py` - HPD merge + CityTable/ZipTable
-  round-trip.
-- `tests/test_uniden_installer_manifest.py` - manifest load, hash
-  verify, cache precedence.
-- `tests/test_about_and_donate.py` - headless construction of the new
-  dialogs with and without `qrcode`.
-- `tests/test_crash_handler.py` - crash-log writer shape.
+- `tests/test_metastore.py` — event logging, batching, revert.
+- `tests/test_scanner_profiles.py` / `tests/test_sds100_profile.py` —
+  profile registry and SDS100 behavior.
+- `tests/test_firmware_*.py` — FTP client, cache, updater card apply.
+- `tests/test_qt_*.py` — Qt dock smoke tests (live, firmware, workspace).

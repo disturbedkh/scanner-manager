@@ -1,5 +1,7 @@
 # RE: Serial Protocol
 
+> Status: shipped (v0.11.x) — read-only catalog; live-serial UI backlog.
+
 > Where this fits: the live command surface exposed when the SDS100
 > is in **Serial mode**. Sentinel never enters Serial mode, so
 > everything on this page is "extra surface our app gets that

@@ -55,7 +55,7 @@ REPO_ROOT = _c.REPO_ROOT
 RE_DIR = _c.RE_ROOT
 SESSIONS_DIR = _c.SESSIONS_DIR
 
-# Mirrors _verify_dispatch.FORBIDDEN_HEADS.
+# Mirrors verify_dispatch.FORBIDDEN_HEADS.
 FORBIDDEN_HEADS = {
     "DIE", "RST", "RB", "WB", "PROG", "PG", "BL", "ERA", "WIPE", "BFH", "h",
 }

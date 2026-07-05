@@ -1,5 +1,7 @@
 # GitHub Discussions structure
 
+> Status: shipped (v0.11.x)
+
 This file is the **source of truth** for the Discussions setup of
 this repository. If you create or rename a category, update this
 file in the same PR. Maintainers run a periodic check that the live
@@ -7,9 +9,9 @@ Discussions categories on GitHub match the table below.
 
 The forum is for project-related conversation that doesn't belong
 in an issue or PR. Bug reports and feature requests still go to
-[Issues](../../issues); reverse-engineering write-ups, hardware
-recipes, hobbyist talk, "look what I built" demos, and open-ended
-brainstorming go here.
+[Issues](https://github.com/disturbedkh/scanner-manager/issues);
+reverse-engineering write-ups, hardware recipes, hobbyist talk,
+"look what I built" demos, and open-ended brainstorming go here.
 
 ## Categories
 
@@ -27,7 +29,7 @@ reasonable navigation order.
 | Help | `help` | Question / answer | "How do I X?", install/setup support, "my scanner won't show up", "the app crashed". This is the answerable category - mark a reply as the accepted answer once the question is resolved. Bridges to a real bug report once a reproducer is isolated. |
 | Ideas | `ideas` | Open-ended | Half-formed feature ideas you want to talk through before opening a feature request. Promote graduated ideas into Issues. |
 | Polls | `polls` | Poll | Quick maintainer-run polls (release timing, naming conventions, default settings, etc.). |
-| Reverse Engineering | `reverse-engineering` | Open-ended | Findings, captures, decoded protocols, firmware analysis, "is this what this command does?" The conversational counterpart to the [RE wiki](../../wiki/Reverse-Engineering). |
+| Reverse Engineering | `reverse-engineering` | Open-ended | Findings, captures, decoded protocols, firmware analysis, "is this what this command does?" The conversational counterpart to the [RE wiki](https://github.com/disturbedkh/scanner-manager/wiki/Reverse-Engineering). |
 | Show and tell | `show-and-tell` | Open-ended | Show off what you built: workspace screenshots, custom favorites, GLG dashboards, recordings, charts. |
 | Tooling/Development | `tooling-development` | Open-ended | Developer-facing talk: CI, build system, refactors, code-style debates, contributor onboarding, RE tooling architecture. |
 
@@ -49,11 +51,12 @@ When in doubt:
 
 ## Cross-references to elsewhere in the repo
 
-- Wiki: [Reverse Engineering](../../wiki/Reverse-Engineering),
-  [Architecture](../../wiki/Architecture),
-  [Quickstart](../../wiki/Quickstart),
-  [Troubleshooting](../../wiki/Troubleshooting).
-- RE plans: [virtual scanner roadmap](../../wiki/Virtual-Scanner-Roadmap).
+- Wiki: [Reverse Engineering](https://github.com/disturbedkh/scanner-manager/wiki/Reverse-Engineering),
+  [Architecture](https://github.com/disturbedkh/scanner-manager/wiki/Architecture),
+  [Quickstart](https://github.com/disturbedkh/scanner-manager/wiki/Quickstart),
+  [Qt UI](https://github.com/disturbedkh/scanner-manager/wiki/Qt-UI),
+  [Troubleshooting](https://github.com/disturbedkh/scanner-manager/wiki/Troubleshooting).
+- RE plans: [Virtual Scanner Roadmap](https://github.com/disturbedkh/scanner-manager/wiki/Virtual-Scanner-Roadmap).
 - Tool reference: [`Metacache/Dev/RE/tools/README.md`](../Metacache/Dev/RE/tools/README.md).
 - Issue templates: [`.github/ISSUE_TEMPLATE/`](./ISSUE_TEMPLATE/).
 
@@ -61,11 +64,11 @@ When in doubt:
 
 1. **Don't post raw scanner captures with PII.** Strip GPS,
    hostnames, agency names, scanner serials before pasting. The
-   examples in [RE wiki](../../wiki/Reverse-Engineering) use
+   examples in the [RE wiki](https://github.com/disturbedkh/scanner-manager/wiki/Reverse-Engineering) use
    `<HOST>`, `<SERIAL>`, `<LAT>`, `<AGENCY>` placeholders -
    please match.
 2. **Quote your environment** when reporting issues: OS, Python
-   version, app version, Wireshark / USBPcap versions if relevant.
+   version, app version (0.11.x), Wireshark / USBPcap versions if relevant.
 3. **Cite sources.** If you read it on RR / forums / spec PDF,
    link the source. RE work compounds when claims are checkable.
 4. **One topic per thread.** Long, branching conversations are hard
@@ -106,7 +109,7 @@ To verify the live state matches:
 ```pwsh
 $query = @'
 query {
-  repository(owner:"<org>", name:"<repo>") {
+  repository(owner:"disturbedkh", name:"scanner-manager") {
     hasDiscussionsEnabled
     discussionCategories(first:50) {
       nodes { name slug emoji isAnswerable }
@@ -137,13 +140,12 @@ etc.
 
 If you're new:
 
-- Read the [Reverse Engineering](../../wiki/Reverse-Engineering)
-  wiki page for an overview of what we know about the SDS100 over
-  USB and how we know it.
-- Skim the [Quickstart](../../wiki/Quickstart) for getting the app
-  running.
-- Check [DISCUSSIONS.md](.github/DISCUSSIONS.md) for which category
-  to post in.
+- Read the Reverse Engineering wiki for an overview of what we know
+  about the SDS100 over USB:
+  https://github.com/disturbedkh/scanner-manager/wiki/Reverse-Engineering
+- Skim the Quickstart for getting the app running (0.11.x Qt default):
+  https://github.com/disturbedkh/scanner-manager/wiki/Quickstart
+- Check DISCUSSIONS.md for which category to post in.
 
 Three quick rules:
 
@@ -154,7 +156,7 @@ Three quick rules:
 3. One topic per thread, please.
 
 Bug reports and concrete feature requests still go to Issues. The
-[issue templates](.github/ISSUE_TEMPLATE/) will route you.
+issue templates will route you.
 
 Happy scanning.
 ```

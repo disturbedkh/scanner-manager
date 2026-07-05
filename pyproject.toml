@@ -12,7 +12,7 @@ output-file = "requirements.lock"
 [project]
 name = "beartracker-885-scanner-manager"
 version = "0.11.1"
-description = "Desktop GUI for managing Uniden BearTracker 885 HPD files, ZIP/coverage simulation, RadioReference imports, and Uniden Sentinel/Updater integration."
+description = "Multi-scanner Qt desktop app for Uniden BearTracker 885 and SDS100/200 — HPD editing, live serial mirror, LAN streaming, firmware updates, ZIP/coverage simulation, and RadioReference import."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.9"
@@ -23,11 +23,17 @@ keywords = [
     "uniden",
     "beartracker",
     "bt885",
+    "sds100",
+    "sds200",
     "scanner",
+    "pyside6",
+    "qt",
     "radioreference",
     "hpd",
     "scanning",
     "ham-radio",
+    "firmware",
+    "streaming",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

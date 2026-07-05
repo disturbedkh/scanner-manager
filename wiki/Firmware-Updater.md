@@ -1,9 +1,15 @@
 # Firmware Updater
 
+> Status: shipped (v0.11.x)
+
 > The Firmware dock discovers Main / Sub firmware images and HPDB
 > snapshots from Uniden's two FTP servers, caches them locally with
 > SHA-256 verification, and applies them to the SD card with
 > backup + atomic copy + post-flash verify.
+
+Open from **Tools → Firmware updater…** in the Qt shell (or the legacy
+Tk Tools menu). The header **FW pill** shows on-card Main/Sub versions
+when an SD path is bound.
 
 The full reverse-engineered endpoint reference lives at
 [`Metacache/Dev/RE/docs/uniden_update_endpoints.md`](../Metacache/Dev/RE/docs/uniden_update_endpoints.md);
@@ -64,7 +70,7 @@ The dock's **Run update wizard…** button orchestrates:
    - Verify the cached blob's SHA-256.
    - If `requires_sub_min` is supplied, ensure the on-card sub firmware
      meets the minimum.
-2. **Backup** (`firmware.updater.backup_card`) - copies
+2. **Backup** (`firmware.updater.backup_card`) — copies
    `BCDx36HP/` to `<card_parent>/scanner-manager-backups/<ts>/`.
 3. **Apply** (`apply_main_firmware` / `apply_sub_firmware` /
    `apply_hpdb`)
@@ -73,9 +79,12 @@ The dock's **Run update wizard…** button orchestrates:
    - Write to a `.partial` sibling, then `os.replace` for atomic
      swap.
 4. **Eject + reboot** (modal in the dock).
-5. **Post-flash verify** (`postflash_verify`) - re-reads
+5. **Post-flash verify** (`postflash_verify`) — re-reads
    `scanner.inf` after reboot and compares the new version field to
    what we expected.
+
+Manifest on disk today: `data/uniden_installers.json` (installer URLs).
+A consolidated `firmware_manifest.json` remains a future ops doc item.
 
 ## SD card layout
 
@@ -93,17 +102,17 @@ The dock's **Run update wizard…** button orchestrates:
 
 ## Tests
 
-- `tests/test_firmware_library.py` - filename parsing + cache
+- `tests/test_firmware_library.py` — filename parsing + cache
   store / verify roundtrips.
-- `tests/test_firmware_ftp_client.py` - fake `ftplib.FTP` validates
+- `tests/test_firmware_ftp_client.py` — fake `ftplib.FTP` validates
   protocol verbs + MDTM parsing + chunked download.
-- `tests/test_firmware_updater.py` - card-shape fixtures cover
+- `tests/test_firmware_updater.py` — card-shape fixtures cover
   pre-flight, atomic apply, purge of stale firmware, post-flash
   verify.
-- `tests/test_qt_firmware.py` - smoke tests for the dock UI.
+- `tests/test_qt_firmware.py` — smoke tests for the dock UI.
 
 ## Cross-references
 
-- [Qt UI](Qt-UI.md)
+- [Qt UI](Qt-UI)
 - [`Metacache/Dev/RE/docs/uniden_update_endpoints.md`](../Metacache/Dev/RE/docs/uniden_update_endpoints.md)
 - [`Metacache/Dev/FIRMWARE_UPDATER.md`](../Metacache/Dev/FIRMWARE_UPDATER.md)

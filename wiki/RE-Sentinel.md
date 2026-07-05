@@ -1,5 +1,7 @@
 # RE: Sentinel
 
+> Status: shipped (v0.11.x) — UMS decode complete; actual-update WRITE traces OPEN.
+
 > Where this fits: what Sentinel actually does over USB, and how
 > our app replicates (and exceeds) it. Sentinel is a Mass-Storage
 > filesystem editor - **nothing more**. For the consolidated

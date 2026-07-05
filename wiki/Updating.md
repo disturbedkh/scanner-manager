@@ -1,5 +1,7 @@
 # Updating Scanner Manager
 
+> Status: shipped (v0.11.x)
+
 Scanner Manager ships with a built-in GitHub-release updater so you
 don't need to use git or track the download page to stay current.
 
@@ -61,9 +63,9 @@ for a previously-skipped release.
 Development happens on a private GitLab mirror with full RE context.
 The public GitHub repo is a **filtered export** — see
 [`Metacache/EXPORT_POLICY.md`](../Metacache/EXPORT_POLICY.md). Safe
-Metacache RE files (docs, tools, specs) ship on GitHub; agent
-notebooks, firmware blobs, and raw captures do not. Release tags and
-binaries are published from GitHub only.
+Metacache RE files (docs, tools, specs) ship on GitHub as of v0.11.1;
+agent notebooks, firmware blobs, and raw captures do not. Release tags
+and binaries are published from GitHub only.
 
 ## Privacy
 

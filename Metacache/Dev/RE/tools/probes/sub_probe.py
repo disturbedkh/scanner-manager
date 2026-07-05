@@ -209,7 +209,7 @@ TARGETED_COMBOS: list[str] = [
 
 
 # Phase 1b retry list seeded directly from the 35 untriggered Sub
-# firmware format strings (see Metacache/Dev/RE/sub_command_response_map.md).
+# firmware format strings (see Metacache/Dev/RE/docs/sub_command_response_map.md).
 # The first probe pass found 0 of 35 format strings triggered, so this
 # pass walks 4-5 letter mnemonics derived from the format-string tokens.
 #

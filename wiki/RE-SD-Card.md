@@ -1,5 +1,7 @@
 # RE: SD Card
 
+> Status: shipped (v0.11.x) — on-disk layout for BT885 + SDS100 profiles.
+
 > Where this fits: the FAT32 layout the BCDx36HP family writes to
 > the microSD, and how its file shapes are the actual API our app
 > (and Sentinel) uses for persistent edits. For the consolidated
@@ -264,9 +266,9 @@ firmware/
 └── ZipTable_V1_00_00.dat     693,758 B   (bit-identical BT885 = SDS100)
 ```
 
-Already RE'd in our `scanner_manager.py:FirmwareCityTable` and
-`FirmwareZipTable` parsers. 47,204 city records and 41,771 ZIPs
-respectively. Same SHA-256 across the family.
+Already RE'd in `legacy_tk/geo_tables.py` (`FirmwareCityTable` /
+`FirmwareZipTable`) and used by both scanner profiles. 47,204 city
+records and 41,771 ZIPs respectively. Same SHA-256 across the family.
 
 > **Never** delete or modify these files - the scanner refuses to
 > boot without them. They're also where firmware updates are
@@ -277,11 +279,11 @@ respectively. Same SHA-256 across the family.
 
 | Need | File(s) | Already supported in our parser? |
 |---|---|---|
-| Identify which scanner is mounted | `BCDx36HP/scanner.inf` field 1 | Detection refactor pending; raw read works today |
+| Identify which scanner is mounted | `BCDx36HP/scanner.inf` field 1 | Yes — `detect_from_card()` in Qt (legacy Tk: manual profile) |
 | Read/write per-state channel data | `BCDx36HP/HPDB/s_*.hpd` | Yes |
-| Read/write favourites | `BCDx36HP/favorites_lists/f_*.hpd` + `f_list.cfg` | Yes (round-trip preservation; UI for edit pending) |
+| Read/write favourites | `BCDx36HP/favorites_lists/f_*.hpd` + `f_list.cfg` | Yes (round-trip preservation; Favorites Lists editor UI backlog) |
 | Read/write SDS100 settings | `BCDx36HP/profile.cfg` | Round-trip yes; record-level UI for edit pending |
-| Drop a firmware update | `BCDx36HP/firmware/*.bin` (MAIN) or `*.firm` (SUB) | Yes - just copy the file in; reboot the scanner |
+| Drop a firmware update | `BCDx36HP/firmware/*.bin` (MAIN) or `*.firm` (SUB) | Yes — Firmware Updater dock + FTP discovery ([RE-Update-Endpoints](RE-Update-Endpoints)) |
 | Backup everything | walk `BCDx36HP/` | Yes |
 | Restore everything | walk `BCDx36HP/` in reverse | Yes |
 

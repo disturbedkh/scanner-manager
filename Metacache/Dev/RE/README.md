@@ -1,5 +1,8 @@
 # Reverse Engineering / Development - Lab notebook
 
+> Status: active plan (v0.11.x) — lab notebook; wiki is the canonical
+> narrative. Export tiers: [`Metacache/EXPORT_POLICY.md`](../../EXPORT_POLICY.md).
+
 > **Canonical narrative is the wiki.** Start at
 > [`wiki/Reverse-Engineering.md`](../../wiki/Reverse-Engineering.md)
 > (or `Reverse-Engineering` on the GitHub Wiki) for the consolidated
@@ -57,6 +60,7 @@ common workflows.
 | Serial command catalogs | [RE-Serial-Protocol](../../wiki/RE-Serial-Protocol.md) | `docs/SDS100_unofficial_commands.md`, `docs/sub_command_dispatch.md`, `tools/probes/serial_probe.py`, `tools/probes/sub_probe.py` |
 | Inter-MCU USART2 protocol | [RE-Inter-MCU-Bus](../../wiki/RE-Inter-MCU-Bus.md) | `docs/SDS100_inter_mcu_protocol.md`, `firmware/decompiles/` |
 | Firmware (SUB container, MAIN encryption) | [RE-Firmware](../../wiki/RE-Firmware.md) | `docs/SDS100_firmware.md`, `tools/firmware/inflate_sub.py`, `firmware/`, `tools/automation/` |
+| Uniden update FTP endpoints | [RE-Update-Endpoints](../../wiki/RE-Update-Endpoints.md) | `docs/uniden_update_endpoints.md`, `docs/uniden_firmware_inventory.md`; prod client: `firmware/ftp_client.py` |
 | Sentinel as UMS editor | [RE-Sentinel](../../wiki/RE-Sentinel.md) | `docs/sentinel_api.md`, `docs/sentinel_capture.md`, `sentinel_pcaps/`, `tools/sentinel/` |
 | Tool inventory | [RE-Toolchain](../../wiki/RE-Toolchain.md) | `tools/README.md` and the per-script docstrings |
 | Recipes / playbooks | [RE-Workflows](../../wiki/RE-Workflows.md) | `docs/AUTOMATION.md`, `docs/ghidra_import_runbook.md` |

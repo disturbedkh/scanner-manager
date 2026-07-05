@@ -1,5 +1,7 @@
 # RE: Inter-MCU Bus (USART2)
 
+> Status: shipped (v0.11.x) — Layers 0–2 from SUB decompile; Layer 3 OPEN.
+
 > Where this fits: how the SUB MCU and MAIN MCU talk to each other
 > inside the scanner. Derived entirely from static analysis of the
 > SUB firmware (the MAIN side is encrypted, so the protocol's

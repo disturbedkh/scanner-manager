@@ -1,5 +1,7 @@
 # RE / Development plans
 
+> Status: active plan (v0.11.x) — forward-looking RE sketches only.
+
 Forward-looking plan documents for things we want to build but
 haven't yet. Each plan is a self-contained `.md` file with:
 

@@ -1,297 +1,181 @@
-# Multi-Device GUI - Top-Level Device Selector
+# Multi-Device GUI — As-Built Reference
 
-> Status: design only (not implemented). Drafted 2026-04-27 EDT.
-> Companion to `MULTI_SCANNER_BACKEND.md`. Where the backend doc
-> covers the `scanner_profiles/` driver layer, this doc covers the
-> **GUI surface** that lets a user switch between scanners and
-> have the right device-specific UI come up.
+> Status: **shipped (v0.11.0)** — Qt header device selector, Live/Storage mode
+> gating, workspace-aware device manifests. Residual gaps listed below.
 
-## The goal in one sentence
+Companion to [`MULTI_SCANNER_BACKEND.md`](MULTI_SCANNER_BACKEND.md). The
+backend doc covers `scanner_profiles/`; this doc covers the **Qt GUI shell**
+that lets a user switch between registered scanners and see the right docks.
 
-A persistent header at the top of the window with a **scanner
-device selector** that, when the user picks a different model,
-swaps in the correct UI panels, hides irrelevant ones, and shows
-device-specific controls (heatmap features, firmware versions,
-serial-mode live panel, etc.) without restarting the app.
+User-facing tour: [Qt UI wiki](https://github.com/disturbedkh/scanner-manager/wiki/Qt-UI).
 
-## What "device" means here
+## What shipped
 
-A **Device** in the GUI is the union of:
-
-1. A `ScannerProfile` (from `scanner_profiles/`) - tells us what
-   the *model* can do.
-2. A specific **SD card profile** (one of the multiple virtual
-   profiles in `metastore.GlobalMetaStore`) - tells us which card
-   layout we're editing right now.
-3. Optionally, a live **serial connection** to that scanner -
-   tells us what's happening *right now*.
-
-A user might have:
-- An SDS100 with two SD card profiles ("Home" and "Roadtrip")
-- A BT885 with one profile ("Truck")
-
-That's **3 Devices** in the selector.
-
-## Header bar (sketch)
+A persistent **header bar** at the top of the Qt main window:
 
 ```
-+-----------------------------------------------------------------------------+
-|  [Uniden SDS100 - Home]  [v]   FW: Main 1.26.01 / Sub 1.03.15  [Update...]  |
-|        ^- selector dropdown    ^- live status from connected scanner        |
-+-----------------------------------------------------------------------------+
-|                                                                             |
-|   <existing tabs / panels - filtered to what this device supports>          |
-|                                                                             |
-+-----------------------------------------------------------------------------+
++------------------------------------------------------------------+
+| Scanner: [Uniden SDS100 / SDS200 — My SDS100 ▼]  Add…  Manage     |
+| Mode: [Live] [Storage]   ● FW: Main 1.26.01 / Sub 1.03.15  [Check for updates…] |
++------------------------------------------------------------------+
+|  Central stack: Storage (editor)  OR  Live (faceplate + monitoring) |
++------------------------------------------------------------------+
 ```
 
-The dropdown lists every Device (ScannerProfile + card-profile
-combination) the app knows about, plus an "Add..." item that walks
-the user through setting up a new one.
+Implemented in:
 
-When the user picks a different Device, the app rebinds the UI to
-that profile's `ACTIVE_PROFILE` (which already exists in the
-backend) and re-renders.
+| Module | Role |
+| --- | --- |
+| `gui/header.py` | `HeaderBar` — device combobox, Live/Storage `ModeSwitcher`, connection LED, FW label, update button. |
+| `gui/main_window.py` | Wires `deviceChanged` → `set_active_profile()`; gates central stack + docks by profile flags. |
+| `gui/devices_dialog.py` | Add Device / Manage Devices wizards; optional `detect_from_card()` when an SD path is given. |
+| `core/device_manager.py` | `Device`, `DeviceManager` — load/save `data/devices.json`. |
+| `data/devices.json` | Shipped default device manifest (schema v1). |
+| `gui/editor/editor_dock.py` | Mismatch banner when loaded SD card profile ≠ selected device (`detect_from_card()`). |
 
-## What changes per device
+## What "device" means
 
-The backend already encodes most of this in `ScannerProfile`. The
-GUI just has to honor those flags:
+A **Device** (`core/device_manager.Device`) is the union of:
 
-| GUI element | Driven by |
-|---|---|
-| Service-type buttons (Police/EMS/Fire/DOT) | `profile.service_types`, `profile.scannable_service_types`, `profile.button_filter`, `profile.service_label` |
-| Service-type help text | `profile.service_type_help_text(svc_id)` |
-| Channel/group editor scope | `profile.supports_hpd`, `profile.supports_tgid` |
-| Firmware updater panel target | `profile.id` -> `firmware_manifest.scanners[id]` |
-| Heatmap "show towers by button" | `profile.button_filter` (BT885 has 4 fixed buttons; SDS100 doesn't) |
-| Live-scanner panel (GSI/STS/GLG mirror) | `profile.supports_serial_mode` (new flag, see below) |
-| Waterfall display | `profile.supports_waterfall` (new flag) |
-| Multiple Favorites Lists support | `profile.supports_favorites_lists` (new flag) |
-| File extensions filter on import | `profile.supported_file_extensions` |
-| Card identity files for detect-on-open | `profile.card_identity_files` |
+1. A **`scanner_profile_id`** — which `ScannerProfile` drives service types,
+   serial capability, waterfall, etc.
+2. An optional **`metastore_profile_id`** — which virtual SD workspace profile
+   is active (may be `null` for live-only devices).
+3. Optional **`sd_card_path`**, cached firmware versions, **`connection_mode`**
+   (`live` / `storage` / `auto`).
 
-## New flags to add to `ScannerProfile`
+The header combobox lists every registered device. Picking one emits
+`HeaderBar.deviceChanged`; `MainWindow` calls `set_active_profile()` and
+rebinds docks.
 
-The current ABC handles most of what we need. Three additions:
+## Header bar behavior
 
-```python
-class ScannerProfile(ABC):
-    # ... existing ...
+### Device selector
 
-    @property
-    def supports_serial_mode(self) -> bool:
-        """True if this scanner exposes the Uniden Remote Command
-        Protocol over USB CDC. SDS100/200/150 = yes; BT885 = ? (TBD).
-        """
-        return False
+- Populated from `DeviceManager.list_devices()`.
+- Label format: `{profile.display_name} — {device.label}`.
+- **Add…** → `AddDeviceDialog` (pick profile, label, optional SD path).
+- **Manage** → `ManageDevicesDialog` (rename, remove, set default).
 
-    @property
-    def supports_waterfall(self) -> bool:
-        """True if this scanner supports the Waterfall display +
-        FFT command set (PWF/GWF/GST/GW2). SDS100/200 = yes.
-        """
-        return False
+### Live / Storage mode switcher
 
-    @property
-    def supports_favorites_lists(self) -> bool:
-        """True if user can create multiple FLs (named, with their
-        own quick keys). SDS100/200 = yes; BT885 = no (single FL).
-        """
-        return False
+Hardware is mutually exclusive between USB serial mode and mass storage.
+`ModeSwitcher` emits `connectionModeChanged`; `MainWindow` swaps the central
+`QStackedWidget` between the editor (Storage) and live docks (Live).
 
-    @property
-    def usb_vid_pid_serial(self) -> tuple[int, int] | None:
-        """The (VID, PID) the scanner enumerates as in serial mode.
-        Used by the GUI's USB detector. None = scanner has no
-        serial mode."""
-        return None
-```
+Profiles declare `supported_connection_modes` on `ScannerProfile`. BT885
+clamps to Storage only (no serial mode). SDS100/200 enable both.
 
-## Backend changes needed
+### Connection status LED
 
-**Mostly already done** - the backend was designed for this. What's
-missing:
+Three-state `StatusLight` in the header:
 
-1. **`ACTIVE_PROFILE` is set once at module load and never
-   reassigned.** Need to change to a function-level lookup or a
-   "profile context" pattern so the GUI can swap it.
-2. **Module-level constants in `scanner_manager.py`** (`SERVICE_TYPES`,
-   `SCANNABLE_TYPES`, `SERVICE_TYPE_HELP_TEXT`, etc.) - these
-   leak through `scanner_profiles/compat.py` and assume the BT885
-   defaults. Need to migrate call sites to `ACTIVE_PROFILE.<X>`.
-   This is the open task in `MULTI_SCANNER_BACKEND.md` step 2.
-3. **`metastore.GlobalMetaStore` SD-card-profile model needs to
-   know which `ScannerProfile.id` it belongs to.** Today profiles
-   are name-keyed; we need a `scanner_profile_id` field per profile.
-4. **Detect-on-open scanner profile reassignment** - already in the
-   backlog of `MULTI_SCANNER_BACKEND.md`. Critical for this GUI:
-   when a user plugs in a card we can't expect them to manually
-   select the matching device first.
+| State | Meaning |
+| --- | --- |
+| red | No scanner detected |
+| yellow | SD card mounted, not in serial mode |
+| green | Serial port reachable (`MDL`/`VER`) |
 
-## GUI surface changes
+Updated by the live-mode driver layer (`gui/main_window.py` + serial hooks).
 
-Concretely in the existing Tk app:
+### Firmware pill + update button
 
-### A. New top header frame (above the main notebook)
+- `set_firmware_version(main, sub)` on the header.
+- **Check for updates…** opens the firmware dock / window (see
+  [`FIRMWARE_UPDATER.md`](FIRMWARE_UPDATER.md)).
 
-- Replaces the existing "title bar" widgets if any.
-- Holds:
-  - **Device selector** (ttk.Combobox in readonly mode, populated
-    from `ProfileRegistry.list_profiles()` cross-joined with
-    `GlobalMetaStore.list_profiles()`)
-  - **Add Device** button - opens a wizard to set up a new
-    profile (pick scanner type, pick or create an SD card folder
-    layout, name the profile)
-  - **Edit/Delete Device** dropdown menu
-  - **Connection status** indicator (red/yellow/green dot):
-    - **Red**: no scanner detected at all
-    - **Yellow**: scanner detected on SD card / in mass storage
-      but not in serial mode
-    - **Green**: scanner reachable on serial port and we can read
-      `MDL`/`VER`
-  - **Firmware version** label - either reads `scanner.inf` from
-    SD or queries `VER` over serial, whichever is available
-  - **Update button** (only shows when a newer version is in the
-    firmware manifest)
+### Workspaces
 
-### B. Tab-level visibility
+Named workspaces can point at alternate `devices.json` bundles
+(`gui/dialogs/workspaces.py`). Header shows workspace context via
+`set_data_source_context()`.
 
-Each of the existing tabs declares a "supports" predicate against
-the ScannerProfile:
+## Main window dock gating
 
-```python
-class ChannelEditorTab:
-    def is_supported_for(self, profile: ScannerProfile) -> bool:
-        return profile.supports_hpd or profile.supports_tgid
+`gui/main_window.py` hides or disables docks based on the active profile:
 
-class WaterfallTab:
-    def is_supported_for(self, profile: ScannerProfile) -> bool:
-        return profile.supports_waterfall
+| Dock | BT885 | SDS100/200 |
+| --- | --- | --- |
+| Editor (Storage) | yes | yes |
+| Live / faceplate / waterfall | no | yes |
+| Streaming | no | yes (when serial supported) |
+| Firmware | yes (HPDB; no Main/Sub bins on FTP today) | yes |
 
-class LiveScannerTab:  # new in a later phase
-    def is_supported_for(self, profile: ScannerProfile) -> bool:
-        return profile.supports_serial_mode
+On device switch (`HeaderBar.deviceChanged` → `MainWindow._on_device_changed`):
 
-class FirmwareUpdaterTab:
-    def is_supported_for(self, profile: ScannerProfile) -> bool:
-        return profile.id in FIRMWARE_MANIFEST_SCANNERS
-```
+1. Calls `set_active_profile(device.resolve_profile())`.
+2. Clamps `device.connection_mode` (`live` / `storage` / `auto`) to the
+   profile's `supported_connection_modes()` and updates the header switcher.
+3. Flips the central `QStackedWidget` immediately (`_apply_mode_visibility`).
+4. Emits `activeDeviceChanged(device, profile)` so live/streaming docks rebind.
+5. Defers heavy editor work via `QTimer.singleShot(0, _finish_device_switch)`:
+   in **Live** mode on serial-capable profiles, HPDB load is skipped until the
+   operator switches back to Storage (`load_hpdb=False` on first pass).
 
-When the active device changes, the notebook re-builds its tab
-list from the supported predicates.
+**Check for updates…** (`updateFirmwareRequested`): auto-selects Storage mode
+(disconnects live serial), then opens `FirmwareWindow` — the radio cannot
+serve mass storage and CDC serial at once.
 
-### C. Per-tab content reloading
+## Storage: `data/devices.json`
 
-Tabs that depend on profile-driven data (the service-type editor
-especially) listen for an `on_active_profile_changed` event and
-re-render. The plumbing here is small if we accept a "rebuild from
-scratch" approach (cheap because tabs are stateless w.r.t. their
-selected device).
-
-### D. Theme / minor brand cues (optional, low priority)
-
-When the user is on an SDS100, the title says "Uniden SDS100"; on
-a BT885, "Uniden BearTracker 885". A small accent color or icon
-per device to make it clear which one the controls apply to. Not
-essential for the first cut.
-
-## Storage layout for "Devices"
-
-A new `data/devices.json` (or extend `metastore`) storing:
+Schema (v1):
 
 ```json
 {
+  "schema_version": 1,
   "devices": [
     {
-      "id": "uuid-1",
-      "label": "SDS100 - Home",
+      "id": "<uuid>",
+      "label": "My SDS100",
       "scanner_profile_id": "uniden_sds100",
-      "metastore_profile_id": "home",
-      "sd_card_path": "H:\\",
-      "last_known_main_fw": "1.26.01",
-      "last_known_sub_fw": "1.03.15",
-      "last_seen": "2026-04-27T18:45:46Z"
-    },
-    {
-      "id": "uuid-2",
-      "label": "SDS100 - Roadtrip",
-      "scanner_profile_id": "uniden_sds100",
-      "metastore_profile_id": "roadtrip",
+      "metastore_profile_id": null,
       "sd_card_path": null,
-      "last_seen": null
-    },
-    {
-      "id": "uuid-3",
-      "label": "BearTracker 885 - Truck",
-      "scanner_profile_id": "uniden_bt885",
-      "metastore_profile_id": "truck",
-      "sd_card_path": "E:\\",
-      "last_seen": "2026-04-25T12:11:09Z"
+      "last_known_main_fw": null,
+      "last_known_sub_fw": null,
+      "last_seen": null,
+      "connection_mode": "live"
     }
   ],
-  "default_device_id": "uuid-1"
+  "default_device_id": "<uuid>"
 }
 ```
 
-The metastore SD-card profiles already exist - this just adds a
-device-level wrapper that pairs them with a scanner-profile choice
-and an optional last-known SD card mount point.
+`DeviceManager` ignores unknown keys for forward compatibility. Path defaults
+via `core/device_manager._default_devices_path()` (user-data override supported).
 
-## Phases
+Workspaces may redirect to a bundled copy under the workspace directory.
 
-### Phase 1: backend prep (no GUI changes yet)
-- Add the new `ScannerProfile` flags
-  (`supports_serial_mode`/`supports_waterfall`/`supports_favorites_lists`/`usb_vid_pid_serial`)
-- Make `ACTIVE_PROFILE` reassignable at runtime
-- Migrate the remaining module-level constants in
-  `scanner_manager.py` to `ACTIVE_PROFILE.X` (the dangling step 2
-  of `MULTI_SCANNER_BACKEND.md`)
-- Land the SDS100 profile (`scanner_profiles/sds100.py`)
-- Add `data/devices.json` schema + a Devices manager class
+## Card detection (partial)
 
-### Phase 2: header bar + selector
-- Build the top frame with selector / connection status / firmware
-  version / update button
-- Wire device selection to a global event bus
-- Tabs subscribe and rebuild
+`detect_from_card()` is **wired for awareness, not auto-switch**:
 
-### Phase 3: per-tab support gating
-- Existing tabs declare `is_supported_for(profile)`
-- Hide tabs that don't apply
-- Rename/relabel tabs per profile (e.g., Heatmap label hints)
+- **Add Device** wizard: suggests profile from SD path.
+- **Editor dock**: shows a banner when the mounted card's detected profile
+  differs from the selected device's `scanner_profile_id`.
+- Does **not** automatically change the header selection or call
+  `set_active_profile()` on card insert.
 
-### Phase 4: detect-on-open device matching
-- When user plugs in an SD card, the detector reads `scanner.inf`
-  Scanner field 1 plus `BCDx36HP/HPDB/hpdb.cfg` `TargetModel`,
-  matches against known profiles, and either selects the matching
-  Device or offers to create a new one.
+Backlog: full detect-on-open device matching (see `WORKSTREAMS.md`).
 
-### Phase 5: live serial panel (per-device)
-- A new tab visible only when the connected scanner supports serial
-  mode and is currently reachable.
-- Polls `GSI` once a second, parses the XML, displays the live
-  scanner state - mirrors the LCD effectively.
-- Future: spectrum/waterfall display fed by `GST` (FW 1.23.01+)
-  or a SUB-port FFT direct read.
+## Residual gaps
+
+| Gap | Today | Target |
+| --- | --- | --- |
+| Auto profile switch on card load | Mismatch banner only | Select matching device or prompt to create one |
+| Legacy Tk multi-device | Not implemented | Qt-only; Tk remains single-profile |
+| Simultaneous USB scanners | One scanner at a time | Out of scope |
+| Favorites Lists editor | No dedicated UI | Future editor tab |
+| Cloud sync of devices | Local JSON only | Out of scope |
 
 ## Cross-references
 
-- `Metacache/Dev/MULTI_SCANNER_BACKEND.md` - the existing backend doc.
-  This GUI plan implements its "GUI follow-up" deferred items.
-- `Metacache/Dev/RE/SDS100.md` - what we know about the SDS100's serial
-  command surface; informs the live panel's design.
-- `Metacache/Dev/RE/BT885.md` - the BT885's surface; informs why some
-  flags differ (no FLs, no waterfall, no serial mode).
-- `Metacache/Dev/FIRMWARE_UPDATER.md` - the firmware updater's GUI
-  panel which fits naturally as one tab in this multi-device shell.
+- [`MULTI_SCANNER_BACKEND.md`](MULTI_SCANNER_BACKEND.md) — profiles, `detect_from_card()`, `set_active_profile()`.
+- [`FIRMWARE_UPDATER.md`](FIRMWARE_UPDATER.md) — firmware dock opened from header.
+- [`Metacache/Dev/RE/docs/SDS100.md`](RE/docs/SDS100.md) — serial command surface for live dock.
+- [`Metacache/Dev/RE/docs/BT885.md`](RE/docs/BT885.md) — BT885 capability differences.
 
-## Out of scope (for now)
+## Out of scope (unchanged)
 
-- Multiple scanners connected simultaneously over USB (we'd have
-  to disambiguate which COM ports belong to which scanner). Treat
-  as one-scanner-at-a-time for now.
+- Multiple scanners connected simultaneously over USB.
 - Cloud sync of Devices across machines.
-- Scanner-to-scanner migration tools (export from SDS100 -> import
-  to SDS200). The data formats are similar enough that this is
-  doable later.
+- Scanner-to-scanner migration wizards.

@@ -1,88 +1,83 @@
-# Forum Announcement (copy-pasteable)
+# Forum announcement (copy-pasteable)
 
-Copy this text into the RadioReference Forums / /r/scanners thread when
-the alpha drops. Strip the frontmatter comments first; they're just a
-heads-up to the editor.
+> Status: shipped (v0.11.x) — beta template for RadioReference / Reddit.
+> Strip HTML comments before posting.
 
 ---
 
-**Scanner Manager v0.9.0-alpha.1 — Open Alpha for BearTracker 885 Users**
+**Scanner Manager v0.11.x beta — Qt UI, SDS100/200, multi-device**
 
 Hey folks,
 
-I've been building an open-source desktop companion for the Uniden
-BearTracker 885 and I'd love your help testing it. This is an alpha,
-so please be a little gentle with your scanner's SD card — always make
-a full backup before running it.
+I've been building an open-source desktop companion for Uniden scanners
+and would love your help testing the **0.11.x beta**. Please back up your
+SD card before trying anything new.
 
 **What is it?**
 
-Scanner Manager is a Windows (and from-source) desktop app that lets
-you manage the BearTracker 885's SD card outside of Uniden's tools. It
-reads and writes HPD files directly, keeps a full revertable change
-log, and adds a few capabilities that have been on the community's
-wishlist for a while:
+Scanner Manager is a cross-platform desktop app (Windows builds + from-source
+on Linux/macOS) for managing scanner SD cards outside Uniden's tools. The
+default UI is **Qt** (`scanner-manager`); legacy Tk remains available as
+`scanner-manager-tk`.
 
-- **ZIP/GPS simulation** — enter a ZIP or GPS fix and see exactly
-  what your scanner will scan at that point, including statewide and
-  national coverage overlays, with nearest-systems ranking.
-- **Coverage tools** — heatmap + optional real-tile map showing
-  overlapping coverage, plus a CSV export of the effective scan set
-  for spreadsheet analysis.
-- **RadioReference import** — paste any RR category or trunked-system
-  URL. Works with the SOAP API if you have an RR subscription, or
-  falls back to HTML scraping. Each import is a single revertable
-  event in the change log, so rolling back is one click.
-- **Workspaces (virtual SD cards)** — clone the card, keep editing
-  while it's unplugged, reconcile both ways when it returns. Survives
-  Uniden updater runs.
-- **CityTable editing** — add custom locations and export a patched
-  CityTable the scanner will load.
-- **Uniden Tools integration** — detects installed Sentinel / BT885
-  Update Manager and drives a full push → update → pull cycle. It
-  does not redistribute Uniden's installers; it downloads them from
-  Uniden's CDN with SHA-256 verification on first use.
-- **Revertable change log** — every edit is logged and individually
-  undo-able from the Changes dialog.
+**Supported scanners (today)**
+
+- **BearTracker 885** — full HPD edit, ZIP/GPS simulation, coverage tools
+- **SDS100 / SDS200** — profile-aware editor, virtual faceplate, live serial
+  monitoring, location simulation, firmware updater integration
+
+**Highlights in 0.11.x**
+
+- **Qt UI** — faceplate, Live / Monitoring tabs, location sim bar, multi-device
+  header, firmware status pill
+- **Multi-device** — switch between saved scanners / workspaces from the header
+- **Firmware updater** — in-app main/sub firmware checks via Uniden FTP
+  (see wiki Firmware Updater)
+- **Streaming server** — optional audio/stream dock for supported setups
+- **RadioReference import** — SOAP + HTML fallback; revertable change log
+- **Workspaces** — virtual SD cards, two-way sync when the card returns
+- **Coverage tools** — heatmap, optional map tiles, CSV export
+- **Uniden Tools integration** — drives push → update → pull; downloads
+  installers from Uniden CDN with SHA-256 verification
 
 **How to get it**
 
-- **Easiest:** grab `ScannerManager.exe` from the GitHub Releases page
-  below. Windows SmartScreen will warn because it isn't code-signed;
-  click "More info → Run anyway". You can verify the SHA-256 against
-  the `.sha256` file attached to the release.
-- **From source:** `pip install -e .` from the repo. Works on Linux/
-  macOS too though the target scanner is BT885 specifically.
+- **Easiest:** GitLab Release assets (primary) or GitHub Releases mirror.
+  Windows SmartScreen warns because builds are unsigned — *More info → Run anyway*.
+  Verify SHA-256 sidecars when provided.
+- **From source:** see repo README; `pip install -e .` then `scanner-manager`.
 
-Download + source: https://github.com/disturbedkh/scanner-manager/releases
-Wiki + docs:      https://github.com/disturbedkh/scanner-manager/wiki
-Issues:           https://github.com/disturbedkh/scanner-manager/issues
+Download: https://github.com/disturbedkh/scanner-manager/releases  
+Wiki: https://github.com/disturbedkh/scanner-manager/wiki  
+Issues: https://github.com/disturbedkh/scanner-manager/issues
 
 **What I'd love from testers**
 
-- Try the ZIP simulation with your local ZIP and tell me what it gets
-  wrong relative to what your 885 actually scans.
-- Try the RadioReference import on a trunked system or a conventional
-  category. Does the service-type prefill make sense?
-- Use the Uniden Tools panel to run a Sentinel/BT885 update cycle and
-  verify your edits survive it.
-- **Back up your SD card first.** Then please file any bug at the
-  Issues link above with a crash log from
-  `%LOCALAPPDATA%/scanner-manager/logs/` if there is one.
+- BT885: ZIP simulation vs. what your radio actually scans
+- SDS100/200: faceplate + live monitoring with your serial setup
+- Multi-device: switch profiles and confirm editor panels track the active scanner
+- Firmware dock: check for updates on a test card (backup first!)
+- File bugs with logs from `%LOCALAPPDATA%/scanner-manager/logs/` when applicable
 
 **What this is not**
 
-- It is not affiliated with Uniden. I'm just a user with too much free
-  time.
-- It is not a firmware flasher. Uniden's updaters still do that.
-- It is not code-signed yet. SmartScreen is normal. If that makes you
-  nervous, install from source.
+- Not affiliated with Uniden
+- Not a replacement for all Sentinel workflows yet (Favorites List editor UI
+  is still on the backlog)
+- Not code-signed — SmartScreen warnings are expected
 
-**Donate**
+Feedback, issues, and PRs welcome. Happy scanning.
 
-If this saves you hours of Sentinel wrangling and you feel like
-buying me a coffee, there's a Donate button inside the app (Help →
-Donate / Support...) with PayPal and crypto options. Totally optional,
-and huge thanks to anyone who does.
+---
 
-Feedback, issues, and PRs all welcome. Happy scanning.
+## Historical — v0.9.0 alpha template
+
+> Status: historical — superseded by the 0.11.x block above.
+
+The original BearTracker-885-only alpha announcement targeted
+`v0.9.0-alpha.1` with Tk as the primary UI. Retained for diff reference
+only; do not post verbatim.
+
+Key deltas from alpha → 0.11.x beta: Qt default, SDS100 profile, multi-device
+GUI, firmware updater dock, streaming server, GitLab-primary releases,
+tiered Metacache GitHub export.

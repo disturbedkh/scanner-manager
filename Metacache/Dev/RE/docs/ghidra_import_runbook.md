@@ -1,5 +1,8 @@
 # Ghidra Import - Guided Walkthrough (Phase 6.2)
 
+> Status: historical — prefer automated path in [`AUTOMATION.md`](AUTOMATION.md)
+> and [`wiki/RE-Toolchain.md`](../../../wiki/RE-Toolchain.md).
+
 > **Canonical narrative is in the wiki**:
 > [`wiki/RE-Workflows.md`](../../../wiki/RE-Workflows.md) "Decompile
 > a SUB function" recipe. This file is the lab notebook with the
@@ -35,8 +38,8 @@ By the end of this walkthrough you'll have:
 | Artifact | Format | Purpose |
 |---|---|---|
 | `Metacache/Dev/RE/firmware/SDS100_SUB.gpr` | Ghidra project | Live RE workspace |
-| `Metacache/Dev/RE/sub_command_dispatch.md` | Markdown | Every recognized SUB mnemonic + handler address |
-| `Metacache/Dev/RE/SDS100_inter_mcu_protocol.md` | Markdown | Wire-format of MAIN <-> SUB bus |
+| `Metacache/Dev/RE/docs/sub_command_dispatch.md` | Markdown | Every recognized SUB mnemonic + handler address |
+| `Metacache/Dev/RE/docs/SDS100_inter_mcu_protocol.md` | Markdown | Wire-format of MAIN <-> SUB bus |
 | Updated [`SDS100_firmware.md`](SDS100_firmware.md) | Markdown | Full disassembly summary |
 
 ## Pre-flight checklist
@@ -218,7 +221,7 @@ For each entry in the dispatch:
 2. Note the handler function address (the called function).
 3. Rename the handler in Ghidra to `handler_<command>` for
    readability.
-4. Append a row to `Metacache/Dev/RE/sub_command_dispatch.md`:
+4. Append a row to `Metacache/Dev/RE/docs/sub_command_dispatch.md`:
 
    ```markdown
    | Command | Handler | Notes |
@@ -288,7 +291,7 @@ SVD-decoded labels, this becomes tractable.
 
 ### 10d. Document the wire format
 
-Write findings to `Metacache/Dev/RE/SDS100_inter_mcu_protocol.md`:
+Write findings to `Metacache/Dev/RE/docs/SDS100_inter_mcu_protocol.md`:
 
 ```markdown
 # SDS100 inter-MCU bus protocol

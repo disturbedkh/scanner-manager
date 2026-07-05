@@ -1,4 +1,8 @@
-# Scanner Manager User-Facing Style Guide
+# Scanner Manager user-facing style guide
+
+> Status: shipped (v0.11.x) — rubric for UI strings and wiki copy.
+> Applies to [`wiki/`](../../wiki/) pages and Qt UI; not contributor ops
+> checklists in this directory.
 
 This document is the rubric for every string the user sees -
 button labels, tooltips, dialog bodies, status bar messages, and

@@ -1,14 +1,14 @@
 # Virtual scanner: roadmap
 
+> Status: active plan (v0.11.x) — exploratory sketch, not a tracked workstream.
+
 > Where this fits: forward-looking roadmap for an SDR-backed
 > "software SDS100" that reuses our existing RE work as a
 > compatibility layer. For the consolidated narrative start at
 > [Reverse Engineering](Reverse-Engineering).
 >
-> **Status: exploratory.** This is a "what would it take to..."
-> sketch, not a tracked workstream. Source plan:
-> [`Metacache/Dev/RE/plans/virtual_scanner.md`](https://github.com/your-org/your-repo/blob/main/Metacache/Dev/RE/plans/virtual_scanner.md)
-> (replace with the canonical repo path once forked).
+> Source plan (repo):
+> [`Metacache/Dev/RE/plans/virtual_scanner.md`](https://github.com/disturbedkh/scanner-manager/blob/main/Metacache/Dev/RE/plans/virtual_scanner.md)
 
 ## TL;DR
 

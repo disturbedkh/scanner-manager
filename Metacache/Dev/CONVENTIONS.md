@@ -1,5 +1,7 @@
 # House Conventions
 
+> Status: **active plan** — house rules for code, tests, docs, and agents.
+
 Rules of the road for editing this repo. Read once, follow always.
 
 ## Code
@@ -8,11 +10,12 @@ Rules of the road for editing this repo. Read once, follow always.
   `legacy_tk/scanner_manager.py`. Shared backend modules live in
   `core/` — import `core.metastore`, `core.sdcard`, etc. in new code.
 - **No new top-level `.py` modules** at repo root. Add code under
-  `core/`, `gui/`, `scanner_profiles/`, or an existing package.
+  `core/`, `gui/`, `scanner_profiles/`, `firmware/`, `streaming/`, or an
+  existing package.
 - **No new top-level globals in `legacy_tk/scanner_manager.py`** without
-  a reason. Prefer pushing data into the active `ScannerProfile` or
-  `core/`.
-- **Don't import `scanner_manager` from inside `scanner_profiles/`.**
+  a reason. Prefer `get_active_profile()` / `set_active_profile()` or
+  `core/` helpers in new Qt code.
+- **Don't import `legacy_tk.scanner_manager` from inside `scanner_profiles/`.**
   Circular import. The profile package must be self-contained.
 - **Type hints** where the rest of the file already uses them. Don't
   retrofit a whole file in passing.
@@ -21,13 +24,16 @@ Rules of the road for editing this repo. Read once, follow always.
 ## Tests
 
 - `pytest -q` from the repo root must stay green.
-- New scanner-profile work must keep
-  `tests/test_bt885_parity.py` and `tests/test_scanner_profiles.py`
-  green. If you change `Bt885Profile`, update the matching
-  module-level constants in `legacy_tk/scanner_manager.py` and re-run the
-  parity test.
+- Scanner-profile work must keep these green:
+  - `tests/test_bt885_parity.py`
+  - `tests/test_scanner_profiles.py`
+  - `tests/test_sds100_profile.py`
+  - `tests/test_detect_from_card.py` (when touching registry detection)
+- If you change `Bt885Profile`, update the matching module-level constants
+  in `legacy_tk/scanner_manager.py` and re-run the parity test.
 - Adding a profile? Mirror `tests/test_bt885_parity.py` as
-  `tests/test_<id>_parity.py`. See `Metacache/docs/adding-a-scanner.md`.
+  `tests/test_<id>_profile.py` (or `_parity.py` where applicable). See
+  `Metacache/docs/adding-a-scanner.md`.
 
 ## Lint
 
@@ -45,32 +51,56 @@ Rules of the road for editing this repo. Read once, follow always.
 - **Don't commit unless the user explicitly asks.** Standard policy
   for this project.
 - Match the existing terse, capital-first commit subject style:
-  - `Beta release v0.9.0b2 - heatmap, profiles, scanner-driver layer`
-  - `Fix ruff lint errors on main (post-v0.9.0b2)`
+  - `Beta release v0.11.1 - Metacache export tiers`
+  - `Fix ruff lint errors on main (post-v0.10.0)`
 - Feature work goes through PRs per `CONTRIBUTING.md`. Read that
   before opening one.
 
 ## Documentation
 
-- User-facing changes: update `README.md` and `CHANGELOG.md`.
-- Architecture / refactor changes: update the relevant doc in
-  `Metacache/docs/` and the matching topic file in `Metacache/Dev/`.
-- Wiki sources are checked in under `wiki/`; edit there, not on
-  GitHub directly.
+Pick the **right layer** when docs need to change:
+
+| Change type | Edit first | Also update |
+| --- | --- | --- |
+| User-visible feature / UX tour | `wiki/<Page>.md` | Root `README.md` link table (Agent E) |
+| Release / format / contributor checklist | `Metacache/docs/` | Cross-link from wiki if users need a pointer |
+| Agent snapshot, as-built architecture, workstreams | `Metacache/Dev/` (this tree) | `WORKSTREAMS.md` if status changed |
+| Scanner on-disk / serial facts | `Metacache/Dev/RE/docs/` | Wiki RE pages (Agent C); lab wins on conflict |
+| Version / changelog | `CHANGELOG.md` + `pyproject.toml` | `PROJECT_STATE.md`, root README |
+
+**Lifecycle banners** on topic docs you touch:
+
+```markdown
+> Status: shipped (v0.11.x) | active plan | historical
+```
+
+- **shipped** — implemented in code; describe as-built, not backlog.
+- **active plan** — living notebook (PROJECT_STATE, WORKSTREAMS, conventions).
+- **historical** — superseded; keep for context, mark clearly.
+
+Other rules:
+
+- User-facing release notes: `CHANGELOG.md` (do not edit unless tasked).
+- Wiki sources are checked in under `wiki/`; edit there, not on GitHub
+  directly.
+- Cross-links between layers: prefer full GitHub wiki URLs from repo-root
+  docs; sibling links inside `wiki/`.
 
 ## Working with the multi-scanner backend
 
 - **Always** read `Metacache/Dev/MULTI_SCANNER_BACKEND.md` before touching
-  anything in `scanner_profiles/` or any `ACTIVE_PROFILE` call site
-  in `legacy_tk/scanner_manager.py` or Qt `gui/` call sites.
-- Don't widen `ScannerProfile` to add abstract methods unless
-  `Bt885Profile` implements them in the same change set.
+  anything in `scanner_profiles/` or any active-profile call site in
+  `legacy_tk/scanner_manager.py` or Qt `gui/` code.
+- Use `set_active_profile()` in Qt; do not assume import-time
+  `ACTIVE_PROFILE` is current in the default app.
+- Don't widen `ScannerProfile` to add abstract methods unless every
+  shipping profile implements them in the same change set.
 
 ## AI / agent etiquette
 
 - Update `Metacache/Dev/WORKER_LOG.md` at the end of each substantive
   session. One entry, terse, newest on top.
 - Update topic docs (`PROJECT_STATE.md`, `MULTI_SCANNER_BACKEND.md`,
-  `WORKSTREAMS.md`) if the work you did invalidates them.
+  `WORKSTREAMS.md`, as-built design refs) if the work you did invalidates them.
 - Don't delete content from these notes; archive instead. Other
   workers may rely on it.

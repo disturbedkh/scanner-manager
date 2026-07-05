@@ -1,5 +1,7 @@
 # RE: Uniden update endpoints
 
+> Status: shipped (v0.11.x) — RE source for prod `firmware/ftp_client.py`.
+
 > Where this fits: how Sentinel and the BT885 Update Manager actually
 > check for updates and download new firmware / HPDB. Spoiler: it's
 > plain anonymous-ish FTP, not the TWiki, not an HTTP API. For the
@@ -164,7 +166,8 @@ Direct integration. We do not need to:
 - Scrape the TWiki HTML
 - Maintain a hand-curated firmware manifest with hardcoded URLs
 
-Instead, the firmware updater (see `Metacache/Dev/FIRMWARE_UPDATER.md`)
+Instead, the firmware updater (**shipped v0.11.x** — see
+[Firmware Updater](Firmware-Updater) and `firmware/updater.py`)
 discovers what's available by listing the FTP directory at runtime,
 parses filenames, downloads via plain `RETR`, verifies file size and
 SHA-256, and copies onto the SD card. The on-card flow (Uniden's
@@ -180,7 +183,7 @@ client lists HPDB blobs, picks the latest, downloads, and writes to
 - Cache the listing for ~1 hour per session; don't poll continuously.
 - If Uniden rotates credentials our app surfaces a "Uniden update
   server unavailable" message and falls back to manual import + the
-  cached-from-Sentinel path documented in FIRMWARE_UPDATER.md.
+  offline-cache path documented on [Firmware Updater](Firmware-Updater).
 - We never modify firmware blobs, never bypass version-compatibility
   checks, never publish credentials extracted from third-party
   binaries elsewhere. This page documents what we observed in the

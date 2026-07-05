@@ -1,6 +1,10 @@
 # Channel List Management
 
+> Status: shipped (v0.11.x)
+
 Scanner Manager is a full editor for the HPD tree, not just a viewer.
+The Qt shell is the default editor; legacy Tk exposes the same tree
+semantics with toolbar-centric navigation.
 
 ## Hierarchy
 
@@ -16,61 +20,64 @@ System
 Every level supports add / edit / delete, and bulk operations cascade
 from the level you're acting on down to entries.
 
-## Quick actions (right-click menu)
+## Quick actions
 
-- **Entry:** Edit, Delete.
-- **Group:** Edit, Bulk update service type, Refresh from
-  RadioReference (when the group is linked), Delete.
-- **System:** Edit, macro-level bulk ops (update service type on all
-  entries), Delete.
+- **Qt:** select a node in the tree; edit fields in the details panel
+  (SDS) or BT885 inspector. Context menus are minimal — use the panel
+  actions and toolbar.
+- **Legacy Tk:** right-click any node for Edit, Delete, and bulk ops.
 
-## Add panel (below the tree)
+## Add panel (legacy Tk)
 
-Use it to quickly add a conventional frequency or trunked TGID into
-the selected group. It validates frequency format and service-type
-presence before committing.
+The legacy shell includes an **Add New Entry (from RadioReference)**
+panel below the tree for quick conventional frequency or TGID inserts
+with validation.
 
 ## Bulk remap
 
 **Bulk: update service type** on a group or system opens a two-column
 mapping dialog: for every service type that currently appears in the
 selection, pick a replacement. The whole remap is recorded as a single
-entry in the Change History, so you can undo the entire bulk operation
-with one click.
+MetaStore entry — one **Revert** undoes the entire operation.
+
+(Legacy Tk: right-click menu. Qt port backlog.)
 
 ## Filters
 
-- **Button filters** (Police/EMS/Fire/DOT/Multi) - see
+- **Button filters** (Police/EMS/Fire/DOT/Multi) — see
   [Scanner Button Service Types](Scanner-Button-Service-Types).
-- **Location filter** - see
+  BT885 inspector in Qt; toolbar checkboxes in legacy Tk.
+- **Location filter** — see
   [ZIP & GPS Simulation](ZIP-and-GPS-Simulation).
 
 ## The Change History dialog
 
-**Changes...** opens the Change History. Each row is one edit:
+**Tools → Recent changes…** (Qt) or **Changes...** (legacy Tk) opens
+the MetaStore log. Each row shows:
 
-- Timestamp, a plain-language summary (e.g. "Added frequency",
-  "Changed service type", "Applied RadioReference import"),
-  and the group or entry it touched.
-- **Revert** button to undo just that change.
+- Timestamp and plain-language summary.
+- **Revert** to undo that change.
 
-Edits made together during a bulk operation or an import are grouped
-so you can undo the entire operation in one click instead of reverting
-each row.
+Bulk operations and imports group into composite events so one Revert
+rolls back the whole batch.
+
+## Profile mismatch banner (Qt)
+
+When `detect_from_card()` finds a different model than the device's
+configured profile, the editor shows a banner. Fix via **Manage
+devices…** — automatic profile switch on load is backlog.
 
 ## Session safety net
 
-Every save also writes a recovery copy next to the HPD file.
-If everything goes sideways, **Tools → Restore session snapshot...**
-reloads from the backup. The Change History is preserved so you can
-pick up where you left off.
-
----
+Every save writes `<hpdname>.session.bak` next to the HPD file.
+**Tools → Restore session snapshot...** (legacy Tk) reloads from the
+backup. Qt: copy `.session.bak` over the HPD manually or use profile
+snapshots for folder-level rollback.
 
 ## Internals
 
-- Change events are stored by the `MetaStore` as typed opcodes
-  (`ADD_CFREQ`, `SET_SERVICE`, `IMPORT_APPLY`, etc.) with a shared
+- Change events live in `core/metastore.py` as typed opcodes with shared
   `txn_id` for bulk operations.
-- Session snapshots are written to `<hpdname>.session.bak` alongside
-  the HPD file.
+- Sidecar: `<hpdname>.meta.json` alongside each HPD file.
+
+See [Architecture](Architecture).

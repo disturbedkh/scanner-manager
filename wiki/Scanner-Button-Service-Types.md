@@ -1,8 +1,10 @@
 # Scanner Button Service Types
 
+> Status: shipped (v0.11.x)
+
 The BearTracker 885's user interface is built around four toggleable
 buttons: **POLICE**, **EMS**, **FIRE**, and **DOT**. Plus a global
-**SCAN** on/off. There are no other user-selectable categories - no
+**SCAN** on/off. There are no other user-selectable categories — no
 ham, no aviation button, no business-group button. Everything the
 scanner scans has to route through one of those four buttons.
 
@@ -11,9 +13,13 @@ entry determines which button enables it**, and **a Service Type that
 isn't mapped to a button will never play**. Scanner Manager's button
 filter mirrors exactly what the scanner actually does.
 
+In the **Qt shell**, BT885 profiles expose the same filters in the
+inspector panel; SDS100/200 profiles do not use hardware button
+semantics.
+
 ## Current mapping (as of firmware v1.xx)
 
-Service Type 1 - **Multi-Dispatch** - is a wildcard. Uniden's updater
+Service Type 1 — **Multi-Dispatch** — is a wildcard. Uniden's updater
 rewrites RadioReference's "Law Dispatch" rows and similar generic
 dispatch rows to Service Type 14, then pre-maps 14 back to 1 so they
 come through on every button with a dispatch category. If you're
@@ -44,7 +50,7 @@ re-map it to a DOT service type.
 ## Picking the right type during import
 
 Scanner Manager prefills a sensible service type when importing from
-RadioReference:
+RadioReference (legacy Tk):
 
 - **Law ...** rows → 2, 3, or 4 depending on sub-category.
 - **Fire ...** rows → 8, 9, or 10.
@@ -56,8 +62,11 @@ You can always override in the diff dialog before **Apply**.
 
 ## Bulk remap
 
-To re-map a whole group or system in one shot, right-click it and
-choose **Bulk: update service type**. The dialog offers a
-per-current-type replacement, so you can say "make every Service Type
-12 into Service Type 13" across the selection without touching the
-individual entries.
+To re-map a whole group or system in one shot, use **Bulk: update
+service type** (legacy Tk context menu today). The dialog offers a
+per-current-type replacement across the selection.
+
+## Cross-references
+
+- [Channel List Management](Channel-List-Management)
+- [ZIP & GPS Simulation](ZIP-and-GPS-Simulation) — button filters affect ranking

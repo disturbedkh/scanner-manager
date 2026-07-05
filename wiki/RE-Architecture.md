@@ -1,5 +1,7 @@
 # RE: Architecture
 
+> Status: shipped (v0.11.x) — hardware decomposition reference.
+
 > Where this fits: the structural picture of the SDS100 hardware
 > and how we observe it. For the consolidated narrative start at
 > [Reverse Engineering](Reverse-Engineering).

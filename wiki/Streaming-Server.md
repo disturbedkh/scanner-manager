@@ -1,10 +1,15 @@
 # Streaming Server
 
+> Status: shipped (v0.11.x)
+
 > The Streaming dock captures audio from a soundcard input (the scanner's
 > headphone jack wired into your PC's line-in) plus live telemetry from
 > the SDS100/200 serial mirror, then exposes both over LAN HTTP +
 > WebSocket and optionally pushes to Broadcastify or a self-hosted
 > Icecast server.
+
+Available in the Qt shell when the active profile supports serial mode
+(SDS100/200). BearTracker 885 devices hide the Streaming surface.
 
 ## Architecture
 
@@ -25,12 +30,14 @@
                    |  /viewer    |                    +----------------+
                    +-------------+
 
-      ^ Telemetry pushed in via streaming.bus.GLOBAL_BUS from the
+      ^ Telemetry pushed via streaming.bus.GLOBAL_BUS from the
         Live dock controllers (GSI / GLG / FFT).
 ```
 
 All endpoints live in `streaming/server.py` (FastAPI + Uvicorn,
 launched on a background thread by the Streaming dock).
+
+Install extras: `pip install -e .[streaming]`.
 
 ## Endpoints
 
@@ -61,9 +68,9 @@ If a requested codec isn't installed the factory falls back to WAV
 
 ## Push targets
 
-- `streaming.icecast.IcecastPusher` - generic Icecast2 source-client
+- `streaming.icecast.IcecastPusher` — generic Icecast2 source-client
   via HTTP `PUT`. Handles reconnects and a chunk queue.
-- `streaming.broadcastify.BroadcastifyPusher` - subclass with
+- `streaming.broadcastify.BroadcastifyPusher` — subclass with
   Broadcastify's default ingest host + port wired in.
 
 The Streaming dock stores credentials via `keyring` if available,
@@ -71,7 +78,7 @@ falling back to `app_settings.json` if not.
 
 ## Wiring
 
-- Audio stream comes from the user's soundcard - the scanner's USB
+- Audio stream comes from the user's soundcard — the scanner's USB
   surface does **not** carry audio. Plug a 3.5 mm cable from the
   scanner's headphone jack to your PC's line-in.
 - Telemetry comes from the Live dock's `MainPollerController` /
@@ -79,9 +86,12 @@ falling back to `app_settings.json` if not.
   `push_gsi`, `push_glg`, and `push_waterfall` which the
   Live dock signals connect to.
 
+Switch to the **Live** central page in the Qt shell, connect serial
+ports, then configure the Streaming dock tab.
+
 ## Cross-references
 
-- Live dock: see [`Qt-UI.md`](Qt-UI.md)
+- Live dock: see [Qt-UI](Qt-UI)
 - Soundcard pipeline: `audio/capture.py`
 - Encoders: `audio/encoder.py`
 - FastAPI server: `streaming/server.py`

@@ -1,8 +1,16 @@
 # RadioReference Import
 
+> Status: shipped (v0.11.x) — import UI in legacy Tk; MetaStore + SOAP client shared
+
 Scanner Manager can pull channel rows straight from
 [RadioReference.com](https://www.radioreference.com) in two modes,
 depending on what's available.
+
+**Shell note:** the full import dialog, group linking, and refresh flows
+run in **`scanner-manager-tk`** today. The Qt shell shares
+`core/rr_api.py` and records imports in the MetaStore, but does not yet
+expose **Import from RR...** in the editor. Use legacy Tk for imports
+until the Qt port lands.
 
 ## Modes
 
@@ -17,28 +25,30 @@ page. Works for:
 - Trunked **talkgroup** listings.
 
 Login isn't required for HTML scraping but RadioReference rate-limits
-aggressive scraping - don't hammer it.
+aggressive scraping — don't hammer it.
 
 ### SOAP API (requires an RR account)
 
 If you have a RadioReference premium subscription, Scanner Manager can
-talk to the official SOAP API via `zeep`:
+talk to the official SOAP API via `zeep` (`core/rr_api.py`):
 
-1. **Settings → RadioReference account** - enter your username +
+1. **Settings → RadioReference account** (legacy Tk) — enter username +
    password. They're stored in the OS credential vault (Windows
    Credential Manager / macOS Keychain / Secret Service on Linux) via
    `keyring`. Scanner Manager never writes credentials to disk in
    clear text.
-2. The Import dialog will prefer the SOAP API when credentials are
+2. The Import dialog prefers the SOAP API when credentials are
    present, falling back to the HTML scraper only if the API is
    unreachable.
+
+Install extras: `pip install -e .[radioreference]`.
 
 SOAP is more reliable for trunked systems with many TGIDs and for
 bulk pulls; the HTML scraper is handy for one-off categories.
 
-## The import dialog
+## The import dialog (legacy Tk)
 
-1. Click **Import from RR...**.
+1. Load the card, then click **Import from RR...**.
 2. Paste a URL.
 3. Scanner Manager loads and parses, then shows a two-column diff:
    - **Left:** what's currently in the HPD.
@@ -49,13 +59,12 @@ bulk pulls; the HTML scraper is handy for one-off categories.
 ## How the import is recorded
 
 Instead of logging hundreds of separate edits, the whole import is
-recorded as a **single entry in the Change History**. That means:
+recorded as a **single MetaStore entry** (`OP_IMPORT_APPLY`). That means:
 
 - Imports stay fast and don't bloat the change log.
 - One **Revert** click rolls the entire import back in one go.
-- The RadioReference refresh data you most care about - the rows that
-  were added, updated, or deleted - is captured as a single summary
-  you can undo cleanly.
+- View/revert imports in Qt via **Tools → Recent changes…** even if
+  the import was performed from legacy Tk.
 
 ## Reconciliation with user edits
 
@@ -87,8 +96,8 @@ defaults to keeping these out of your HPD:
 
 ## Troubleshooting
 
-- **"Unusable page"** - double-check the URL. A `.../db/sid/...` that
+- **"Unusable page"** — double-check the URL. A `.../db/sid/...` that
   shows talkgroups should work; a site index page won't.
-- **Slow / stuck loading** - the SOAP API has better per-request
+- **Slow / stuck loading** — the SOAP API has better per-request
   throughput than scraping; consider entering RR credentials.
-- **Login errors** - clear the credential via Settings and re-enter.
+- **Login errors** — clear the credential via Settings and re-enter.

@@ -1,5 +1,7 @@
 # Metacache GitHub export policy
 
+> Status: shipped (v0.11.x) — tiered export for public GitHub mirror.
+
 The private GitLab mirror tracks the **full** `Metacache/` tree (~236
 files): RE lab notebooks, probe sessions, firmware blobs, Ghidra projects,
 and agent handoff docs. The public GitHub mirror ships a **filtered**
@@ -21,7 +23,7 @@ Machine-readable rules: [`scripts/metacache_export_rules.yaml`](../scripts/metac
 From repo root (after committing to GitLab `main`):
 
 ```powershell
-.\scripts\publish_github.ps1 -Tag vX.Y.Z -Force
+.\scripts\publish_github.ps1 -Tag v0.11.1 -Force
 ```
 
 The script:
@@ -31,6 +33,9 @@ The script:
 3. Runs `scripts/sanitize_for_github.py` on `public_sanitize` globs.
 4. Audits for blocked strings (local usernames, real hostnames, etc.).
 5. Force-pushes `main` and the release tag to GitHub.
+
+Optional: `-SkipCloudGate` bypasses the SonarCloud quality-gate check
+(avoid for production releases).
 
 ## Adding new Metacache files
 
@@ -47,3 +52,12 @@ Use [`Metacache/Dev/MACHINES.example.md`](Dev/MACHINES.example.md) as the
 public template. Keep real hostname/path rows out of git; the live
 `MACHINES.md` (if you maintain one locally) is GitLab-only and stripped
 on export.
+
+## Cross-links (verify after doc refresh)
+
+| Target | Purpose |
+| --- | --- |
+| [`CONTRIBUTING.md`](../CONTRIBUTING.md) | Contributor onboarding — should link here |
+| [wiki RE-Toolchain](https://github.com/disturbedkh/scanner-manager/wiki/RE-Toolchain) | RE export tiers for public contributors |
+| [`docs/RELEASE.md`](docs/RELEASE.md) | Release checklist includes GitHub publish step |
+| [`docs/README.md`](docs/README.md) | Ops doc index |

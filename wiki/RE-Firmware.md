@@ -1,5 +1,7 @@
 # RE: Firmware
 
+> Status: shipped (v0.11.x) — static RE + in-app updater over FTP/SD.
+
 > Where this fits: how the SDS100's two firmware blobs (MAIN + SUB)
 > are packaged, which one we can read statically, and how
 > firmware updates actually flow. For the consolidated narrative
@@ -65,9 +67,11 @@ Document this loudly so future maintainers don't re-try it.
 
 ### What this means for the project
 
-- **In-app firmware updater is unaffected.** We don't need to
-  decrypt to flash; the bootloader does that. We just copy bytes
-  to the SD card.
+- **In-app firmware updater is shipped (v0.11.x).** We don't need to
+  decrypt to flash; the bootloader does that. `firmware/updater.py`
+  copies bytes to the SD card after FTP discovery. See
+  [RE-Update-Endpoints](RE-Update-Endpoints) and the user-facing
+  [Firmware Updater](Firmware-Updater) wiki page.
 - **Live serial RE is the only path to learn what MAIN does** at
   runtime. The V1.02 + V2.00 specs + our captures of GSI / GLT /
   STS / GLG are the canonical surface. See
@@ -260,9 +264,9 @@ Sentinel can't trigger the mode switch over USB), copies the file,
 prompts for reboot. Nothing magic.
 
 This unblocks an in-app firmware updater in our app - we already
-own the SD card path; copying a file is trivial. See
-`Metacache/Dev/FIRMWARE_UPDATER.md`
-for the implementation plan.
+own the SD card path; copying a file is trivial. **Shipped in
+v0.11.x** — see `firmware/updater.py`, `gui/firmware/firmware_dock.py`,
+and [RE-Update-Endpoints](RE-Update-Endpoints).
 
 ### Side effects observed across firmware update
 
@@ -286,4 +290,4 @@ setting will need re-entering after a MAIN firmware update.
 - `Metacache/Dev/RE/tools/firmware/inflate_sub.py` - SUB container parser/extractor.
 - `Metacache/Dev/RE/tools/firmware/firmware_strings.py` - per-image ASCII run extractor + version-diff.
 - `Metacache/Dev/RE/tools/firmware/firmware_structure.py` - entropy profile + magic-byte signature scan + byte-level diff.
-- `Metacache/Dev/RE/automation` - Ghidra bootstrap, headless analysis, and Java pre/post scripts.
+- `Metacache/Dev/RE/tools/automation` - Ghidra bootstrap, headless analysis, and Java pre/post scripts.

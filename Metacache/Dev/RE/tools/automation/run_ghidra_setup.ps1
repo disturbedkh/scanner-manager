@@ -91,7 +91,7 @@ if (-not (Test-Path $FirmwarePath)) {
 }
 if (-not (Test-Path $svdPath)) {
     Show-Warn "LPC43xx.svd not found at $svdPath - peripheral labels will be skipped."
-    Show-Warn 'Run Metacache\Dev\RE\automation\fetch_lpc43xx_svd.ps1 to fetch it.'
+    Show-Warn 'Run Metacache\Dev\RE\tools\automation\fetch_lpc43xx_svd.ps1 to fetch it.'
 }
 if (-not (Test-Path (Join-Path $scriptPath 'SetupSubProject.java'))) {
     Show-ErrFail "SetupSubProject.java not found in $scriptPath"
@@ -174,4 +174,4 @@ if (Test-Path $dumpJson) {
     exit 1
 }
 
-Show-OK 'Run complete. Next: Metacache\Dev\RE\_analyze_ghidra_dump.py'
+Show-OK 'Run complete. Next: py Metacache\Dev\RE\tools\firmware\analyze_ghidra_dump.py'

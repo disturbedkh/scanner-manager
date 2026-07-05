@@ -38,4 +38,9 @@ Use built-in Task subagents with prompts from [`.cursor/agents/`](.cursor/agents
 
 ## Active workstreams (headline)
 
-See [`Metacache/Dev/WORKSTREAMS.md`](Metacache/Dev/WORKSTREAMS.md). Current focus areas: multi-scanner backend, SDS100 profile, firmware updater design, multi-device GUI planning.
+See [`Metacache/Dev/WORKSTREAMS.md`](Metacache/Dev/WORKSTREAMS.md).
+Current focus areas: SDS100 live-serial RE, Sub Ghidra disassembly,
+waterfall live-verify backlog, BT885 fixture/alias cleanup, build
+system Phase 2 tail (SonarCloud primary + VPS compliance). Shipped in
+v0.11.x — do not treat as planning: SDS100 profile, multi-device GUI,
+firmware updater, streaming, `detect_from_card()` (Qt banner only).

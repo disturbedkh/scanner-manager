@@ -1,5 +1,7 @@
 # RE: Workflows
 
+> Status: shipped (v0.11.x) — RE recipe playbooks.
+
 > Where this fits: recipe playbooks for common RE tasks. Each
 > recipe says **why**, **prereqs**, **steps**, and **outputs**.
 > For the consolidated narrative start at [Reverse Engineering](Reverse-Engineering).

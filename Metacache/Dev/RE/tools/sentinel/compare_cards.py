@@ -8,7 +8,7 @@ files, and prints a normalized comparison report.
 
 Run from repo root:
 
-    py AI\\Dev\\RE\\compare_cards.py --bt E:\\ --sds H:\\
+    py Metacache/Dev/RE/tools/sentinel/compare_cards.py --bt E:\\ --sds H:\\
 
 Writes nothing to either card. Output goes to stdout and is suitable
 for piping into `Metacache/Dev/RE/sessions/`.

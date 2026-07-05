@@ -88,7 +88,7 @@ ASCII.
 
 A different function entirely, found by enumerating "0-callers, no
 peripheral access, large body" and reading the first one. See
-[`sub_command_dispatch.md`](../sub_command_dispatch.md) for the full
+[`sub_command_dispatch.md`](../docs/sub_command_dispatch.md) for the full
 dispatch table.
 
 ### 6. `FUN_14008340` is a forwarder, not a second parser

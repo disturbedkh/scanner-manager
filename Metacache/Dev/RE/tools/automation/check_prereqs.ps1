@@ -71,7 +71,7 @@ if (-not $ghidraHome) {
 if ($ghidraHome -and (Test-Path (Join-Path $ghidraHome 'support\analyzeHeadless.bat'))) {
     Add-Result -Name 'Ghidra (11.x or 12.x)' -Ok $true -Detail $ghidraHome
 } else {
-    Add-Result -Name 'Ghidra (11.x or 12.x)' -Ok $false -Detail 'not found under C:\Tools\ and $env:GHIDRA_HOME unset' -Hint 'Run Metacache\Dev\RE\automation\bootstrap_ghidra.ps1'
+    Add-Result -Name 'Ghidra (11.x or 12.x)' -Ok $false -Detail 'not found under C:\Tools\ and $env:GHIDRA_HOME unset' -Hint 'Run Metacache\Dev\RE\tools\automation\bootstrap_ghidra.ps1'
 }
 
 # --- Wireshark / tshark -----------------------------------------------------
@@ -110,7 +110,7 @@ if (Test-Path $svdPath) {
     $size = (Get-Item $svdPath).Length
     Add-Result -Name 'LPC43xx.svd' -Ok $true -Detail "$svdPath ($size bytes)"
 } else {
-    Add-Result -Name 'LPC43xx.svd' -Ok $false -Detail 'missing under Metacache\Dev\RE\firmware\' -Hint 'Run Metacache\Dev\RE\automation\fetch_lpc43xx_svd.ps1'
+    Add-Result -Name 'LPC43xx.svd' -Ok $false -Detail 'missing under Metacache\Dev\RE\firmware\' -Hint 'Run Metacache\Dev\RE\tools\automation\fetch_lpc43xx_svd.ps1'
 }
 
 # --- Render -----------------------------------------------------------------

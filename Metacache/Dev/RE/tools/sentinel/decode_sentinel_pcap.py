@@ -8,7 +8,7 @@ functionality in our own GUI we need to know:
 2. Which files Sentinel writes (and what their on-disk format is).
 3. The temporal order of operations.
 
-This decoder, given an `.pcap` from `_sentinel_session.py`, produces:
+This decoder, given an `.pcap` from `tools/sentinel/sentinel_session.py`, produces:
 
 - `<basename>.scsi.jsonl`     - one JSON object per SCSI command
                                 (`READ_10` / `WRITE_10` / housekeeping)
@@ -579,7 +579,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(
         description="Decode a Sentinel USBPcap into SCSI ops + reconstructed FAT32"
     )
-    ap.add_argument("pcap", type=Path, help="path to .pcap captured by _sentinel_session.py")
+    ap.add_argument("pcap", type=Path, help="path to .pcap captured by tools/sentinel/sentinel_session.py")
     ap.add_argument("--outdir", type=Path, default=None,
                     help="output directory (default: same as pcap)")
     args = ap.parse_args()

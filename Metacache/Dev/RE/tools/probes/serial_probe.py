@@ -40,10 +40,10 @@ Modes:
 
 Usage::
 
-    py Metacache/Dev/RE/serial_probe.py
-    py Metacache/Dev/RE/serial_probe.py --port COM4
-    py Metacache/Dev/RE/serial_probe.py --mode poll --poll-cmd GLG --poll-duration 30
-    py Metacache/Dev/RE/serial_probe.py --mode diff --diff-cmd STS
+    py Metacache/Dev/RE/tools/probes/serial_probe.py
+    py Metacache/Dev/RE/tools/probes/serial_probe.py --port COM4
+    py Metacache/Dev/RE/tools/probes/serial_probe.py --mode poll --poll-cmd GLG --poll-duration 30
+    py Metacache/Dev/RE/tools/probes/serial_probe.py --mode diff --diff-cmd STS
 
 Outputs are written into ``Metacache/Dev/RE/sessions/<timestamp>.txt`` and
 also streamed to stdout for live monitoring.

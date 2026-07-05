@@ -1,5 +1,8 @@
 # Reverse Engineering
 
+> Status: shipped (v0.11.x) — consolidated RE narrative; lab files in
+> `Metacache/Dev/RE/` win on conflicts.
+
 How the SDS100 (and the wider BCDx36HP scanner family) actually works
 on the inside. This page is the **consolidated narrative**; every
 sub-page below is a drill-down with raw data and decompiles.
@@ -107,8 +110,8 @@ Full shape table is in [RE-SD-Card](RE-SD-Card). The headlines:
 | `discvery.cfg` (sic) | Discovery config stub | yes |
 | `firmware/CityTable_*.dat`, `ZipTable_*.dat` | Firmware data tables | bit-identical across BT885/SDS100; never write |
 
-Our HPD parser/writer at `scanner_manager.py:411-545`
-already round-trips every record type observed on either card.
+Our HPD parser/writer in `core/hpd.py` round-trips every record type
+observed on either card.
 
 ### From Sentinel's behaviour (also Mass Storage)
 
@@ -123,8 +126,8 @@ live under
 |---|---|---|
 | Read From Scanner | `READ_10` of `_*.hpd` records + `scanner.inf` + `profile.cfg` | Read the same files when SDS100 is mounted |
 | Write to Scanner | `READ_10` existing files for diff, `WRITE_10` modified copies + FAT/dir updates | Same; the FAT mirroring is automatic when Windows owns the mount |
-| Get HPDB Update | **Out-of-band FTP version check** ([RE-Update-Endpoints](RE-Update-Endpoints)), then `WRITE_10` of new HPDB blob *only if* outdated | List `ftp.homepatrol.com/BCDx36HP/`, find latest `MasterHpdb_*.gz`, compare to `hpdb.cfg`'s `DateModified`, drop new HPDs. **Zero USB traffic when up-to-date** (confirmed in capture). |
-| Update Firmware | One `READ_10` of the `BCDx36HP/firmware/` directory entry (4 KB at LBA 0x4280), then **FTP version check** ([RE-Update-Endpoints](RE-Update-Endpoints)), then `WRITE_10` of new `.bin` (MAIN) or `.firm` (SUB) *only if* outdated | Walk `BCDx36HP/firmware/`, parse version-encoded filenames (`SDS-100_V1_05.bin` = MAIN v1.05; `_V1_03_05.firm` = SUB v1.03.05), FTP-check, drop new file. Bootloader picks it up at next reboot. See [RE-Firmware](RE-Firmware). |
+| Get HPDB Update | **Out-of-band FTP version check** ([RE-Update-Endpoints](RE-Update-Endpoints)), then `WRITE_10` of new HPDB blob *only if* outdated | **Shipped:** `firmware/ftp_client.py` lists `ftp.homepatrol.com/BCDx36HP/`, compares to `hpdb.cfg`'s `DateModified`, downloads via `RETR`. Zero USB traffic when up-to-date (confirmed in capture). |
+| Update Firmware | One `READ_10` of the `BCDx36HP/firmware/` directory entry (4 KB at LBA 0x4280), then **FTP version check** ([RE-Update-Endpoints](RE-Update-Endpoints)), then `WRITE_10` of new `.bin` (MAIN) or `.firm` (SUB) *only if* outdated | **Shipped:** `firmware/updater.py` + Firmware dock; FTP discovery per [RE-Update-Endpoints](RE-Update-Endpoints), SD drop + reboot. See [RE-Firmware](RE-Firmware). |
 | Backup (alias) | Same as Read From Scanner | Workspace snapshot |
 | Restore (alias) | Same as Write to Scanner | Workspace push |
 
@@ -184,6 +187,9 @@ straight from the decompile. Round 1-5 narrative is in
 | Bulk operations + revert | no | yes | Same |
 | RadioReference import | no | yes | RR HTML + SOAP API client |
 | Multi-scanner / family-wide | partial | yes | BT885 + SDS100 share the on-disk format |
+| SDS100 scanner profile (`Sds100Profile`) | no | **yes (v0.11.x)** | `scanner_profiles/sds100.py`, `tests/test_sds100_profile.py` |
+| In-app firmware updater (FTP + SD drop) | no | **yes (v0.11.x)** | `firmware/ftp_client.py`, `firmware/updater.py`; see [RE-Update-Endpoints](RE-Update-Endpoints) |
+| Card auto-detection (`detect_from_card`) | no | **yes in Qt** (mismatch banner; legacy Tk manual) | `scanner_profiles/registry.py` |
 | Detect destructive vs read-only commands | no | yes | Whitelist + forbidden-list in our probes |
 
 The functional gap *into* Sentinel-only territory is at most: nicer
@@ -194,6 +200,9 @@ already exceed Sentinel structurally.
 
 | Workstream | State | Drill-down |
 |---|---|---|
+| In-app firmware updater (FTP + SD apply) | SHIPPED (v0.11.x) | [Firmware Updater](Firmware-Updater), [RE-Update-Endpoints](RE-Update-Endpoints), `firmware/` |
+| SDS100/200 scanner profile + multi-device GUI | SHIPPED (v0.11.x) | [Architecture](Architecture), `scanner_profiles/sds100.py` |
+| Card profile detection (`detect_from_card`) | SHIPPED in Qt; legacy Tk manual | `scanner_profiles/registry.py` |
 | BT885 + SDS100 SD card RE | DONE | [RE-SD-Card](RE-SD-Card) |
 | MAIN-port serial command catalog (V1.02 + V2.00 + BCDx36HP V1.05 + experimental) | DONE for read-only surface | [RE-Serial-Protocol](RE-Serial-Protocol) |
 | SUB-port serial command catalog (13 debug commands + MDL/VER) | DONE | [RE-Serial-Protocol](RE-Serial-Protocol) |

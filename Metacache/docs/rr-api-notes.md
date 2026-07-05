@@ -1,9 +1,13 @@
-# RadioReference SOAP API Notes
+# RadioReference SOAP API notes
+
+> Status: shipped (v0.11.x) — clean-room input to `core/rr_api.py`.
+> User-facing import flow:
+> [RadioReference-Import wiki](https://github.com/disturbedkh/scanner-manager/wiki/RadioReference-Import).
 
 > Clean-room notes. We only record the public WSDL surface and the
 > request/response shapes we need. We do NOT copy code from Uniden's
 > decompiled SOAP proxies; this file is the input to
-> `rr_api.py`.
+> `core/rr_api.py`.
 
 ## Endpoint + auth
 
@@ -41,7 +45,7 @@
 | `getStateSystems` | All systems in a state | `sid` | Bulk pull for a whole state. |
 
 Mapping each response field → our HPD schema is documented inline in
-`rr_api.to_hpd_import`. Parity with the HTML scraper is enforced by
+`core/rr_api.to_hpd_import`. Parity with the HTML scraper is enforced by
 `tests/test_rr_api.py::test_mapping_parity_with_html`.
 
 ## Response quirks worth documenting here (to be filled in)
@@ -51,12 +55,12 @@ Mapping each response field → our HPD schema is documented inline in
 - `getCategory` returns TGIDs as numbers or as strings depending on
   Motorola vs LTR vs EDACS; normalize to string on our side.
 - `modeType` values seen in responses: `FM`, `NFM`, `P25`, `TDMA`,
-  `DMR` — map to our HPD `Mode` column per the existing table in
-  `scanner_manager.py::_MODE_MAP`.
+  `DMR` — map to our HPD `Mode` column per the mode map in
+  `core/rr_api.py` (legacy Tk duplicates in `legacy_tk/scanner_manager.py`).
 
 ## Feature flag gating
 
-`RadioReferenceClient` refuses to do anything beyond `getUserData()`
+`core.rr_api.RadioReferenceClient` refuses to do anything beyond `getUserData()`
 unless that probe call returns a non-expired premium subscription.
 When the probe fails (bad creds, no subscription, offline), the app
 falls through to the legacy HTML scraper — the pipeline must keep

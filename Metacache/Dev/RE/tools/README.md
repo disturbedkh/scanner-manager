@@ -1,5 +1,8 @@
 # RE / Development tools
 
+> Status: shipped (v0.11.x) — canonical script home under `tools/`.
+> GitHub export tiers: [`Metacache/EXPORT_POLICY.md`](../../EXPORT_POLICY.md).
+
 This is the canonical home for the Python and PowerShell scripts used
 to reverse-engineer the Uniden SDS100 (and the wider BCDx36HP scanner
 family). The scripts here are written to be **portable across

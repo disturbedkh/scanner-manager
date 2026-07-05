@@ -1,5 +1,7 @@
 # RE / Development: Toolchain
 
+> Status: shipped (v0.11.x) — script inventory under `Metacache/Dev/RE/tools/`.
+
 > Where this fits: every script and tool we use to do RE on the
 > SDS100, grouped by purpose. For the consolidated narrative
 > start at [Reverse Engineering](Reverse-Engineering).
@@ -9,7 +11,8 @@ self-contained Python (or PowerShell for Windows-specific bits)
 and is checked into the repo for reproducibility.
 
 The full source-of-truth for tool inventory + per-tool docstrings is
-[`Metacache/Dev/RE/tools/README.md`](../../tree/main/Metacache/Dev/RE/tools).
+[`Metacache/Dev/RE/tools/README.md`](https://github.com/disturbedkh/scanner-manager/blob/main/Metacache/Dev/RE/tools/README.md).
+GitHub export tiers (which RE blobs ship publicly): [`Metacache/EXPORT_POLICY.md`](https://github.com/disturbedkh/scanner-manager/blob/main/Metacache/EXPORT_POLICY.md).
 Below is the audience-friendly summary; if it disagrees with the
 folder README, the folder README wins.
 

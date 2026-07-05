@@ -10,7 +10,7 @@
 > Companion artefacts:
 > - [`firmware/decompiles/14006ca6_FUN_14006ca6.json`](firmware/decompiles/14006ca6_FUN_14006ca6.json) - full decompile.
 > - [`sessions/round1_2_findings_2026-05-03.md`](sessions/round1_2_findings_2026-05-03.md) - narrative.
-> - [`sessions/dispatch_candidates.txt`](sessions/dispatch_candidates.txt) - input for `_verify_dispatch.py`.
+> - [`sessions/dispatch_candidates.txt`](../sessions/dispatch_candidates.txt) - input for [`tools/probes/verify_dispatch.py`](../tools/probes/verify_dispatch.py).
 >
 > **Status: `pending Round 4 live verification` for the inline-emitter handlers.**
 > The streaming `h` command is already empirically confirmed via earlier Phase
@@ -194,7 +194,7 @@ confirmed.
 
 The 13 mnemonics above are written into
 [`sessions/dispatch_candidates.txt`](sessions/dispatch_candidates.txt) for
-[`_verify_dispatch.py`](_verify_dispatch.py) to falsify against the live
+[`tools/probes/verify_dispatch.py`](../tools/probes/verify_dispatch.py) to falsify against the live
 COM3 port. Five of them (`h`, plus `t`, `u`, `s` per their handler
 shapes) we expect to be silent or behave specially - the verifier will
 classify them as `IDENTITY` or `TIMEOUT` and we annotate manually after.

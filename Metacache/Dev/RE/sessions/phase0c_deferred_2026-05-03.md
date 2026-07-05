@@ -35,7 +35,7 @@ primary deliverable of Phase 0c.
   driving Sentinel in mass-storage mode while this doc is being
   written.
 - Phase 0c part 3 (decode + document) - decoder runs automatically
-  in `_sentinel_session.py --decode`; findings will land in
+  in `tools/sentinel/sentinel_session.py --decode`; findings will land in
   [`../sentinel_api.md`](../sentinel_api.md) and be cross-referenced
   from the new wiki page (`wiki/RE-Sentinel.md`).
 

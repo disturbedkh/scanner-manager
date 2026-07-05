@@ -2,8 +2,8 @@
 
 ## Supported versions
 
-Only the latest `0.9.x` alpha series is receiving security fixes.
-Older pre-alpha builds are unsupported.
+Only the latest `0.11.x` beta series is receiving security fixes.
+Older pre-beta builds are unsupported.
 
 ## Reporting a vulnerability
 

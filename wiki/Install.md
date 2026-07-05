@@ -1,8 +1,10 @@
 # Install
 
+> Status: shipped (v0.11.x)
+
 Scanner Manager runs on all three major desktop OSes. The core — HPD
-editing, RadioReference import, ZIP/GPS simulation, workspaces,
-MetaStore — works identically everywhere. The Uniden vendor tools
+editing, ZIP/GPS simulation, workspaces, MetaStore — works identically
+everywhere on whichever shell you launch. The Uniden vendor tools
 (Sentinel and BT885 Update Manager) are Windows-only binaries, so on
 macOS and Linux the Uniden Tools panel shows a "Windows only" notice.
 Everything else is unaffected.
@@ -11,7 +13,8 @@ Everything else is unaffected.
 
 Every tagged release ships binaries for Windows, macOS, and Linux. Go
 to the [Releases page](https://github.com/disturbedkh/scanner-manager/releases)
-and grab the one for your OS.
+and grab the one for your OS. Prebuilt builds launch the **Qt shell**
+(`ScannerManager` / `ScannerManager.exe`).
 
 ### Windows
 
@@ -39,12 +42,9 @@ and grab the one for your OS.
    ./ScannerManager
    ```
 
-3. The binary was built on Ubuntu 22.04, so it needs glibc 2.31+ and
-   Tk. On Debian/Ubuntu:
-
-   ```bash
-   sudo apt install python3-tk
-   ```
+3. The binary was built on Ubuntu 22.04 and bundles the Qt runtime.
+   You may need `libxcb-cursor0` or similar X11 libs on minimal
+   distros.
 
 ### Verifying the download
 
@@ -71,33 +71,35 @@ After the first install you don't need to re-download manually. **Help
 release directly from GitHub, verify its SHA-256, and swap the EXE
 for you on Windows. See [Updating](Updating) for the full flow.
 
-## First-run
+## First-run (Qt default)
 
-The first launch shows an *alpha notice* modal. Dismiss it once; it
-won't appear again. The app will land on an empty tree view with the
-status bar reading "Ready. Browse to your SD card's BCDx36HP folder to
-begin."
+Launch `scanner-manager` (or the prebuilt binary). Register your
+scanner under **Devices → Add device…**, point it at your SD card's
+`BCDx36HP` folder (or the card root — the app resolves
+`BCDx36HP/HPDB/hpdb.cfg` automatically), and pick the device in the
+header dropdown. The HPDB tree loads when a valid path is bound.
 
 ## From source (any OS)
 
-Requires Python 3.9+ with Tkinter support.
+Requires **Python 3.9+**. Qt is the default; Tk is optional for the
+legacy entry only.
 
 ```bash
 git clone https://github.com/disturbedkh/scanner-manager.git
 cd scanner-manager
 python -m pip install -r requirements.txt
 python -m pip install -e .
-scanner-manager
+scanner-manager          # Qt (default)
+scanner-manager-tk       # legacy Tk fallback
 ```
 
 ### Per-OS notes
 
-- **Windows**: the standard python.org installer ships Tk. Nothing
-  else needed.
-- **macOS**: prefer the python.org build — the Apple-supplied system
-  Python has a stripped Tk that breaks some dialogs. Alternatively
-  `brew install python-tk@3.12` (matching your Python minor version).
-- **Linux**: install your distro's Tk package:
+- **Windows**: the standard python.org installer is fine for Qt.
+  Install Tk only if you need `scanner-manager-tk`.
+- **macOS**: prefer the python.org build for Tk fallback; Qt/PySide6
+  works with Homebrew or python.org Python.
+- **Linux**: for legacy Tk, install your distro's Tk package:
 
   ```bash
   sudo apt install python3-tk           # Debian / Ubuntu
@@ -107,35 +109,38 @@ scanner-manager
 
 ## Optional extras
 
-Scanner Manager runs with a minimal core and enables extra features as
-dependencies become available:
+Install feature groups as needed:
 
-| Install                                             | Adds                                                  |
-| --------------------------------------------------- | ----------------------------------------------------- |
-| `pip install zeep keyring`                          | RadioReference SOAP API access + credential storage.  |
-| `pip install tkintermapview`                        | Real tile-server map in the Coverage Map dialog.      |
-| `pip install qrcode`                                | QR codes in the Donate dialog.                        |
-| `pip install beartracker-885-scanner-manager[full]` | All of the above.                                     |
+| Install | Adds |
+| --- | --- |
+| `pip install -e .[radioreference]` | RadioReference SOAP API (`zeep`) + credential storage (`keyring`). |
+| `pip install -e .[streaming]` | LAN streaming server (FastAPI, encoders). |
+| `pip install -e .[firmware]` | Firmware FTP client (included in full installs). |
+| `pip install -e .[map]` | Legacy Tk tile map (`tkintermapview`). Qt coverage uses PySide6 + Leaflet instead. |
+| `pip install -e .[donate-qr]` | QR codes in the Donate dialog (legacy Tk). |
+| `pip install -e .[full]` | All optional groups above. |
 
 ## Uninstall / reset
 
-Prebuilt binaries are self-contained — just delete the EXE / .app /
-binary and the data it wrote next to itself (`app_settings.json`,
-`scanner_manager.meta.json`, `*.session.bak`, `zip_county_map.json`).
+Prebuilt binaries are self-contained — delete the EXE / .app /
+binary. User data lives under:
+
+- Windows: `%LOCALAPPDATA%\scanner-manager\`
+- macOS: `~/Library/Application Support/scanner-manager/` (and crash logs under `~/Library/Logs/scanner-manager/`)
+- Linux: `~/.config/scanner-manager/` or `$XDG_STATE_HOME/scanner-manager/`
+
 Source installs: `pip uninstall beartracker-885-scanner-manager`.
 
 ## Troubleshooting
 
-- **`ImportError: No module named _tkinter`** — install your distro's
-  Tk package (Linux) or reinstall Python with Tk support.
-- **macOS dialogs look cut off or fonts render oddly** — almost always
-  the system Python's Tk build. Switch to python.org Python.
+- **`ImportError: No module named _tkinter`** — only affects
+  `scanner-manager-tk`. Install your distro's Tk package or use the Qt
+  default.
+- **macOS dialogs look cut off (Tk only)** — switch to python.org Python
+  or use the Qt shell.
 - **Blank window on Linux/X11 over SSH** — Scanner Manager needs a
   real display or `xvfb-run`.
-- **EXE / .app doesn't start at all** — delete the companion files
-  it wrote next to itself and try again; a corrupt `app_settings.json`
-  can block startup.
+- **EXE / .app doesn't start** — delete corrupt files under
+  `%LOCALAPPDATA%\scanner-manager\` and relaunch.
 - **Uniden Tools panel says "Windows only"** — expected on macOS /
-  Linux. Uniden doesn't publish Mac or Linux builds of Sentinel or
-  the BT885 Update Manager. Use a Windows host (or Wine / Crossover
-  at your own risk) to run those specific vendor tools.
+  Linux. Use a Windows host for Sentinel / BT885 Update Manager.

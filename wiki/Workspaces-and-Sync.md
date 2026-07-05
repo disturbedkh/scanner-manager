@@ -1,70 +1,80 @@
 # Workspaces and Sync
 
-A **Workspace** (a.k.a. Virtual SD card) is a local folder that mirrors
-the layout of a real BearTracker 885 SD card. You can edit a workspace
-while the card is detached, then reconcile changes in either direction
-when the card comes back.
+> Status: shipped (v0.11.x)
 
-## Why
+Scanner Manager uses the word **workspace** in two related ways depending
+on which shell you launch. Read the section that matches your entry
+point.
 
-- **Edit offline.** Car scanner stays in the car; you edit at your
-  desk.
-- **Safer experiments.** Trash a workspace, not a card.
+## Qt workspaces (device-list bundles)
+
+The default Qt shell (**Tools → Workspaces…**) manages **named bundles
+of device manifests** — not offline SD card clones.
+
+A workspace record points at a `devices.json` file (your registered
+scanners: label, model, SD path). Switching workspaces lets you jump
+between setups such as **Home** vs **Roadtrip** without overwriting
+the default manifest at:
+
+- Windows: `%APPDATA%\scanner-manager\devices.json`
+- macOS: `~/Library/Application Support/scanner-manager/devices.json`
+- Linux: `~/.config/scanner-manager/devices.json`
+
+When a workspace is active the header shows **Workspace:** *name*;
+otherwise **Device list: default**. The editor toolbar may prefix HPDB
+status with the workspace name.
+
+### Typical Qt workflow
+
+1. **Tools → Workspaces… → New…** — name the workspace and pick (or
+   copy) a `devices.json` path.
+2. **Load** — double-click the workspace row to activate it.
+3. Edit HPDB for whichever device is selected in the header.
+4. **New from default devices.json** — quick shortcut to snapshot your
+   current default device list.
+
+Profile snapshots (**Tools → Profile snapshots…**) capture a full
+`BCDx36HP/` folder copy for rollback — complementary to workspaces.
+
+## Virtual SD card (legacy Tk)
+
+The **Virtual SD card** workflow — clone the card, edit while detached,
+reconcile both ways on return — lives in **`scanner-manager-tk`** under
+**Workspaces → New workspace from card…** (and related push/pull menu
+items).
+
+### Why use Virtual SD card
+
+- **Edit offline.** Car scanner stays in the car; you edit at your desk.
+- **Safer experiments.** Trash a workspace folder, not a card.
 - **Update cycles.** Run Uniden's updater against the card, then pull
-  the new firmware tables into your workspace *without* losing the
-  edits you made while disconnected.
+  new firmware tables into your workspace without losing offline edits.
 
-## Creating a workspace
+### Creating a virtual workspace (legacy Tk)
 
 1. Insert the card and **Load** it.
 2. **Workspaces → New workspace from card...**
 3. Pick a local folder. Scanner Manager copies the BCDx36HP tree and
-   writes a small manifest so it can later detect drift.
+   writes a manifest for drift detection.
 
-You can then close the card, eject it, and keep working. The status bar
-shows you're editing a workspace, not a card.
+### Push / pull (legacy Tk)
 
-## Pushing changes to the card
+- **Push workspace → card...** — file-level diff then apply; MetaStore
+  events remain revertable on the card.
+- **Pull card → workspace...** — three buckets (card-only, workspace-
+  only, conflicts) with per-file resolution.
 
-1. Insert the card and **Load** it.
-2. **Workspaces → Push workspace → card...**
-3. Review the file-level diff.
-4. Apply.
+Conflict rules follow the same replay logic as the RadioReference update
+pipeline — see [Architecture](Architecture).
 
-Each HPD file changed is backed by the standard MetaStore event log on
-the card, so individual edits remain revertable after a push.
+## Limitations
 
-## Pulling changes from the card
+- Qt workspaces switch device lists only; they do not replace Virtual
+  SD card clone/push/pull (legacy Tk).
+- Virtual SD diff UI is functional but spartan on large trees.
+- No cloud sync service — everything is local folders and JSON manifests.
 
-Use this after Uniden's Sentinel/Update Manager has touched the card,
-or after a second machine has edited the card directly.
+## Cross-references
 
-1. **Workspaces → Pull card → workspace...**
-2. Scanner Manager identifies three buckets:
-   - **Card-only changes** (new systems/groups/entries the card has
-     that the workspace doesn't).
-   - **Workspace-only changes** (your offline edits).
-   - **Conflicts** (both sides edited the same entity).
-3. For each conflict, pick workspace, card, or merge.
-4. The workspace's event log is re-played on top of the pulled file so
-   your customizations (renames, service-type overrides, deletions)
-   stick.
-
-## Conflict resolution
-
-Conflict rules follow the same logic as the reconciliation replay used
-by the RadioReference update pipeline:
-
-- **Deleted entries** from the workspace stay deleted unless you ask
-  otherwise.
-- **Service-type overrides** from the workspace win.
-- **Renames** follow frequency/TGID identity; if the identity still
-  matches, your name is kept.
-
-See [Architecture](Architecture) for the full replay order.
-
-## Limitations (alpha)
-
-- The diff UI is functional but spartan - large diffs require
-  scrolling. A tree-style diff view is on the 0.9.x roadmap.
-- Workspaces are single-machine; there's no sync service.
+- [Qt UI](Qt-UI) — Tools menu workspace dialog
+- [Quickstart](Quickstart) — device registration

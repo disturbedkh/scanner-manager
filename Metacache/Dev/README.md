@@ -1,11 +1,24 @@
 # Dev Notes
 
+> Status: **active plan** — shared agent + developer notebook for
+> `Metacache/Dev/`. Read before touching profiles, GUI, or firmware.
+
 This folder (`Metacache/Dev/`) is the **shared brain** for AI agents (Cursor) and human
 developers working on `scanner-manager` from multiple machines and chat
 sessions. Anything that needs to survive a session reset, hop between
 desktops, or get picked up by a fresh Cursor agent goes here.
 
-User-facing docs live in sibling [`../docs/`](../docs/) under Metacache.
+**Documentation layers** (see also [`Metacache/README.md`](../README.md) — IA
+charter owned by ops docs):
+
+| Layer | Path | Audience |
+| --- | --- | --- |
+| User wiki | `wiki/` | Feature tours, quickstart, troubleshooting |
+| Contributor ops | `Metacache/docs/` | Release checklist, formats, style |
+| Agent notebook | `Metacache/Dev/` (this tree, excl. deep RE) | PROJECT_STATE, WORKSTREAMS, as-built refs |
+| RE lab | `Metacache/Dev/RE/` | Session logs, catalogs — **facts win over wiki** |
+
+User-facing ops docs live in sibling [`../docs/`](../docs/) under Metacache.
 
 > If you are a Cursor agent landing in this repo for the first time:
 > **read this entire folder before doing anything**, in the order
@@ -16,30 +29,34 @@ User-facing docs live in sibling [`../docs/`](../docs/) under Metacache.
 1. `PROJECT_STATE.md` - one-screen snapshot of where the project is
    right now (latest commit, layout, what runs, what's broken).
 2. `WORKSTREAMS.md` - active workstreams with owners and status.
-   Today the headline workstream is the **multi-scanner backend**.
-3. `MULTI_SCANNER_BACKEND.md` - deep dive on the `scanner_profiles/`
-   driver layer that another contributor started. Required reading
-   before touching anything under `scanner_profiles/`,
-   `scanner_manager.ACTIVE_PROFILE`, or HPD `TargetModel` parsing.
-4. `RE/` - reverse-engineering notes per scanner model **plus live
+   Headline shipped areas: **multi-scanner profiles**, **multi-device Qt
+   header**, **firmware updater**, **streaming** (`v0.11.x beta`).
+3. `MULTI_SCANNER_BACKEND.md` - required before touching
+   `scanner_profiles/`, `set_active_profile()`, or HPD `TargetModel`
+   parsing. Covers `detect_from_card()` and both shipping profiles.
+4. As-built GUI/firmware refs (when relevant):
+   - `MULTI_DEVICE_GUI.md` — header device selector, Live/Storage gating.
+   - `FIRMWARE_UPDATER.md` — FTP discovery + SD-card update workflow.
+5. `RE/` - reverse-engineering notes per scanner model **plus live
    probe tooling**. Start with `RE/README.md`, then read any
-   per-scanner file relevant to your task (`RE/SDS100.md` for
-   SDS100/SDS200 work, etc.). These are the canonical "what does
-   the scanner actually write to disk and over the wire" reference.
-   - `RE/serial_probe.py` + `RE/com6_listen.py` are READ-ONLY probe
-     scripts. Always run them through `RE/README.md`'s instructions;
-     never extend them with a write-shape command without confirming
-     in the Uniden Operation Specification that it is query-only.
+   per-scanner file relevant to your task (`RE/docs/SDS100.md` for
+   SDS100/SDS200 work, `RE/docs/BT885.md` for BT885, etc.). These are
+   the canonical "what does the scanner actually write to disk and over
+   the wire" reference.
+   - `RE/tools/probes/serial_probe.py` + legacy `RE/tools/legacy/com6_listen.py`
+     are READ-ONLY probe scripts. Always run them through `RE/README.md`'s
+     instructions; never extend them with a write-shape command without
+     confirming in the Uniden Operation Specification that it is query-only.
    - `RE/sessions/` contains raw timestamped probe captures. They
      are committed so you can re-derive analysis without re-running
      the probe against a connected scanner.
-5. `MACHINES.md` - per-desktop quirks (paths, Python versions, OS).
+6. `MACHINES.md` - per-desktop quirks (paths, Python versions, OS).
    Find your hostname; if it's not there, add it.
-6. `WORKER_LOG.md` - append-only log of meaningful sessions and
+7. `WORKER_LOG.md` - append-only log of meaningful sessions and
    decisions. Read the last few entries to see what just happened.
-7. `CONVENTIONS.md` - house rules for editing this repo (lint, tests,
-   commits, PRs).
-8. `CURSOR.md` - Cursor rules, skills, hooks, and MCP setup for this
+8. `CONVENTIONS.md` - house rules for editing this repo (lint, tests,
+   commits, PRs, doc-layer obligations).
+9. `CURSOR.md` - Cursor rules, skills, hooks, and MCP setup for this
    repo (also see root `AGENTS.md`).
 
 ## Write order on session end
@@ -65,11 +82,12 @@ The format for log entries is shown at the top of `WORKER_LOG.md`.
 ## Ground rules for agents
 
 - **Don't edit code under `scanner_profiles/` without first reading
-  `MULTI_SCANNER_BACKEND.md`.** That work is in progress and has its
-  own contract documented there.
+  `MULTI_SCANNER_BACKEND.md`.** That work has its own contract documented
+  there.
 - **Don't break parity.** `tests/test_bt885_parity.py` is the canary
-  for the BT885 profile staying in sync with `scanner_manager.py`
-  module-level constants. If you change one, change both.
+  for the BT885 profile staying in sync with `legacy_tk/scanner_manager.py`
+  module-level constants. SDS100: `tests/test_sds100_profile.py`.
 - **Don't commit unless the user asks.** This repo's policy.
 - **Update the docs you change.** If your change invalidates anything
-  in this folder, fix it in the same session.
+  in this folder, fix it in the same session (see `CONVENTIONS.md` for
+  which layer to edit).
