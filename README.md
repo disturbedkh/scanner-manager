@@ -1,5 +1,8 @@
 # Scanner Manager
 
+[![Quality gate](https://sonarcloud.io/api/project_badges/quality_gate?project=disturbedkh_scanner-manager)](https://sonarcloud.io/summary/new_code?id=disturbedkh_scanner-manager)
+[![AI Code Assurance](https://sonarcloud.io/api/project_badges/ai_code_assurance?project=disturbedkh_scanner-manager)](https://sonarcloud.io/summary/new_code?id=disturbedkh_scanner-manager)
+
 **A desktop companion for Uniden scanners — BearTracker 885 and
 SDS100/200 — with a multi-scanner Qt UI, live serial-mode mirror,
 soundcard-fed audio + telemetry streaming over LAN, FTP-discovered
