@@ -110,6 +110,8 @@ Authoritative upload: GitHub Actions `coverage` → `sonarcloud` jobs in [`.gith
 
 Verify autoscan is off (no new autoscan CE tasks after push; latest task must not contain `sonar.autoscan.enabled=true`):
 
+GitHub CI runs [`scripts/sonarcloud_disable_autoscan.sh`](../../scripts/sonarcloud_disable_autoscan.sh) before the scanner step (`POST api/autoscan/activation` with `enable=false`). If that step warns, disable manually:
+
 ```powershell
 Remove-Item Env:SONAR_HOST_URL, Env:SONARQUBE_CLI_SERVER -ErrorAction SilentlyContinue
 sonar api GET "/api/ce/activity?component=disturbedkh_scanner-manager&ps=1&type=REPORT"
