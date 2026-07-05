@@ -1,8 +1,8 @@
 # SDS100 passive serial probe
 # When     : 2026-04-27T18:47:26
-# Host     : MAINGAMINGPC
+# Host: <HOST>
 # Port     : COM4  (baud=115200, 8N1)
-# Output   : C:\Users\khutt\scanner-manager\AI\Dev\RE\sessions\sds100_serial_20260427T184726.txt
+# Output: <repo>/Metacache/Dev/RE/sessions/_glg_poll_session4.txt
 # Probe ID : 20260427T184726
 # Mode     : poll
 #   poll-cmd      : 'GLG'
@@ -29,4 +29,4 @@
 
 # probe complete.
 
-Log saved to: C:\Users\khutt\scanner-manager\AI\Dev\RE\sessions\sds100_serial_20260427T184726.txt
+Log saved to: <user-home>\scanner-manager\AI\Dev\RE\sessions\sds100_serial_20260427T184726.txt

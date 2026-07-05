@@ -1,8 +1,8 @@
 # SDS100 passive serial probe
 # When     : 2026-04-27T17:43:03
-# Host     : MAINGAMINGPC
+# Host: <HOST>
 # Port     : COM4  (baud=115200, 8N1)
-# Output   : C:\Users\khutt\scanner-manager\AI\Dev\RE\sessions\sds100_serial_20260427T174303.txt
+# Output: <repo>/Metacache/Dev/RE/sessions/sds100_serial_20260427T174303.txt
 # Probe ID : 20260427T174303
 # Mode     : query
 #

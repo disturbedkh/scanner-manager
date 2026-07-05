@@ -1,5 +1,5 @@
 # GLT chain probe @ 2026-04-27T17:45:20
-# Port: COM4, host: MAINGAMINGPC
+# Port: COM4, host: <HOST>
 
 >>> glt_sys_in_home          cmd='GLT,SYS,2'
 <<< 225 bytes in 110 ms

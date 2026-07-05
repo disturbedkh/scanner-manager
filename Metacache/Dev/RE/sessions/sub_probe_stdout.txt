@@ -16,8 +16,8 @@
 # Hits: 5
 # Errs: 0
 # Forbidden-skipped: 0
-# Log:     C:\Users\khutt\scanner-manager\AI\Dev\RE\sessions\sub_probe_20260429T174732.txt
-# Summary: C:\Users\khutt\scanner-manager\AI\Dev\RE\sessions\sub_probe_20260429T174732.summary.md
+# Log:     <user-home>\scanner-manager\AI\Dev\RE\sessions\sub_probe_20260429T174732.txt
+# Summary: <user-home>\scanner-manager\AI\Dev\RE\sessions\sub_probe_20260429T174732.summary.md
 
 # Hits:
   MIXG      SDS100-SUB
