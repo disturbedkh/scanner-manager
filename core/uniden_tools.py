@@ -21,7 +21,6 @@ returning empty detection results - that keeps our test matrix viable.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -31,6 +30,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from core._util import safe_float, sha256_file
 from core.path_utils import PathTraversalError
 
 # ---------------------------------------------------------------------------
@@ -241,11 +241,7 @@ def _resolve_hashable_path(path: Path) -> Path:
 def sha256_of_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
     """Stream-hash ``path`` and return its lowercase hex SHA-256 digest."""
     resolved = _resolve_hashable_path(path)
-    h = hashlib.sha256()
-    with resolved.open("rb") as f:
-        for chunk in iter(lambda: f.read(chunk_size), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    return sha256_file(resolved, chunk_size=chunk_size)
 
 
 def verify_installer(path: Path, expected_sha256: str) -> bool:
@@ -824,10 +820,7 @@ def _parse_ziplist(path: Path) -> List[ZipListEntry]:
 
 
 def _maybe_float(text: str) -> Optional[float]:
-    try:
-        return float(str(text).strip())
-    except (ValueError, TypeError):
-        return None
+    return safe_float(text)
 
 
 def load_sentinel_ziplist(

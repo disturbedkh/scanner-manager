@@ -15,6 +15,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from ._util import safe_int
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -38,6 +40,13 @@ _REC_TFREQ = "T-Freq"
 _REC_RECTANGLE = "Rectangle"
 _FIELD_OFF = "Off"
 _UNKNOWN = "Unknown"
+
+# Field-index layout of HPD rows. Single source of truth, shared with
+# core.coverage_maps' raw-record parser so a column change happens in
+# exactly one place.
+GEO_FIELD_START = 5   # lat / lon / range columns on C-Group, T-Group, Site rows
+CFREQ_SVC_FIELD = 8   # service-type column on C-Freq rows
+TGID_SVC_FIELD = 7    # service-type column on TGID rows
 
 # ---------------------------------------------------------------------------
 # Data Model
@@ -256,7 +265,7 @@ class HpdFile:
     def _consume_group(self, rec: HpdRecord, state: _BuildState) -> None:
         # record_type is _REC_CGROUP or _REC_TGROUP (both mapped here).
         system = state.current_system
-        lat, lon, rng = self._extract_geo(rec.fields, 5)
+        lat, lon, rng = self._extract_geo(rec.fields, GEO_FIELD_START)
         group = GroupNode(
             record=rec,
             name=rec.get_field(3, _UNKNOWN),
@@ -276,7 +285,7 @@ class HpdFile:
 
     def _consume_freq(self, rec: HpdRecord, state: _BuildState) -> None:
         # C-Freq stores service type in field 8, TGID in field 7.
-        idx = 8 if rec.record_type == _REC_CFREQ else 7
+        idx = CFREQ_SVC_FIELD if rec.record_type == _REC_CFREQ else TGID_SVC_FIELD
         system = state.current_system
         group = state.current_group
         entry = FreqEntry(
@@ -295,7 +304,7 @@ class HpdFile:
             group.entries.append(entry)
 
     def _consume_site(self, rec: HpdRecord, state: _BuildState) -> None:
-        lat, lon, rng = self._extract_geo(rec.fields, 5)
+        lat, lon, rng = self._extract_geo(rec.fields, GEO_FIELD_START)
         site = SiteNode(
             record=rec,
             name=rec.get_field(3, _UNKNOWN),
@@ -818,6 +827,10 @@ class HpdFile:
                     entry_map[self._entry_key(entry)] = entry
                     fallback_map[self._entry_fallback_key(entry)] = entry
 
+        # Index groups once so per-custom group resolution is O(1) instead
+        # of rescanning every system/group (a bulk reinsert was O(m*S*G)).
+        group_by_id, group_by_name = self._build_group_indexes()
+
         reapplied = 0
         unresolved = 0
         inserted = 0
@@ -831,7 +844,9 @@ class HpdFile:
                     reapplied += 1
                 continue
 
-            if custom.is_user_added and self._reinsert_custom_entry(custom):
+            if custom.is_user_added and self._reinsert_custom_entry(
+                custom, group_by_id, group_by_name
+            ):
                 inserted += 1
                 continue
             unresolved += 1
@@ -842,8 +857,47 @@ class HpdFile:
             "unresolved": unresolved,
         }
 
-    def _reinsert_custom_entry(self, custom: EntryCustomization) -> bool:
-        group = self._find_group(custom)
+    def _build_group_indexes(
+        self,
+    ) -> Tuple[Dict[Tuple[str, str], GroupNode], Dict[Tuple[str, str], GroupNode]]:
+        """Build (system_id, group_id) and (norm system, norm group) name
+        indexes over the current tree; first match wins (ids are unique)."""
+        by_id: Dict[Tuple[str, str], GroupNode] = {}
+        by_name: Dict[Tuple[str, str], GroupNode] = {}
+        for sys_node in self.systems:
+            for group in sys_node.groups:
+                if sys_node.system_id and group.group_id:
+                    by_id.setdefault((sys_node.system_id, group.group_id), group)
+                by_name.setdefault(
+                    (self._norm(sys_node.name), self._norm(group.name)), group
+                )
+        return by_id, by_name
+
+    def _resolve_custom_group(
+        self,
+        custom: EntryCustomization,
+        group_by_id: Optional[Dict[Tuple[str, str], GroupNode]],
+        group_by_name: Optional[Dict[Tuple[str, str], GroupNode]],
+    ) -> Optional[GroupNode]:
+        """Index-based equivalent of :meth:`_find_group`; falls back to the
+        linear scan when no indexes are supplied."""
+        if group_by_id is None or group_by_name is None:
+            return self._find_group(custom)
+        if custom.system_id and custom.group_id:
+            group = group_by_id.get((custom.system_id, custom.group_id))
+            if group is not None:
+                return group
+        return group_by_name.get(
+            (self._norm(custom.system_name), self._norm(custom.group_name))
+        )
+
+    def _reinsert_custom_entry(
+        self,
+        custom: EntryCustomization,
+        group_by_id: Optional[Dict[Tuple[str, str], GroupNode]] = None,
+        group_by_name: Optional[Dict[Tuple[str, str], GroupNode]] = None,
+    ) -> bool:
+        group = self._resolve_custom_group(custom, group_by_id, group_by_name)
         if not group:
             return False
         try:
@@ -978,10 +1032,7 @@ class HpdFile:
 
     @staticmethod
     def _parse_int(s: str) -> int:
-        try:
-            return int(s)
-        except (ValueError, TypeError):
-            return 0
+        return safe_int(s, 0)
 
     @staticmethod
     def _extract_geo(fields: List[str], start_index: int) -> Tuple[Optional[float], Optional[float], Optional[float]]:
@@ -1158,7 +1209,4 @@ class HpdConfig:
     def _extract_int(field_str: str) -> int:
         if "=" in field_str:
             field_str = field_str.split("=", 1)[1]
-        try:
-            return int(field_str)
-        except (ValueError, TypeError):
-            return 0
+        return safe_int(field_str, 0)

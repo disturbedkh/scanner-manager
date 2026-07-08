@@ -577,45 +577,35 @@ class FirmwareDock(QWidget):
             f"Refresh done. Main={len(mains)} Sub={len(subs)} HPDB={len(hpdbs)}"
         )
 
-    def _fill_main_tree(self) -> None:
-        self._main_tree.clear()
+    def _fill_fw_tree(self, tree, versions, current_ver, kind: str) -> None:
+        """Populate a firmware tree (MAIN or SUB) with status-tagged rows."""
+        tree.clear()
         if self._profile is None:
             return
-        latest_v = latest_version(self._mains)
-        current_main = self._current_main_version()
-        for v in sorted(self._mains, reverse=True):  # newest first
+        latest_v = latest_version(versions)
+        for v in sorted(versions, reverse=True):  # newest first
             status_parts = []
             if latest_v is not None and v.sort_key == latest_v.sort_key:
                 status_parts.append("LATEST")
-            if current_main is not None and v.sort_key == current_main:
+            if current_ver is not None and v.sort_key == current_ver:
                 status_parts.append("CURRENT")
             if self._cache.has(self._profile.id, v):
                 status_parts.append("CACHED")
             item = QTreeWidgetItem(
                 [v.version_string(), " · ".join(status_parts), v.filename]
             )
-            item.setData(0, Qt.UserRole, ("main", v))
-            self._main_tree.addTopLevelItem(item)
+            item.setData(0, Qt.UserRole, (kind, v))
+            tree.addTopLevelItem(item)
+
+    def _fill_main_tree(self) -> None:
+        self._fill_fw_tree(
+            self._main_tree, self._mains, self._current_main_version(), "main"
+        )
 
     def _fill_sub_tree(self) -> None:
-        self._sub_tree.clear()
-        if self._profile is None:
-            return
-        latest_v = latest_version(self._subs)
-        current_sub = self._current_sub_version()
-        for v in sorted(self._subs, reverse=True):
-            status_parts = []
-            if latest_v is not None and v.sort_key == latest_v.sort_key:
-                status_parts.append("LATEST")
-            if current_sub is not None and v.sort_key == current_sub:
-                status_parts.append("CURRENT")
-            if self._cache.has(self._profile.id, v):
-                status_parts.append("CACHED")
-            item = QTreeWidgetItem(
-                [v.version_string(), " · ".join(status_parts), v.filename]
-            )
-            item.setData(0, Qt.UserRole, ("sub", v))
-            self._sub_tree.addTopLevelItem(item)
+        self._fill_fw_tree(
+            self._sub_tree, self._subs, self._current_sub_version(), "sub"
+        )
 
     def _fill_hpdb_tree(self) -> None:
         self._hpdb_tree.clear()

@@ -37,16 +37,17 @@ import os
 import shutil
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+
+from ._util import sha256_file, utc_now_iso
 
 _HPDB_CFG = "hpdb.cfg"
 _CARD_ROOT = "<card>"
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return utc_now_iso()
 
 
 # ---------------------------------------------------------------------------
@@ -229,20 +230,7 @@ def _walk_files(root: Path) -> Iterable[Path]:
 
 
 def _hash_file(path: Path, max_bytes: Optional[int] = None) -> str:
-    h = hashlib.sha256()
-    remaining = max_bytes
-    with path.open("rb") as f:
-        while True:
-            if remaining is not None and remaining <= 0:
-                break
-            to_read = 1024 * 1024 if remaining is None else min(remaining, 1024 * 1024)
-            chunk = f.read(to_read)
-            if not chunk:
-                break
-            h.update(chunk)
-            if remaining is not None:
-                remaining -= len(chunk)
-    return h.hexdigest()
+    return sha256_file(path, max_bytes=max_bytes)
 
 
 def _reuse_or_hash(

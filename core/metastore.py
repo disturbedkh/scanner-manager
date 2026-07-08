@@ -49,14 +49,14 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
-import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Set, Tuple
+
+from ._util import atomic_write_json, utc_now_iso
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +144,7 @@ OP_EXTERNAL_CHANGE = "external_change"
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return utc_now_iso()
 
 
 def _safe_iso_timestamp(ts: str) -> float:
@@ -230,25 +230,7 @@ class Event:
 
 def _atomic_write_json(path: Path, payload: Dict[str, Any]) -> None:
     """Write JSON atomically: tmpfile in same dir + os.replace."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_fd, tmp_name = tempfile.mkstemp(
-        prefix=path.name + ".", suffix=".tmp", dir=str(path.parent)
-    )
-    try:
-        with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, sort_keys=False)
-            f.flush()
-            try:
-                os.fsync(f.fileno())
-            except OSError:
-                pass
-        os.replace(tmp_name, str(path))
-    except Exception:
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
-        raise
+    atomic_write_json(path, payload)
 
 
 def _read_json(path: Path) -> Optional[Dict[str, Any]]:

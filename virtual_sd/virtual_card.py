@@ -21,7 +21,6 @@ that succeeds wipes the corresponding row from the manifest.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
@@ -32,6 +31,8 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+from core._util import atomic_write_json, sha256_file
 
 if TYPE_CHECKING:  # pragma: no cover
     from core.device_manager import Device
@@ -182,9 +183,7 @@ class VirtualCard:
             "saved_at": time.time(),
             "staged": [asdict(s) for s in self._manifest],
         }
-        tmp = self._manifest_path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        tmp.replace(self._manifest_path)
+        atomic_write_json(self._manifest_path, payload)
 
     # ------------------------------------------------------------------
     # Staging
@@ -414,11 +413,4 @@ class ApplyReport:
 
 
 def _hash_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        while True:
-            chunk = fh.read(chunk_size)
-            if not chunk:
-                break
-            h.update(chunk)
-    return h.hexdigest()
+    return sha256_file(path, chunk_size=chunk_size)
