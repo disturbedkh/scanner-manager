@@ -667,7 +667,14 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
         # Allow each dock to abort the close (e.g. unsaved changes).
-        for child in (self._editor_dock, self._live_dock, self._streaming_dock):
+        # Include the firmware dock so its in-flight FTP/download threads
+        # are joined via request_close() instead of being torn down mid-run.
+        for child in (
+            self._editor_dock,
+            self._live_dock,
+            self._streaming_dock,
+            self._firmware_dock,
+        ):
             close_handler = getattr(child, "request_close", None)
             if callable(close_handler) and not close_handler():
                 event.ignore()

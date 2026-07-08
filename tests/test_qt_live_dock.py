@@ -51,3 +51,74 @@ def test_monitoring_tab_hosts_passive_displays(qtbot):
     assert dock._wf_stack in monitoring_page.findChildren(type(dock._wf_stack))
     # And the faceplate is NOT on the monitoring tab.
     assert not monitoring_page.findChildren(VirtualScannerPanel)
+
+
+class _FakeController:
+    """Stand-in poller controller exposing the close/deleteLater seam."""
+
+    def __init__(self) -> None:
+        self.closed = False
+        self.deleted = False
+
+    def close(self) -> None:
+        self.closed = True
+
+    def deleteLater(self) -> None:  # noqa: N802 (Qt naming)
+        self.deleted = True
+
+
+def _fake_connected(dock) -> tuple:
+    main = _FakeController()
+    sub = _FakeController()
+    dock._main_controller = main
+    dock._sub_controller = sub
+    dock._connect_btn.setEnabled(False)
+    dock._disconnect_btn.setEnabled(True)
+    dock._diag_btn.setEnabled(True)
+    return main, sub
+
+
+def test_disconnect_closes_and_schedules_controller_deletion(qtbot):
+    """A5: disconnect must deleteLater() the parented controllers."""
+    dock = LiveDock()
+    qtbot.addWidget(dock)
+    main, sub = _fake_connected(dock)
+
+    dock.disconnect()
+
+    assert main.closed and main.deleted
+    assert sub.closed and sub.deleted
+    assert dock._main_controller is None
+    assert dock._sub_controller is None
+
+
+def test_main_poller_failure_returns_to_clean_disconnected_state(qtbot):
+    """A7: a MAIN failure tears the whole session down cleanly."""
+    dock = LiveDock()
+    qtbot.addWidget(dock)
+    main, sub = _fake_connected(dock)
+
+    dock._on_main_failed("device vanished")
+
+    assert main.closed and sub.closed
+    assert dock._main_controller is None
+    assert dock._sub_controller is None
+    assert dock._connect_btn.isEnabled()
+    assert not dock._disconnect_btn.isEnabled()
+    assert not dock._diag_btn.isEnabled()
+    assert "MAIN poller stopped" in dock._status_label.text()
+
+
+def test_sub_poller_failure_keeps_main_session(qtbot):
+    """A7: an optional-SUB failure only tears down the SUB poller."""
+    dock = LiveDock()
+    qtbot.addWidget(dock)
+    main, sub = _fake_connected(dock)
+
+    dock._on_sub_failed("sub cable pulled")
+
+    assert sub.closed and sub.deleted
+    assert dock._sub_controller is None
+    assert dock._main_controller is main  # MAIN session preserved
+    assert dock._disconnect_btn.isEnabled()
+    assert "SUB poller stopped" in dock._status_label.text()

@@ -101,11 +101,26 @@ def read_scanner_inf(card_root: Path) -> Tuple[str, str, str, str]:
 # ----------------------------------------------------------------------
 
 
+def _copy_skip_unreadable(src_path: str, dst_path: str) -> None:
+    """``shutil.copytree`` copy function that logs and skips failures.
+
+    A single unreadable file on the card must not abort the whole
+    rollback backup, so per-file errors are swallowed (and logged)
+    instead of propagating as ``shutil.Error``.
+    """
+    try:
+        shutil.copy2(src_path, dst_path)
+    except OSError as exc:
+        logger.warning("backup_card: skipping file that failed to copy %s: %s",
+                       src_path, exc)
+
+
 def backup_card(card_root: Path, dst_root: Optional[Path] = None) -> Path:
     """Mirror ``card_root/BCDx36HP/`` to a timestamped folder.
 
-    Returns the full destination path. Skips files that fail to copy
-    rather than aborting the whole backup.
+    Returns the full destination path. Skips individual files that fail
+    to copy (logging each) rather than aborting the whole backup, so one
+    unreadable file can't sink the pre-flash rollback target.
     """
     src = card_root / "BCDx36HP"
     if not src.exists():
@@ -115,7 +130,9 @@ def backup_card(card_root: Path, dst_root: Optional[Path] = None) -> Path:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     target = Path(dst_root) / f"{src.name}_{timestamp}"
     target.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(src, target, dirs_exist_ok=True)
+    shutil.copytree(
+        src, target, dirs_exist_ok=True, copy_function=_copy_skip_unreadable
+    )
     return target
 
 

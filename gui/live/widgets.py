@@ -38,6 +38,44 @@ except Exception:  # pragma: no cover - optional dep
     HAS_PYQTGRAPH = False
 
 
+# Recomputing two full-image percentiles on every waterfall frame is the
+# dominant per-frame cost. Display levels drift slowly, so recompute only
+# every few frames and on a strided subsample of the image.
+_LEVEL_REFRESH_FRAMES = 8
+_LEVEL_SUBSAMPLE = 4
+
+
+class _LevelTracker:
+    """Caches robust percentile display levels for a rolling image."""
+
+    def __init__(
+        self, lo_pct: float, hi_pct: float, default: tuple[float, float]
+    ) -> None:
+        self._lo_pct = lo_pct
+        self._hi_pct = hi_pct
+        self._default = default
+        self._levels = default
+        self._counter = 0
+
+    def reset(self) -> None:
+        self._levels = self._default
+        self._counter = 0
+
+    def update(self, arr) -> tuple[float, float]:
+        if self._counter % _LEVEL_REFRESH_FRAMES == 0:
+            sample = arr.ravel()[::_LEVEL_SUBSAMPLE]
+            try:
+                lo = float(np.percentile(sample, self._lo_pct))
+                hi = float(np.percentile(sample, self._hi_pct))
+                if hi <= lo:
+                    hi = lo + 1.0
+                self._levels = (lo, hi)
+            except Exception:
+                self._levels = self._default
+        self._counter += 1
+        return self._levels
+
+
 def _trim_iq_arrays(frame: IqFrame, n: int):
     i = np.asarray(frame.i_samples[:n], dtype=np.float32)
     q = np.asarray(frame.q_samples[:n], dtype=np.float32)
@@ -248,6 +286,7 @@ class WaterfallWidget(QGroupBox):
         self._history_rows = history_rows
         self._frames: Deque = collections.deque(maxlen=history_rows)
         self._sample_count: Optional[int] = None
+        self._levels = _LevelTracker(20.0, 99.0, (0.0, 90.0))
         self._range_set = False
 
         if not HAS_PYQTGRAPH:
@@ -319,21 +358,18 @@ class WaterfallWidget(QGroupBox):
         elif spectrum.size > n:
             spectrum = spectrum[:n]
 
-        self._frames.append(spectrum)
+        # Convert just this row to dBFS and store it, so log10 runs on one
+        # new row per frame instead of the whole rolling history.
+        log_row = 20.0 * np.log10(spectrum + 1e-12)
+        self._frames.append(log_row)
 
-        arr = np.asarray(self._frames, dtype=np.float32)
-        log_arr = 20.0 * np.log10(arr + 1e-12)
+        log_arr = np.asarray(self._frames, dtype=np.float32)
 
         # Robust percentile clipping: low edge at p20 keeps the noise
         # floor near "blue", high edge at p99 lets transient bursts
         # saturate the colormap without a single bin blowing it out.
-        try:
-            lo = float(np.percentile(log_arr, 20.0))
-            hi = float(np.percentile(log_arr, 99.0))
-            if hi <= lo:
-                hi = lo + 1.0
-        except Exception:
-            lo, hi = 0.0, 90.0
+        # Levels are cached and refreshed periodically (see _LevelTracker).
+        lo, hi = self._levels.update(log_arr)
 
         self._image_item.setImage(log_arr, autoLevels=False, levels=(lo, hi))
         self._image_item.setRect(
@@ -352,6 +388,7 @@ class WaterfallWidget(QGroupBox):
         """
         self._frames.clear()
         self._sample_count = None
+        self._levels.reset()
         self._range_set = False
 
 
@@ -383,6 +420,7 @@ class IqWaterfallWidget(QGroupBox):
         self._peak_times: Optional[Any] = None
         self._max_hold_secs: Optional[float] = None
         self._fft_size: Optional[int] = None
+        self._levels = _LevelTracker(20.0, 99.0, (-60.0, 0.0))
         self._range_set = False
 
         if not HAS_PYQTGRAPH:
@@ -474,6 +512,7 @@ class IqWaterfallWidget(QGroupBox):
         self._peak_hold = None
         self._peak_times = None
         self._fft_size = None
+        self._levels.reset()
         self._range_set = False
 
     def _update_marker(self) -> None:
@@ -558,14 +597,9 @@ class IqWaterfallWidget(QGroupBox):
         self._spectrum_curve.setData(xs, log_spec)
         self._peak_curve.setData(xs, self._peak_hold)
 
-        # Update waterfall image. Levels via robust percentiles.
-        try:
-            lo = float(np.percentile(history, 20.0))
-            hi = float(np.percentile(history, 99.0))
-            if hi <= lo:
-                hi = lo + 1.0
-        except Exception:
-            lo, hi = -60.0, 0.0
+        # Update waterfall image. Levels via robust percentiles, cached
+        # and refreshed periodically (see _LevelTracker).
+        lo, hi = self._levels.update(history)
 
         self._image_item.setImage(history, autoLevels=False, levels=(lo, hi))
         # Map the image's pixel coords to the same MHz axis as the line plot.

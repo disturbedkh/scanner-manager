@@ -9,6 +9,7 @@ public names for backward compatibility.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 from dataclasses import dataclass, field
@@ -154,6 +155,10 @@ class _BuildState:
     current_system: Optional[SystemNode] = None
     current_group: Optional[GroupNode] = None
     current_site: Optional[SiteNode] = None
+    # (group_type, group_id) -> GroupNode, populated as groups are parsed
+    # so Rectangle records resolve their owning group in O(1) instead of
+    # rescanning every system/group per rectangle.
+    group_index: Dict[Tuple[str, str], "GroupNode"] = field(default_factory=dict)
 
 
 _STATE_ID_RE = re.compile(r"StateId=(-?\d+)")
@@ -265,6 +270,7 @@ class HpdFile:
         )
         if system:
             system.groups.append(group)
+        state.group_index[(group.group_type, group.group_id)] = group
         state.current_group = group
         state.current_site = None
 
@@ -305,26 +311,35 @@ class HpdFile:
         if state.current_site:
             state.current_site.freqs.append(rec)
 
-    def _consume_rectangle(self, rec: HpdRecord, _state: _BuildState) -> None:
-        target_group = self._find_group_for_rectangle(rec)
+    def _consume_rectangle(self, rec: HpdRecord, state: _BuildState) -> None:
+        target_group = self._find_group_for_rectangle(rec, state.group_index)
         coords = self._extract_rectangle_coords(rec.fields)
         if target_group is not None and coords is not None:
             target_group.rectangles.append(coords)
 
-    def _find_group_for_rectangle(self, rec: HpdRecord) -> Optional[GroupNode]:
-        target_key: Optional[Tuple[str, str]] = None
+    @staticmethod
+    def _rectangle_target_key(rec: HpdRecord) -> Optional[Tuple[str, str]]:
         for field_str in rec.fields[1:]:
             if "=" not in field_str:
                 continue
             key, value = field_str.split("=", 1)
             if key == "CGroupId":
-                target_key = (_REC_CGROUP, value)
-                break
+                return (_REC_CGROUP, value)
             if key == "TGroupId":
-                target_key = (_REC_TGROUP, value)
-                break
+                return (_REC_TGROUP, value)
+        return None
+
+    def _find_group_for_rectangle(
+        self,
+        rec: HpdRecord,
+        group_index: Optional[Dict[Tuple[str, str], GroupNode]] = None,
+    ) -> Optional[GroupNode]:
+        target_key = self._rectangle_target_key(rec)
         if target_key is None:
             return None
+        if group_index is not None:
+            return group_index.get(target_key)
+        # Fallback for callers without a prebuilt index (rare).
         group_type, group_id = target_key
         for system in self.systems:
             for group in system.groups:
@@ -993,7 +1008,6 @@ EARTH_RADIUS_MILES = 3958.7613
 
 
 def haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    import math
     rad_lat1 = math.radians(lat1)
     rad_lat2 = math.radians(lat2)
     d_lat = math.radians(lat2 - lat1)

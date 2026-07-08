@@ -153,21 +153,38 @@ def _resolve_cache_target(raw: str) -> Path:
     return target
 
 
+_MANIFEST_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+
+
 def load_installer_manifest(
     manifest_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """Load ``data/uniden_installers.json`` (or an explicit path).
+
+    The parsed manifest is cached per path and keyed on mtime, so the
+    repeated lookups during tool detection don't re-read+parse the JSON
+    each time. Callers treat the result as read-only shipped config.
 
     Returns an empty dict if the manifest is missing or unparseable -
     the UI should fall back to "Browse for installer..." in that case.
     """
     if manifest_path is None:
         manifest_path = _repo_root() / "data" / MANIFEST_FILENAME
+    key = str(manifest_path)
+    try:
+        mtime = manifest_path.stat().st_mtime
+    except OSError:
+        return {}
+    cached = _MANIFEST_CACHE.get(key)
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
     try:
         with manifest_path.open("r", encoding="utf-8") as f:
-            return json.load(f) or {}
+            data = json.load(f) or {}
     except (OSError, json.JSONDecodeError):
         return {}
+    _MANIFEST_CACHE[key] = (mtime, data)
+    return data
 
 
 class InstallerHashMismatch(ValueError):
@@ -520,23 +537,30 @@ def detect_installed_tools(
     """
     repo_root = repo_root or _repo_root()
     overrides = dict(overrides or {})
-    tools: List[UnidenTool] = []
-    for tool_id, spec in _TOOL_CANDIDATES.items():
-        exe_path = _resolve_tool_exe_path(tool_id, spec, overrides)
-        version = _read_exe_version(exe_path) if exe_path else ""
-        tools.append(
-            UnidenTool(
-                tool_id=tool_id,
-                display_name=spec["display_name"],
-                scanner_family=spec["scanner_family"],
-                exe_path=exe_path,
-                version=version,
-                installed=exe_path is not None,
-                data_dir=_tool_data_dir(tool_id),
-                bundled_installer=_bundled_installer(repo_root, tool_id),
-            )
-        )
-    return tools
+    return [
+        _build_tool(tool_id, spec, repo_root, overrides)
+        for tool_id, spec in _TOOL_CANDIDATES.items()
+    ]
+
+
+def _build_tool(
+    tool_id: str,
+    spec: Dict[str, Any],
+    repo_root: Path,
+    overrides: Dict[str, str],
+) -> UnidenTool:
+    exe_path = _resolve_tool_exe_path(tool_id, spec, overrides)
+    version = _read_exe_version(exe_path) if exe_path else ""
+    return UnidenTool(
+        tool_id=tool_id,
+        display_name=spec["display_name"],
+        scanner_family=spec["scanner_family"],
+        exe_path=exe_path,
+        version=version,
+        installed=exe_path is not None,
+        data_dir=_tool_data_dir(tool_id),
+        bundled_installer=_bundled_installer(repo_root, tool_id),
+    )
 
 
 def get_tool(
@@ -545,12 +569,13 @@ def get_tool(
     repo_root: Optional[Path] = None,
     overrides: Optional[Dict[str, str]] = None,
 ) -> Optional[UnidenTool]:
-    for tool in detect_installed_tools(
-        repo_root=repo_root, overrides=overrides
-    ):
-        if tool.tool_id == tool_id:
-            return tool
-    return None
+    spec = _TOOL_CANDIDATES.get(tool_id)
+    if spec is None:
+        return None
+    # Build just the requested tool instead of probing every known tool.
+    return _build_tool(
+        tool_id, spec, repo_root or _repo_root(), dict(overrides or {})
+    )
 
 
 def run_tool(

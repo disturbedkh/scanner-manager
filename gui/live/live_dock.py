@@ -150,12 +150,33 @@ class LiveDock(QWidget):
         return True
 
     def disconnect(self) -> None:
+        self._teardown("Disconnected.")
+
+    def _close_main_controller(self) -> None:
         if self._main_controller is not None:
             self._main_controller.close()
+            # The controller is parented to this dock, so dropping the
+            # Python ref alone leaves the C++ object (and its closed
+            # driver) alive for the dock's lifetime. Schedule deletion so
+            # repeated connect/disconnect cycles don't orphan controllers.
+            self._main_controller.deleteLater()
             self._main_controller = None
+
+    def _close_sub_controller(self) -> None:
         if self._sub_controller is not None:
             self._sub_controller.close()
+            self._sub_controller.deleteLater()
             self._sub_controller = None
+
+    def _teardown(self, status_text: str) -> None:
+        """Return the dock to a clean disconnected state.
+
+        Closes both pollers (and their drivers), unbinds the control
+        panel, and resets the connect/disconnect buttons. Shared by the
+        manual Disconnect button and the poller-failure recovery path.
+        """
+        self._close_main_controller()
+        self._close_sub_controller()
         # Drop the driver reference from the control panel so its
         # buttons grey out.
         if hasattr(self, "_control"):
@@ -164,7 +185,7 @@ class LiveDock(QWidget):
         self._disconnect_btn.setEnabled(False)
         if hasattr(self, "_diag_btn"):
             self._diag_btn.setEnabled(False)
-        self._status_label.setText("Disconnected.")
+        self._status_label.setText(status_text)
         self.connectionStateChanged.emit("yellow")
 
     # ------------------------------------------------------------------
@@ -552,7 +573,9 @@ class LiveDock(QWidget):
         for i in range(5):
             try:
                 raw_gsi = main_driver.send_query("GSI")
-                snap = main_driver.poll_gsi()
+                # Parse the bytes we just captured instead of issuing a
+                # second GSI query for the same iteration.
+                snap = main_driver.snapshot_from_gsi_bytes(raw_gsi)
                 capture["gsi_samples"].append({
                     "iteration": i,
                     "raw_bytes_hex": raw_gsi.hex(),
@@ -721,8 +744,15 @@ class LiveDock(QWidget):
         )
 
     def _on_main_failed(self, message: str) -> None:
-        self._status_label.setText(f"MAIN poller stopped: {message}")
-        self.connectionStateChanged.emit("yellow")
+        # A MAIN-port failure kills the session (GSI/GLG/STS all live on
+        # MAIN). Previously the driver stayed open, Disconnect stayed
+        # enabled, the control panel kept its driver, and a healthy SUB
+        # poller kept running against a half-dead session. Tear the whole
+        # thing down cleanly so the operator can reconnect.
+        self._teardown(f"MAIN poller stopped: {message}")
 
     def _on_sub_failed(self, message: str) -> None:
+        # The SUB port is optional (waterfall/IQ only), so a SUB failure
+        # only tears down the SUB poller and leaves the MAIN session up.
+        self._close_sub_controller()
         self._status_label.setText(f"SUB poller stopped: {message}")

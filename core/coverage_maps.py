@@ -11,9 +11,12 @@ still import and exercise ``heat_cells`` / ``miles_circle_polygon``.
 
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+
+logger = logging.getLogger(__name__)
 
 MI_PER_DEG_LAT = 69.172
 
@@ -788,7 +791,10 @@ def iter_hpd_session_snapshot_items(
     try:
         with open(str(snapshot_path), "r", encoding="utf-8", errors="replace") as fh:
             raw = fh.read()
-    except Exception:
+    except OSError as exc:
+        logger.warning(
+            "Could not read HPD session snapshot %s: %s", snapshot_path, exc
+        )
         return
 
     records: List[Dict[str, Any]] = []
