@@ -21,7 +21,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -34,6 +33,8 @@ from scanner_profiles import (
     get_profile,
     list_profiles,
 )
+
+from ._util import atomic_write_json
 
 DEVICES_SCHEMA_VERSION = 1
 
@@ -172,15 +173,12 @@ class DeviceManager:
 
     def save(self) -> None:
         """Persist to disk atomically (write-temp + rename)."""
-        self.path.parent.mkdir(parents=True, exist_ok=True)
         out = {
             "schema_version": DEVICES_SCHEMA_VERSION,
             "devices": [d.to_dict() for d in self._devices],
             "default_device_id": self._default_device_id,
         }
-        tmp = self.path.with_suffix(self.path.suffix + ".tmp")
-        tmp.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
-        os.replace(tmp, self.path)
+        atomic_write_json(self.path, out, trailing_newline=True)
 
     # ---- Read API ----------------------------------------------------
 
@@ -299,6 +297,3 @@ def _short_path_label(path: str) -> str:
     if sys.platform == "win32" and len(path) <= 3 and path.endswith(":\\"):
         return path
     return os.path.basename(path.rstrip("/\\")) or path
-
-
-_FRESH_TIMESTAMP_FN = lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())  # noqa: E731

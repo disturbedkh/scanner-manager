@@ -121,6 +121,53 @@ def test_reconcile_reapplies_edits_and_reinserts_user_entries(tmp_path: Path):
     assert any(e.name == "User Added" and e.record.get_field(5) == "460125000" for e in entries)
 
 
+def test_reconcile_reinserts_user_entry_by_name_when_group_id_changes(tmp_path: Path):
+    # Exercises the name-index fallback in _resolve_custom_group: the new
+    # card kept the group *name* but changed its CGroupId, so the id lookup
+    # misses and resolution must fall back to (system name, group name).
+    old_path = tmp_path / "old.hpd"
+    new_path = tmp_path / "new.hpd"
+
+    _write_hpd(
+        old_path,
+        [
+            "TargetModel\tBeartracker885",
+            "FormatVersion\t1",
+            "Conventional\tSystemId=1\t\tCounty Conventional",
+            "AreaCounty\tCountyId=86\tStateId=12\tMiami-Dade",
+            "C-Group\tCGroupId=10\tSystemId=1\tDispatch",
+            "C-Freq\tCFreqId=0\tCGroupId=10\tUser Added\tOff\t460125000\tNFM\t\t3",
+        ],
+    )
+    _write_hpd(
+        new_path,
+        [
+            "TargetModel\tBeartracker885",
+            "FormatVersion\t1",
+            "Conventional\tSystemId=1\t\tCounty Conventional",
+            "AreaCounty\tCountyId=86\tStateId=12\tMiami-Dade",
+            "C-Group\tCGroupId=20\tSystemId=1\tDispatch",
+        ],
+    )
+
+    old_hpd = HpdFile()
+    old_hpd.load(str(old_path))
+    snapshot = old_hpd.snapshot_customizations()
+
+    new_hpd = HpdFile()
+    new_hpd.load(str(new_path))
+    report = new_hpd.apply_customizations(snapshot)
+
+    assert report["inserted"] == 1
+    entries = [
+        entry
+        for system in new_hpd.systems
+        for group in system.groups
+        for entry in group.entries
+    ]
+    assert any(e.name == "User Added" for e in entries)
+
+
 def test_firmware_zip_table_parser_reads_state_prefix(tmp_path: Path):
     table = (
         b"START_ZIP_TABLE\x00"

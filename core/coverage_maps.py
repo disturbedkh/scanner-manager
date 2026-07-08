@@ -16,6 +16,9 @@ import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
+from ._util import safe_float
+from .hpd import CFREQ_SVC_FIELD, GEO_FIELD_START, TGID_SVC_FIELD
+
 logger = logging.getLogger(__name__)
 
 MI_PER_DEG_LAT = 69.172
@@ -72,6 +75,28 @@ def mi_per_deg_lon(at_lat: float) -> float:
     return max(1.0, MI_PER_DEG_LAT * math.cos(math.radians(at_lat)))
 
 
+def offset_to_latlon(
+    center_lat: float,
+    center_lon: float,
+    mi_north: float,
+    mi_east: float,
+    *,
+    mi_lon: Optional[float] = None,
+) -> Tuple[float, float]:
+    """Flat-earth: a (miles-north, miles-east) offset from a center point
+    as an absolute ``(lat, lon)``.
+
+    Pass ``mi_lon`` to reuse a precomputed ``mi_per_deg_lon(center_lat)``
+    across many calls at the same center.
+    """
+    if mi_lon is None:
+        mi_lon = mi_per_deg_lon(center_lat)
+    return (
+        center_lat + mi_north / MI_PER_DEG_LAT,
+        center_lon + mi_east / mi_lon,
+    )
+
+
 def miles_circle_polygon(
     lat: float, lon: float, radius_mi: float, sides: int = 48
 ) -> List[Tuple[float, float]]:
@@ -87,9 +112,14 @@ def miles_circle_polygon(
     pts: List[Tuple[float, float]] = []
     for i in range(sides):
         theta = (i / sides) * 2.0 * math.pi
-        dlat = (radius_mi * math.sin(theta)) / MI_PER_DEG_LAT
-        dlon = (radius_mi * math.cos(theta)) / mi_lon
-        pts.append((lat + dlat, lon + dlon))
+        pts.append(
+            offset_to_latlon(
+                lat, lon,
+                radius_mi * math.sin(theta),
+                radius_mi * math.cos(theta),
+                mi_lon=mi_lon,
+            )
+        )
     return pts
 
 
@@ -112,18 +142,11 @@ def cell_corner_offsets_mi(
     south_mi = north_mi - mi_per_cell
     west_mi = -span_mi + c * mi_per_cell
     east_mi = west_mi + mi_per_cell
-
-    def _to_ll(mi_n: float, mi_e: float) -> Tuple[float, float]:
-        return (
-            center_lat + mi_n / MI_PER_DEG_LAT,
-            center_lon + mi_e / mi_lon,
-        )
-
     return (
-        _to_ll(north_mi, west_mi),
-        _to_ll(north_mi, east_mi),
-        _to_ll(south_mi, east_mi),
-        _to_ll(south_mi, west_mi),
+        offset_to_latlon(center_lat, center_lon, north_mi, west_mi, mi_lon=mi_lon),
+        offset_to_latlon(center_lat, center_lon, north_mi, east_mi, mi_lon=mi_lon),
+        offset_to_latlon(center_lat, center_lon, south_mi, east_mi, mi_lon=mi_lon),
+        offset_to_latlon(center_lat, center_lon, south_mi, west_mi, mi_lon=mi_lon),
     )
 
 
@@ -390,18 +413,11 @@ def rectangle_polygon(
     south_mi = span_mi - (rect.r_end + 1) * mi_per_cell
     west_mi = -span_mi + rect.c_start * mi_per_cell
     east_mi = -span_mi + (rect.c_end + 1) * mi_per_cell
-
-    def _to_ll(mi_n: float, mi_e: float) -> Tuple[float, float]:
-        return (
-            center_lat + mi_n / MI_PER_DEG_LAT,
-            center_lon + mi_e / mi_lon,
-        )
-
     return [
-        _to_ll(north_mi, west_mi),
-        _to_ll(north_mi, east_mi),
-        _to_ll(south_mi, east_mi),
-        _to_ll(south_mi, west_mi),
+        offset_to_latlon(center_lat, center_lon, north_mi, west_mi, mi_lon=mi_lon),
+        offset_to_latlon(center_lat, center_lon, north_mi, east_mi, mi_lon=mi_lon),
+        offset_to_latlon(center_lat, center_lon, south_mi, east_mi, mi_lon=mi_lon),
+        offset_to_latlon(center_lat, center_lon, south_mi, west_mi, mi_lon=mi_lon),
     ]
 
 
@@ -618,20 +634,13 @@ def _deleted_item_from_group_snapshot(
 
 
 # HPD field positions we care about for synthesising deleted items.
-# These match the live tree's ``_build_tree`` parser; the geo fields
-# start at index 5 for C-Group / T-Group / Site rows.
-_GEO_START = 5
-_CFREQ_SVC_FIELD = 8
-_TGID_SVC_FIELD = 7
+# Field-index constants (GEO_FIELD_START, CFREQ_SVC_FIELD, TGID_SVC_FIELD) are
+# single-sourced from core.hpd (imported at the top of this module) so the
+# raw-record parser here can't drift from the live-tree parser there.
 
 
 def _parse_float_or_none(value: Any) -> Optional[float]:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    return safe_float(value)
 
 
 def _safe_service_type(value: Any) -> Optional[int]:
@@ -707,9 +716,9 @@ def _handle_group_site_record(
     def _field(idx: int, default: str = "") -> str:
         return fields[idx] if len(fields) > idx else default
 
-    lat = _field(_GEO_START)
-    lon = _field(_GEO_START + 1)
-    rng = _field(_GEO_START + 2)
+    lat = _field(GEO_FIELD_START)
+    lon = _field(GEO_FIELD_START + 1)
+    rng = _field(GEO_FIELD_START + 2)
     state.current_kind = "site" if rt == "Site" else "group"
     state.current_geo = {
         "name": _field(3),
@@ -753,9 +762,9 @@ def _items_from_record_stream(
         elif rt in ("C-Group", "T-Group", "Site"):
             yield from _handle_group_site_record(state, rt, fields)
         elif rt == "C-Freq":
-            _handle_service_type_record(state, fields, _CFREQ_SVC_FIELD)
+            _handle_service_type_record(state, fields, CFREQ_SVC_FIELD)
         elif rt == "TGID":
-            _handle_service_type_record(state, fields, _TGID_SVC_FIELD)
+            _handle_service_type_record(state, fields, TGID_SVC_FIELD)
 
     yield from _flush_record_stream_state(state)
 
