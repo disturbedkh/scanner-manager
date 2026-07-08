@@ -429,6 +429,96 @@ def test_restore_snapshot_roundtrip(tmp_path: Path):
     assert pre.reason == "pre-restore"
 
 
+def test_capture_file_state_reuses_prior_hash_when_stat_matches(
+    tmp_path: Path, monkeypatch
+):
+    import core.sdcard as sdcard
+
+    hpd = tmp_path / "s_test.hpd"
+    hpd.write_text("TargetModel\tBT885\n", encoding="utf-8")
+
+    baseline = capture_file_state(str(tmp_path))
+    assert baseline["s_test.hpd"].sha256  # HPD was hashed
+
+    calls = {"n": 0}
+    real_hash = sdcard._hash_file
+
+    def counting_hash(path, max_bytes=None):
+        calls["n"] += 1
+        return real_hash(path, max_bytes)
+
+    monkeypatch.setattr(sdcard, "_hash_file", counting_hash)
+
+    # Unchanged file + matching prior -> hash reused, not recomputed.
+    again = capture_file_state(str(tmp_path), prior=baseline)
+    assert calls["n"] == 0
+    assert again["s_test.hpd"].sha256 == baseline["s_test.hpd"].sha256
+
+
+def test_capture_file_state_rehashes_when_content_changes(tmp_path: Path):
+    hpd = tmp_path / "s_test.hpd"
+    hpd.write_text("TargetModel\tBT885\n", encoding="utf-8")
+    baseline = capture_file_state(str(tmp_path))
+
+    # Rewrite with different content (bumps mtime + changes bytes).
+    import time
+
+    time.sleep(0.01)
+    hpd.write_text("TargetModel\tSDS100\n", encoding="utf-8")
+
+    updated = capture_file_state(str(tmp_path), prior=baseline)
+    assert updated["s_test.hpd"].sha256 != baseline["s_test.hpd"].sha256
+
+
+def test_restore_snapshot_removes_stale_files(tmp_path: Path):
+    from core.sdcard import restore_snapshot, snapshot_workspace
+
+    ws = tmp_path / "workspace"
+    ws.mkdir()
+    keep = ws / "keep.txt"
+    keep.write_text("v1", encoding="utf-8")
+
+    snap = snapshot_workspace(str(ws), note="before edit")
+
+    # Add a file that did not exist at snapshot time and mutate the kept one.
+    stale = ws / "stale.txt"
+    stale.write_text("added later", encoding="utf-8")
+    keep.write_text("v2", encoding="utf-8")
+
+    restore_snapshot(str(ws), snap.id)
+
+    assert keep.read_text(encoding="utf-8") == "v1"
+    assert not stale.exists()  # stale file removed to match the snapshot
+
+
+def test_restore_snapshot_does_not_wipe_workspace_when_copy_fails(
+    tmp_path: Path, monkeypatch
+):
+    """Copy-before-destroy: a failing restore must not empty the workspace."""
+    import core.sdcard as sdcard
+    from core.sdcard import restore_snapshot, snapshot_workspace
+
+    ws = tmp_path / "workspace"
+    ws.mkdir()
+    data = ws / "data.txt"
+    data.write_text("v1", encoding="utf-8")
+
+    snap = snapshot_workspace(str(ws), note="before edit")
+    data.write_text("v2", encoding="utf-8")
+
+    def _boom(*_args, **_kwargs):
+        raise OSError("simulated copy failure")
+
+    monkeypatch.setattr(sdcard, "_copy_tree", _boom)
+
+    with pytest.raises(OSError):
+        restore_snapshot(str(ws), snap.id, make_pre_restore_snapshot=False)
+
+    # The workspace file must still be present (not unlinked before the copy).
+    assert data.exists()
+    assert data.read_text(encoding="utf-8") == "v2"
+
+
 def test_snapshot_workspace_missing_dir_raises(tmp_path: Path):
     from core.sdcard import snapshot_workspace
 

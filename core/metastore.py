@@ -48,14 +48,17 @@ Only standard-library deps.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import tempfile
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Set, Tuple
+
+logger = logging.getLogger(__name__)
 
 META_SCHEMA_VERSION = 1
 
@@ -140,17 +143,6 @@ OP_REVERT = "revert"
 OP_EXTERNAL_CHANGE = "external_change"
 
 
-REVERSIBLE_OPS = {
-    OP_EDIT_ENTRY, OP_EDIT_GROUP,
-    OP_ADD_ENTRY, OP_ADD_GROUP,
-    OP_DELETE_ENTRY, OP_DELETE_GROUP,
-    OP_SET_SERVICE,
-    OP_IMPORT_APPLY,
-    OP_LINK_RR, OP_UNLINK_RR,
-    OP_BULK_REVERT, OP_REVERT,
-}
-
-
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -196,8 +188,23 @@ class Event:
         return bool(self.committed_at)
 
     def to_dict(self) -> Dict[str, Any]:
-        d = asdict(self)
-        return d
+        # Build the dict by hand rather than asdict(), which deep-copies
+        # payload — and delete_system events carry whole raw HPD record
+        # blobs. payload is only read during JSON serialization, so a
+        # shallow reference is safe and avoids copying the log on save.
+        return {
+            "event_id": self.event_id,
+            "txn_id": self.txn_id,
+            "ts": self.ts,
+            "op": self.op,
+            "target_id": self.target_id,
+            "target_name": self.target_name,
+            "summary": self.summary,
+            "source": self.source,
+            "reverted": self.reverted,
+            "committed_at": self.committed_at,
+            "payload": self.payload,
+        }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Event":
@@ -277,6 +284,9 @@ class MetaStore:
         self.refs: Dict[str, Dict[str, Any]] = {}
         self.group_links: Dict[str, Dict[str, Any]] = {}
         self.events: List[Event] = []
+        # event_id -> Event, so get_event/mark_reverted are O(1) (a bulk
+        # revert that looks up each event would otherwise be O(n^2)).
+        self._by_id: Dict[str, Event] = {}
         self._next_event_seq: int = 1
         self._next_txn_seq: int = 1
         self._dirty = False
@@ -305,6 +315,7 @@ class MetaStore:
         self.refs.clear()
         self.group_links.clear()
         self.events.clear()
+        self._by_id.clear()
         self._next_event_seq = 1
         self._next_txn_seq = 1
         self._dirty = False
@@ -321,9 +332,16 @@ class MetaStore:
         self.group_links = dict(data.get("group_links") or {})
         for e in data.get("events") or []:
             try:
-                self.events.append(Event.from_dict(e))
+                ev = Event.from_dict(e)
             except Exception:
+                logger.warning(
+                    "Skipping malformed event in %s (event_id=%r)",
+                    sc,
+                    e.get("event_id") if isinstance(e, dict) else "?",
+                )
                 continue
+            self.events.append(ev)
+            self._by_id[ev.event_id] = ev
         self._next_event_seq = self._compute_next_seq(
             [e.event_id for e in self.events], "evt_"
         )
@@ -534,14 +552,12 @@ class MetaStore:
             payload=dict(payload or {}),
         )
         self.events.append(event)
+        self._by_id[event.event_id] = event
         self.mark_dirty()
         return event
 
     def get_event(self, event_id: str) -> Optional[Event]:
-        for e in self.events:
-            if e.event_id == event_id:
-                return e
-        return None
+        return self._by_id.get(event_id)
 
     def mark_reverted(self, event_id: str) -> None:
         e = self.get_event(event_id)
@@ -621,6 +637,9 @@ class GlobalMetaStore:
         self.version = META_SCHEMA_VERSION
         self.callsign_index: Dict[str, List[str]] = {}
         self.licensee_index: Dict[str, List[str]] = {}
+        # Memoized token sets keyed by raw string, so repeated fuzzy probes
+        # don't re-tokenize every licensee-index key each call.
+        self._token_cache: Dict[str, Set[str]] = {}
         self.recent_rr_urls: List[str] = []
         # profile_id -> dict with {name, workspace_dir, card_volume_serial,
         # content_fingerprint, target_model, scanner_profile_id, created_at,
@@ -798,12 +817,12 @@ class GlobalMetaStore:
         Score is token Jaccard after simple normalization. Threshold filter
         applied so only confident candidates come back.
         """
-        probe_tokens = set(self._tokens(licensee))
+        probe_tokens = self._token_set(licensee)
         if not probe_tokens:
             return []
         results: List[Tuple[str, float, List[str]]] = []
         for key, ids in self.licensee_index.items():
-            cand_tokens = set(self._tokens(key))
+            cand_tokens = self._token_set(key)
             if not cand_tokens:
                 continue
             inter = len(probe_tokens & cand_tokens)
@@ -815,6 +834,13 @@ class GlobalMetaStore:
                 results.append((key, score, list(ids)))
         results.sort(key=lambda t: t[1], reverse=True)
         return results
+
+    def _token_set(self, text: str) -> Set[str]:
+        cached = self._token_cache.get(text)
+        if cached is None:
+            cached = set(self._tokens(text))
+            self._token_cache[text] = cached
+        return cached
 
     @staticmethod
     def _tokens(text: str) -> List[str]:

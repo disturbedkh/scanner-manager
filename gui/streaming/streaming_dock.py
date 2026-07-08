@@ -22,7 +22,7 @@ import socket
 from dataclasses import asdict
 from typing import Optional
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -71,6 +71,11 @@ def _local_ip() -> str:
 class StreamingDock(QWidget):
     """Audio capture + LAN listener + optional push targets."""
 
+    # Peak audio level (0-100). Emitted from the PortAudio callback
+    # thread; Qt uses a queued connection cross-thread so the progress
+    # bar is only ever touched on the GUI thread.
+    _levelChanged = Signal(int)
+
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self._capture: Optional[AudioCapture] = None
@@ -81,6 +86,8 @@ class StreamingDock(QWidget):
         self._latest_gsi: Optional[GsiSnapshot] = None
 
         self._build_ui()
+
+        self._levelChanged.connect(self._on_level_changed)
 
         self._listener_timer = QTimer(self)
         self._listener_timer.setInterval(1500)
@@ -385,11 +392,20 @@ class StreamingDock(QWidget):
         if self._icecast is not None:
             self._icecast.feed(chunk)
 
-    def _update_level_bar(self, frame: AudioFrame) -> None:
+    def _emit_level(self, frame: AudioFrame) -> None:
+        """Compute the peak level and hand it to the GUI thread.
+
+        Runs on the PortAudio callback thread. Emitting a signal lets Qt
+        marshal the widget update onto the GUI thread (queued when
+        cross-thread) so the ``QProgressBar`` is never touched off-thread.
+        """
         try:
             level = int(min(100, frame.peak * 100))
         except Exception:
             level = 0
+        self._levelChanged.emit(level)
+
+    def _on_level_changed(self, level: int) -> None:
         try:
             self._level_bar.setValue(level)
         except Exception:
@@ -405,7 +421,7 @@ class StreamingDock(QWidget):
                 chunk = b""
             if chunk:
                 self._distribute_audio_chunk(chunk)
-        self._update_level_bar(frame)
+        self._emit_level(frame)
 
     # ------------------------------------------------------------------
     # LAN listener

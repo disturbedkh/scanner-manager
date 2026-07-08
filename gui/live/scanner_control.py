@@ -38,31 +38,9 @@ from scanner_drivers.serial_main import (
     SerialMainDriver,
 )
 
+from .controllers import SerialCallWorker as _SerialCallWorker
+
 logger = logging.getLogger(__name__)
-
-
-class _SerialCallWorker(QThread):
-    """Run a single driver method on a worker thread.
-
-    The driver's own lock makes concurrent calls safe; we just want
-    to keep blocking serial I/O off the GUI thread.
-    """
-
-    finished_with_result = Signal(object, str)  # (result, error_message)
-
-    def __init__(self, fn, *args, **kwargs) -> None:
-        super().__init__()
-        self._fn = fn
-        self._args = args
-        self._kwargs = kwargs
-
-    def run(self) -> None:
-        try:
-            result = self._fn(*self._args, **self._kwargs)
-            self.finished_with_result.emit(result, "")
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Scanner control call failed: %s", exc)
-            self.finished_with_result.emit(None, str(exc))
 
 
 class ScannerControlWidget(QGroupBox):

@@ -137,7 +137,7 @@ def _read_target_model(root: Path) -> str:
     return ""
 
 
-def _content_fingerprint(root: Path) -> str:
+def _content_fingerprint(root: Path, target_model: Optional[str] = None) -> str:
     """Stable content-based identifier.
 
     Digests (file-size, first 1MB) for the scanner's firmware ZipTable and
@@ -163,7 +163,8 @@ def _content_fingerprint(root: Path) -> str:
             parts.append(head)
         except Exception:
             parts.append(b"err|")
-    parts.append(_read_target_model(root).encode("utf-8"))
+    model = target_model if target_model is not None else _read_target_model(root)
+    parts.append(model.encode("utf-8"))
     for chunk in parts:
         h.update(chunk)
     return h.hexdigest()
@@ -181,8 +182,8 @@ def probe_card_identity(root_path: str) -> CardIdentity:
     if not root.exists():
         return CardIdentity(root_path=str(root))
     vs = _windows_volume_serial(str(root))
-    fp = _content_fingerprint(root)
     target = _read_target_model(root)
+    fp = _content_fingerprint(root, target_model=target)
     return CardIdentity(
         volume_serial=vs,
         content_fingerprint=fp,
@@ -244,6 +245,28 @@ def _hash_file(path: Path, max_bytes: Optional[int] = None) -> str:
     return h.hexdigest()
 
 
+def _reuse_or_hash(
+    fpath: Path,
+    relpath: str,
+    stat: os.stat_result,
+    prior: Optional[Dict[str, FileState]],
+) -> str:
+    """Return a cached sha256 from ``prior`` if the stat matches, else hash."""
+    if prior is not None:
+        prev = prior.get(relpath)
+        if (
+            prev is not None
+            and prev.sha256
+            and prev.size == stat.st_size
+            and prev.mtime == stat.st_mtime
+        ):
+            return prev.sha256
+    try:
+        return _hash_file(fpath)
+    except OSError:
+        return ""
+
+
 def _should_hash(relpath: str) -> bool:
     """Only hash HPD-family files by default. Firmware/binary blobs are
     big and we trust mtime+size for those."""
@@ -256,12 +279,21 @@ def _should_hash(relpath: str) -> bool:
 
 
 def capture_file_state(
-    root: str, *, hash_hpds: bool = True
+    root: str,
+    *,
+    hash_hpds: bool = True,
+    prior: Optional[Dict[str, FileState]] = None,
 ) -> Dict[str, FileState]:
     """Walk ``root`` and return a {relpath: FileState} dict.
 
     Hashes HPD-family files (small enough to hash cheaply, worth knowing
     exact content); stores only size+mtime for everything else.
+
+    ``prior`` is an optional previously-captured state dict (e.g. the last
+    sync baseline). When a file's size and mtime match its ``prior`` entry
+    exactly, that entry's cached sha256 is reused instead of re-hashing —
+    any rewrite bumps the mtime, so this stays content-accurate while
+    avoiding redundant hashing on repeated walks (e.g. pull-then-push).
     """
     root_path = Path(root)
     if not root_path.exists():
@@ -278,10 +310,7 @@ def capture_file_state(
             continue
         digest = ""
         if hash_hpds and _should_hash(relpath):
-            try:
-                digest = _hash_file(fpath)
-            except OSError:
-                digest = ""
+            digest = _reuse_or_hash(fpath, relpath, stat, prior)
         states[relpath] = FileState(
             relpath=relpath,
             size=stat.st_size,
@@ -343,12 +372,14 @@ def diff_trees(
     sync as "no history").
     """
     baseline = baseline or {}
-    ws_states = capture_file_state(workspace_root)
+    # Reuse baseline hashes for files whose size+mtime are unchanged so a
+    # re-walk (e.g. pull then push) doesn't re-hash every HPD twice.
+    ws_states = capture_file_state(workspace_root, prior=baseline)
     card_states: Dict[str, FileState] = {}
     if card_root:
         card_path = Path(card_root)
         if card_path.exists():
-            card_states = capture_file_state(card_root)
+            card_states = capture_file_state(card_root, prior=baseline)
 
     all_keys = set(ws_states) | set(card_states) | set(baseline)
     out: List[FileDiff] = []
@@ -862,7 +893,21 @@ def restore_snapshot(
             note=f"Before restoring {snap_id}",
         )
 
-    for abs_src, _rel in _iter_snapshottable(root):
+    restored = list(_iter_snapshottable(payload))
+    restored_rels = {rel for _abs, rel in restored}
+
+    # Copy the snapshot over the workspace *first*, in place. This never
+    # empties the workspace, so a failure mid-copy leaves a recoverable
+    # mix of old+new files rather than a half-wiped tree (the previous
+    # order unlinked everything before copying — a data-loss window).
+    _copy_tree(restored, root)
+
+    # Now remove workspace files that aren't part of the snapshot (stale
+    # leftovers from the state we just restored away from), then prune
+    # any directories they emptied.
+    for abs_src, rel in _iter_snapshottable(root):
+        if rel in restored_rels:
+            continue
         try:
             abs_src.unlink()
         except OSError:
@@ -877,9 +922,6 @@ def restore_snapshot(
             dpath.rmdir()
         except OSError:
             continue
-
-    restored = list(_iter_snapshottable(payload))
-    _copy_tree(restored, root)
 
     marker = Snapshot(
         id=snap_id,

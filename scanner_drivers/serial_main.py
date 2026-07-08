@@ -404,6 +404,13 @@ class SerialMainDriver:
             raw = self._send_unlocked("VOL").decode("ascii", errors="replace").strip()
         return _parse_int_response(raw, "VOL")
 
+    def _send_ok_command(self, command: str, head: str) -> bool:
+        """Send ``command`` under the driver lock; return True on ``<head>,OK``."""
+        with self._lock:
+            raw = self._send_unlocked(command).decode("ascii", errors="replace").strip()
+        upper = raw.upper()
+        return upper.endswith(",OK") or upper == f"{head},OK"
+
     def set_volume(self, level: int) -> bool:
         """Set scanner volume (0-15). Returns True on ``VOL,OK``."""
         lo, hi = VOLUME_RANGE
@@ -411,9 +418,7 @@ class SerialMainDriver:
             raise MainDriverError(
                 f"volume {level!r} out of range {lo}-{hi}"
             )
-        with self._lock:
-            raw = self._send_unlocked(f"VOL,{level}").decode("ascii", errors="replace").strip()
-        return raw.upper().endswith(",OK") or raw.upper() == "VOL,OK"
+        return self._send_ok_command(f"VOL,{level}", "VOL")
 
     def query_squelch(self) -> Optional[int]:
         """Return current squelch 0-15, or None if not available."""
@@ -428,9 +433,7 @@ class SerialMainDriver:
             raise MainDriverError(
                 f"squelch {level!r} out of range {lo}-{hi}"
             )
-        with self._lock:
-            raw = self._send_unlocked(f"SQL,{level}").decode("ascii", errors="replace").strip()
-        return raw.upper().endswith(",OK") or raw.upper() == "SQL,OK"
+        return self._send_ok_command(f"SQL,{level}", "SQL")
 
     def send_key(self, key: str, press_mode: str = "P") -> bool:
         """Send a navigation key press (``KEY,<KEY>,<MODE>``).
@@ -459,11 +462,7 @@ class SerialMainDriver:
             raise MainDriverError(
                 f"press_mode {mode_token!r} must be one of P/L/H"
             )
-        with self._lock:
-            raw = self._send_unlocked(
-                f"KEY,{key_token},{mode_token}"
-            ).decode("ascii", errors="replace").strip()
-        return raw.upper().endswith(",OK") or raw.upper() == "KEY,OK"
+        return self._send_ok_command(f"KEY,{key_token},{mode_token}", "KEY")
 
     def poll_gsi(self) -> GsiSnapshot:
         """Send ``GSI`` and parse the XML response into a snapshot.
@@ -491,6 +490,15 @@ class SerialMainDriver:
         is active).
         """
         raw_bytes = self.send_query("GSI")
+        return self.snapshot_from_gsi_bytes(raw_bytes)
+
+    def snapshot_from_gsi_bytes(self, raw_bytes: bytes) -> GsiSnapshot:
+        """Parse a raw GSI response into a snapshot without querying.
+
+        Split out from :meth:`poll_gsi` so callers that already hold the
+        raw bytes (e.g. the diagnostic capture) can parse them instead of
+        issuing a second GSI round-trip down the wire.
+        """
         raw = raw_bytes.decode("utf-8", errors="replace").strip()
         snap = GsiSnapshot(raw_xml=raw, captured_at=time.time())
 
@@ -814,17 +822,6 @@ def _find_attr(root, xpaths, attrs) -> str:
     return ""
 
 
-def _first_text_or_attr(root, xpath: str, attr: str) -> str:
-    """Backwards-compat shim used by older callers / tests."""
-    elem = root.find(xpath)
-    if elem is None:
-        return ""
-    val = elem.attrib.get(attr)
-    if val:
-        return val
-    return (elem.text or "").strip()
-
-
 def _parse_int_response(raw: str, expected_head: str) -> Optional[int]:
     """Parse ``HEAD,<int>`` style replies.
 
@@ -862,18 +859,29 @@ def _parse_frequency_hz(text: str) -> Optional[int]:
     m = _FREQ_RE.search(text)
     if not m:
         return None
+    token = m.group(1)
     try:
-        value = float(m.group(1))
+        value = float(token)
     except ValueError:
         return None
+    # Prefer the explicit unit when the field carries one. Check longer
+    # units first so "MHZ"/"KHZ"/"GHZ" don't fall through to the bare
+    # "HZ" branch (they all end in "HZ").
     upper = text.upper()
+    if "GHZ" in upper:
+        return int(round(value * 1_000_000_000))
     if "MHZ" in upper:
         return int(round(value * 1_000_000))
     if "KHZ" in upper:
         return int(round(value * 1_000))
     if "HZ" in upper:
         return int(round(value))
-    # Heuristic: bare integers > 1e6 are already Hz; smaller are MHz
-    if value > 1e6:
+    # No explicit unit. Uniden GSI emits either a MHz value with a
+    # decimal point ("154.4450") or an integer count of Hz
+    # ("154445000"). Use the decimal point as the discriminator; a bare
+    # integer already >= 1 MHz can only sensibly be Hz.
+    if "." in token:
+        return int(round(value * 1_000_000))
+    if value >= 1_000_000:
         return int(round(value))
     return int(round(value * 1_000_000))

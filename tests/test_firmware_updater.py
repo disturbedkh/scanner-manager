@@ -84,6 +84,30 @@ def test_backup_card_creates_timestamped_copy(tmp_path: Path):
     assert target.name.startswith("BCDx36HP_")
 
 
+def test_backup_card_skips_files_that_fail_to_copy(tmp_path: Path, monkeypatch):
+    """One unreadable file must not abort the whole rollback backup."""
+    import firmware.updater as updater
+
+    card = _build_card(tmp_path)
+    (card / "BCDx36HP" / "good.hpd").write_text("keep me", encoding="utf-8")
+    backup_root = tmp_path / "backups"
+
+    real_copy2 = updater.shutil.copy2
+
+    def flaky_copy2(src, dst, *args, **kwargs):
+        if str(src).endswith("scanner.inf"):
+            raise OSError("simulated unreadable file")
+        return real_copy2(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(updater.shutil, "copy2", flaky_copy2)
+
+    target = backup_card(card, dst_root=backup_root)
+    assert target.exists()
+    # The failing file was skipped; the rest of the tree still copied.
+    assert not (target / "scanner.inf").exists()
+    assert (target / "good.hpd").read_text(encoding="utf-8") == "keep me"
+
+
 def test_backup_card_errors_when_card_layout_missing(tmp_path: Path):
     with pytest.raises(FirmwareError):
         backup_card(tmp_path)

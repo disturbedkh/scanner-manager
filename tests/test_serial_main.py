@@ -135,6 +135,18 @@ _GSI_FIXTURE = (
 )
 
 
+def test_snapshot_from_gsi_bytes_parses_without_querying():
+    # The diagnostic-capture path already holds the raw bytes; parsing
+    # them must not issue a second GSI query down the wire.
+    fake = FakeSerial()
+    driver = SerialMainDriver(fake)
+    snap = driver.snapshot_from_gsi_bytes(_GSI_FIXTURE)
+    assert fake.writes == []  # no serial write happened
+    assert snap.mode == "Scan"
+    assert snap.system_name == "Miami-Dade P25"
+    assert snap.frequency_hz == 154_445_000
+
+
 def test_poll_gsi_parses_full_xml():
     driver = SerialMainDriver(FakeSerial(responses=[_GSI_FIXTURE]))
     snap = driver.poll_gsi()
@@ -318,6 +330,27 @@ def test_poll_status_fallback_when_dsp_form_unexpected():
     driver = SerialMainDriver(FakeSerial(responses=[raw]))
     snap = driver.poll_status()
     assert [ln.text for ln in snap.lines] == ["Line A", "Line B"]
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("154.4450 MHz", 154_445_000),
+        ("154445000", 154_445_000),      # bare integer Hz
+        ("154.4450", 154_445_000),       # bare decimal -> MHz
+        ("852.4125 MHz", 852_412_500),
+        ("0.85 GHz", 850_000_000),       # GHz no longer mis-parsed as Hz
+        ("450 kHz", 450_000),
+        ("162550000 Hz", 162_550_000),
+        ("800", 800_000_000),            # bare int < 1 MHz -> MHz (scanner band)
+        ("", None),
+        ("n/a", None),
+    ],
+)
+def test_parse_frequency_hz(text, expected):
+    from scanner_drivers.serial_main import _parse_frequency_hz
+
+    assert _parse_frequency_hz(text) == expected
 
 
 def test_close_marks_port_closed():

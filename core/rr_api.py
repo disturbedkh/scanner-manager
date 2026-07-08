@@ -25,6 +25,8 @@ decompiled SOAP proxies — see ``Metacache/docs/rr-api-notes.md``.
 from __future__ import annotations
 
 import logging
+import re as _re
+import urllib.parse as _urlparse
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -339,8 +341,15 @@ def _as_dict(value: Any) -> Dict[str, Any]:
     try:
         import zeep.helpers  # type: ignore
         return dict(zeep.helpers.serialize_object(value, target_cls=dict))
+    except ImportError:
+        pass  # zeep not installed; fall through to the attribute scrape
     except Exception:
-        pass
+        # A real serialization failure (not just a missing dep) shouldn't be
+        # fully invisible — the attribute scrape below may drop nested data.
+        logger.debug(
+            "zeep serialize_object failed; falling back to attribute scrape",
+            exc_info=True,
+        )
     # Last-ditch: shallow attribute scrape.
     out: Dict[str, Any] = {}
     for attr in getattr(value, "__dict__", {}):
@@ -376,6 +385,15 @@ def to_hpd_import(
     return out
 
 
+def _first_of(row: Dict[str, Any], *keys: str) -> str:
+    """First non-empty value among ``row[keys]``, coerced to a stripped str."""
+    for key in keys:
+        value = row.get(key)
+        if value:
+            return str(value).strip()
+    return ""
+
+
 def _trs_talkgroup_entries(
     response: Dict[str, Any],
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
@@ -388,11 +406,11 @@ def _trs_talkgroup_entries(
             entries.append({
                 "type": "talkgroup",
                 "group": cat_name,
-                "tgid": str(tg.get("tgDec") or tg.get("dec") or tg.get("tgid") or "").strip(),
-                "tgid_hex": str(tg.get("tgHex") or tg.get("hex") or "").strip(),
+                "tgid": _first_of(tg, "tgDec", "dec", "tgid"),
+                "tgid_hex": _first_of(tg, "tgHex", "hex"),
                 "mode": _norm_mode(tg.get("tgMode") or tg.get("mode")),
-                "alpha": (tg.get("tgAlpha") or tg.get("alpha") or "").strip(),
-                "description": (tg.get("tgDescr") or tg.get("description") or "").strip(),
+                "alpha": _first_of(tg, "tgAlpha", "alpha"),
+                "description": _first_of(tg, "tgDescr", "description"),
                 "priority": bool(tg.get("priority") or tg.get("tgPriority")),
                 "encrypted": bool(tg.get("enc") or tg.get("encrypted")),
             })
@@ -431,11 +449,11 @@ def _map_category(response: Dict[str, Any], *, source_id: str) -> HpdImport:
         entries.append({
             "type": "talkgroup",
             "group": name,
-            "tgid": str(tg.get("tgDec") or tg.get("dec") or "").strip(),
-            "tgid_hex": str(tg.get("tgHex") or tg.get("hex") or "").strip(),
+            "tgid": _first_of(tg, "tgDec", "dec"),
+            "tgid_hex": _first_of(tg, "tgHex", "hex"),
             "mode": _norm_mode(tg.get("tgMode") or tg.get("mode")),
-            "alpha": (tg.get("tgAlpha") or tg.get("alpha") or "").strip(),
-            "description": (tg.get("tgDescr") or tg.get("description") or "").strip(),
+            "alpha": _first_of(tg, "tgAlpha", "alpha"),
+            "description": _first_of(tg, "tgDescr", "description"),
         })
     return HpdImport(
         source="category", source_id=str(source_id),
@@ -452,9 +470,9 @@ def _map_conventional(response: Dict[str, Any], *, source_id: str) -> HpdImport:
             "group": name,
             "freq": _norm_freq(row.get("freq") or row.get("frequency")),
             "mode": _norm_mode(row.get("mode")),
-            "alpha": (row.get("alpha") or row.get("tag") or "").strip(),
-            "description": (row.get("descr") or row.get("description") or "").strip(),
-            "tone": (row.get("tone") or row.get("ctcss") or "").strip(),
+            "alpha": _first_of(row, "alpha", "tag"),
+            "description": _first_of(row, "descr", "description"),
+            "tone": _first_of(row, "tone", "ctcss"),
         })
     return HpdImport(
         source="ctid", source_id=str(source_id),
@@ -544,9 +562,6 @@ _MAPPERS: Dict[str, Callable[..., HpdImport]] = {
 # ---------------------------------------------------------------------------
 # URL dispatch
 # ---------------------------------------------------------------------------
-
-import re as _re
-import urllib.parse as _urlparse
 
 _URL_DISPATCH = [
     (_re.compile(r"/db/sid/(\d+)"), "trs"),

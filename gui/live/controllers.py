@@ -1,21 +1,26 @@
 """Background polling controllers for the live serial dock.
 
-Each controller wraps a :mod:`scanner_drivers` driver and a
-:class:`PySide6.QtCore.QTimer`, emitting Qt signals on every poll.
+Each controller wraps a :mod:`scanner_drivers` driver and drives it at a
+fixed cadence, emitting Qt signals on every poll.
 
-Why timers instead of QThreads? The drivers' I/O is millisecond-scale
-(USB CDC) and pyserial doesn't release the GIL during reads. A
-``QTimer`` on the main thread keeps things simple, the GUI never
-blocks, and the operator can easily stop polling by tearing down the
-controller.
+Polling cadence is still scheduled by a :class:`~PySide6.QtCore.QTimer`
+on the GUI thread, but the *blocking* serial round-trip runs on a
+short-lived :class:`SerialCallWorker` thread so the event loop never
+stalls (pyserial reads can block up to the driver's read deadline,
+~1.5 s). A per-command in-flight guard gives natural backpressure: a new
+poll is skipped while the previous one for the same command is still
+outstanding, so slow hardware can never pile up worker threads.
+
+The driver's own lock serialises these worker-thread polls with the
+GUI-thread VOL/SQL/KEY commands, so concurrent access is safe.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Callable, Optional
 
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
 from scanner_drivers.serial_main import (
     GlgEvent,
@@ -28,7 +33,105 @@ from scanner_drivers.serial_sub import IqFrame, SerialSubDriver, WaterfallFrame
 logger = logging.getLogger(__name__)
 
 
-class MainPollerController(QObject):
+class SerialCallWorker(QThread):
+    """Run a single driver method on a worker thread.
+
+    The driver's own lock makes concurrent calls safe; this just keeps
+    blocking serial I/O off the GUI thread. Shared by the live pollers
+    here and the scanner-control knobs in
+    :mod:`gui.live.scanner_control`.
+    """
+
+    finished_with_result = Signal(object, str)  # (result, error_message)
+
+    def __init__(self, fn, *args, **kwargs) -> None:
+        super().__init__()
+        self._fn = fn
+        self._args = args
+        self._kwargs = kwargs
+
+    def run(self) -> None:
+        try:
+            result = self._fn(*self._args, **self._kwargs)
+            self.finished_with_result.emit(result, "")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Serial call failed: %s", exc)
+            self.finished_with_result.emit(None, str(exc))
+
+
+class _PollMixin:
+    """Shared worker-spawn / backpressure logic for the pollers.
+
+    Mixed into a ``QObject`` subclass that provides ``self._driver``, the
+    ``self._stopped`` / ``self._inflight`` / ``self._workers`` state
+    (initialised via :meth:`_init_poll_state`), a ``failed`` signal, and
+    a ``stop()`` that halts its timers.
+    """
+
+    def _init_poll_state(self, driver) -> None:
+        self._driver = driver
+        self._stopped = True
+        self._inflight: set[str] = set()
+        self._workers: list[SerialCallWorker] = []
+
+    @property
+    def driver(self):
+        """Read-only accessor used by the diagnostic-capture path so it
+        can drop one-off raw queries down the wire (serialised with the
+        pollers by the driver's own lock)."""
+        return self._driver
+
+    def _spawn(self, key: str, fn: Callable, on_result: Callable) -> None:
+        # GUI thread; cheap. Skip if stopped or the previous poll for this
+        # command is still outstanding, else run the blocking call on a
+        # short-lived worker so the event loop keeps ticking.
+        if self._stopped or key in self._inflight:
+            return
+        self._inflight.add(key)
+        worker = SerialCallWorker(fn)
+        worker.finished_with_result.connect(
+            lambda result, err, k=key, cb=on_result: self._finish(k, cb, result, err)
+        )
+        self._track(worker)
+        worker.start()
+
+    def _finish(self, key: str, on_result: Callable, result, err: str) -> None:
+        self._inflight.discard(key)
+        if self._stopped:
+            return
+        if err:
+            logger.warning("%s poll failed: %s", key, err)
+            self.stop()
+            self.failed.emit(f"{key}: {err}")
+            return
+        on_result(result)
+
+    def _track(self, worker: SerialCallWorker) -> None:
+        self._workers.append(worker)
+        worker.finished.connect(lambda: self._forget(worker))
+
+    def _forget(self, worker: SerialCallWorker) -> None:
+        try:
+            self._workers.remove(worker)
+        except ValueError:
+            pass
+
+    def _await_workers(self, timeout_ms: int = 2000) -> None:
+        # Let in-flight polls finish before the driver is closed so a
+        # worker never reads a closed handle.
+        for worker in list(self._workers):
+            worker.wait(timeout_ms)
+
+    def close(self) -> None:
+        self.stop()
+        self._await_workers()
+        try:
+            self._driver.close()
+        except Exception:
+            pass
+
+
+class MainPollerController(_PollMixin, QObject):
     """Polls GSI + GLG + STS on the MAIN port at fixed cadences."""
 
     gsiUpdated = Signal(GsiSnapshot)
@@ -45,76 +148,43 @@ class MainPollerController(QObject):
         parent: Optional[QObject] = None,
     ) -> None:
         super().__init__(parent)
-        self._driver = driver
+        self._init_poll_state(driver)
 
         self._gsi_timer = QTimer(self)
         self._gsi_timer.setInterval(gsi_interval_ms)
-        self._gsi_timer.timeout.connect(self._poll_gsi)
+        self._gsi_timer.timeout.connect(self._tick_gsi)
 
         self._glg_timer = QTimer(self)
         self._glg_timer.setInterval(glg_interval_ms)
-        self._glg_timer.timeout.connect(self._poll_glg)
+        self._glg_timer.timeout.connect(self._tick_glg)
 
         self._sts_timer = QTimer(self)
         self._sts_timer.setInterval(sts_interval_ms)
-        self._sts_timer.timeout.connect(self._poll_sts)
-
-    @property
-    def driver(self) -> SerialMainDriver:
-        """Public read-only accessor used by the diagnostic-capture
-        path so it can drop one-off raw queries down the wire without
-        rebuilding the polling state."""
-        return self._driver
+        self._sts_timer.timeout.connect(self._tick_sts)
 
     def start(self) -> None:
+        self._stopped = False
         self._gsi_timer.start()
         self._glg_timer.start()
         self._sts_timer.start()
 
     def stop(self) -> None:
+        self._stopped = True
         self._gsi_timer.stop()
         self._glg_timer.stop()
         self._sts_timer.stop()
 
-    def close(self) -> None:
-        self.stop()
-        try:
-            self._driver.close()
-        except Exception:
-            pass
+    def _tick_gsi(self) -> None:
+        self._spawn("GSI", self._driver.poll_gsi, self.gsiUpdated.emit)
 
-    def _poll_gsi(self) -> None:
-        try:
-            snap = self._driver.poll_gsi()
-        except Exception as exc:
-            logger.exception("GSI poll failed")
-            self.failed.emit(f"GSI: {exc}")
-            self.stop()
-            return
-        self.gsiUpdated.emit(snap)
+    def _tick_glg(self) -> None:
+        self._spawn("GLG", self._driver.poll_glg, self.glgUpdated.emit)
 
-    def _poll_glg(self) -> None:
-        try:
-            evt = self._driver.poll_glg()
-        except Exception as exc:
-            logger.exception("GLG poll failed")
-            self.failed.emit(f"GLG: {exc}")
-            self.stop()
-            return
-        self.glgUpdated.emit(evt)
-
-    def _poll_sts(self) -> None:
-        try:
-            snap = self._driver.poll_status()
-        except Exception as exc:
-            logger.exception("STS poll failed")
-            self.failed.emit(f"STS: {exc}")
-            self.stop()
-            return
-        self.stsUpdated.emit(snap)
+    def _tick_sts(self) -> None:
+        self._spawn("STS", self._driver.poll_status, self.stsUpdated.emit)
 
 
-class SubPollerController(QObject):
+class SubPollerController(_PollMixin, QObject):
     """Polls the SUB port for spectrum frames.
 
     Two modes:
@@ -143,17 +213,12 @@ class SubPollerController(QObject):
         parent: Optional[QObject] = None,
     ) -> None:
         super().__init__(parent)
-        self._driver = driver
+        self._init_poll_state(driver)
         self._mode = mode if mode in ("m", "d", "v") else "d"
 
         self._timer = QTimer(self)
         self._timer.setInterval(interval_ms)
-        self._timer.timeout.connect(self._poll)
-
-    @property
-    def driver(self) -> SerialSubDriver:
-        """Read-only accessor for the diagnostic-capture path."""
-        return self._driver
+        self._timer.timeout.connect(self._tick)
 
     @property
     def mode(self) -> str:
@@ -164,30 +229,20 @@ class SubPollerController(QObject):
             self._mode = mode
 
     def start(self) -> None:
+        self._stopped = False
         self._timer.start()
 
     def stop(self) -> None:
+        self._stopped = True
         self._timer.stop()
 
-    def close(self) -> None:
-        self.stop()
-        try:
-            self._driver.close()
-        except Exception:
-            pass
-
-    def _poll(self) -> None:
-        try:
-            if self._mode == "m":
-                frame = self._driver.fetch_waterfall_frame()
-                self.waterfallUpdated.emit(frame)
-            elif self._mode == "d":
-                iq = self._driver.fetch_iq_pairs()
-                self.iqUpdated.emit(iq)
-            elif self._mode == "v":
-                iq = self._driver.fetch_wide_iq()
-                self.iqUpdated.emit(iq)
-        except Exception as exc:
-            logger.exception("SUB poll failed (mode=%s)", self._mode)
-            self.failed.emit(f"FFT: {exc}")
-            self.stop()
+    def _tick(self) -> None:
+        # Capture the on_result target for the current mode so a mid-flight
+        # mode switch still routes the fetched frame to the right widget.
+        if self._mode == "m":
+            self._spawn("FFT", self._driver.fetch_waterfall_frame,
+                        self.waterfallUpdated.emit)
+        elif self._mode == "v":
+            self._spawn("FFT", self._driver.fetch_wide_iq, self.iqUpdated.emit)
+        else:
+            self._spawn("FFT", self._driver.fetch_iq_pairs, self.iqUpdated.emit)
