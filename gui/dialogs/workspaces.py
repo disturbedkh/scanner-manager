@@ -45,13 +45,9 @@ logger = logging.getLogger(__name__)
 
 def _default_workspaces_path() -> Path:
     """Return ``workspaces.json`` next to the user data directory."""
-    if sys.platform == "win32":
-        base = Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming")))
-    elif sys.platform == "darwin":
-        base = Path.home() / "Library" / "Application Support"
-    else:
-        base = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
-    return base / "scanner-manager" / "workspaces.json"
+    from core.paths import config_dir
+
+    return config_dir() / "workspaces.json"
 
 
 def workspace_help_text(default_devices_path: Optional[Path] = None) -> str:

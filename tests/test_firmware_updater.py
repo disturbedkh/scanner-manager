@@ -84,6 +84,14 @@ def test_backup_card_creates_timestamped_copy(tmp_path: Path):
     assert target.name.startswith("BCDx36HP_")
 
 
+def test_backup_card_default_uses_data_dir(tmp_path: Path, monkeypatch):
+    card = _build_card(tmp_path)
+    monkeypatch.setenv("SCANNER_MANAGER_DATA_DIR", str(tmp_path / "xdg-data"))
+    target = backup_card(card)
+    assert (tmp_path / "xdg-data" / "card-backups") in target.parents
+    assert target.exists()
+
+
 def test_backup_card_skips_files_that_fail_to_copy(tmp_path: Path, monkeypatch):
     """One unreadable file must not abort the whole rollback backup."""
     import firmware.updater as updater

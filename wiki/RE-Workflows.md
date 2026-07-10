@@ -302,7 +302,7 @@ powershell -ExecutionPolicy Bypass -File Metacache\Dev\RE\tools\automation\check
 
 **Verification**:
 
-- `py -V` shows Python 3.10+
+- `py -V` shows Python 3.11+
 - `java -version` shows 21
 - `Test-Path <GHIDRA_INSTALL>\support\analyzeHeadless.bat` is `True`
 - `& "C:\Program Files\Wireshark\tshark.exe" --version` works

@@ -7,7 +7,7 @@ module is the data layer; UI integration lives in
 
 Layout on disk (one tree per device)::
 
-    ~/.scanner-manager/virtual-cards/<device_id>/
+    <data_dir>/virtual-cards/<device_id>/   # see core.paths.virtual_sd_root
         .staged.json         <- manifest of pending changes
         pending/             <- staged files, organised mirroring the
             BCDx36HP/...        physical card's relative paths so an
@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import shutil
 import time
 import uuid
@@ -87,13 +86,15 @@ class StagedFile:
 
 
 def default_root_dir() -> Path:
-    """Where virtual cards live by default. Honours
-    ``SCANNER_MANAGER_VIRTUAL_SD_ROOT`` for tests / packaged installers.
+    """Where virtual cards live by default.
+
+    Honours ``SCANNER_MANAGER_VIRTUAL_SD_ROOT``; otherwise
+    :func:`core.paths.virtual_sd_root` (XDG data, legacy
+    ``~/.scanner-manager/virtual-cards`` preserved when present).
     """
-    env = os.environ.get("SCANNER_MANAGER_VIRTUAL_SD_ROOT")
-    if env:
-        return Path(env)
-    return Path.home() / ".scanner-manager" / "virtual-cards"
+    from core.paths import virtual_sd_root
+
+    return virtual_sd_root()
 
 
 class VirtualCard:

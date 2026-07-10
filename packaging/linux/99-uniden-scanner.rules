@@ -1,0 +1,17 @@
+# Uniden SDS100/200 USB CDC (serial mode) — Debian/Ubuntu/udev
+#
+# Install:
+#   sudo cp packaging/linux/99-uniden-scanner.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules
+#   sudo udevadm trigger
+#   sudo usermod -aG dialout "$USER"   # then log out and back in
+#
+# VID 0x1965 = Uniden. In Serial Mode the scanner enumerates two CDC ACM
+# interfaces: MAIN PID 0x001A, SUB PID 0x0019.
+
+# Ignore ModemManager so it does not claim the CDC ACM ports.
+ACTION=="add|change", SUBSYSTEM=="usb", ATTR{idVendor}=="1965", ENV{ID_MM_DEVICE_IGNORE}="1"
+ACTION=="add|change", SUBSYSTEM=="usb", ATTRS{idVendor}=="1965", ENV{ID_MM_DEVICE_IGNORE}="1"
+
+# dialout group + group-writable ACM nodes for Uniden CDC devices.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1965", MODE="0660", GROUP="dialout"

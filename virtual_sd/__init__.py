@@ -10,7 +10,9 @@ interrupted mid-flash).
 The two top-level concepts:
 
 - :class:`VirtualCard` - one per :class:`device_manager.Device`. Owns
-  a staging folder under ``~/.scanner-manager/virtual-cards/<id>/``
+  a staging folder under the XDG data dir
+  (``core.paths.virtual_sd_root()``, typically
+  ``~/.local/share/scanner-manager/virtual-cards/<id>/`` on Linux)
   and a manifest file (``.staged.json``) that lets us round-trip
   arbitrary metadata (source URL, what type of payload it is, who
   staged it, etc.) across app restarts.

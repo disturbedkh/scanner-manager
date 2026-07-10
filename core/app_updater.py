@@ -1,11 +1,14 @@
 """Built-in GitHub-release updater.
 
 Checks the ``disturbedkh/scanner-manager`` latest release on GitHub, compares
-it against the running version, and (on Windows) swaps the currently running
-EXE for the new one via a small ``.bat`` helper that waits for PID exit then
-renames in place. macOS and Linux surface the same "update available" dialog
-but open the release page in a browser rather than attempting an in-place
-swap.
+it against the running version, and swaps the currently running frozen
+binary in place when supported:
+
+- **Windows:** ``.bat`` helper waits for PID exit then renames the EXE.
+- **Linux (tar.gz / ELF builds):** ``sh`` helper waits for PID exit, moves
+  the extracted ``ScannerManager`` binary, chmod +x, and relaunches.
+- **macOS / AppImage / source installs:** surface the update dialog and
+  open the release page (no in-place swap).
 
 Design rules:
 
@@ -25,6 +28,7 @@ import os
 import re
 import subprocess
 import sys
+import tarfile
 import tempfile
 import urllib.error
 import urllib.request
@@ -422,3 +426,170 @@ def apply_update_windows(
     )
     spawner(args)
     return bat_path
+
+
+# ---------------------------------------------------------------------------
+# Linux self-swap (tar.gz / ELF frozen builds)
+# ---------------------------------------------------------------------------
+
+
+_LINUX_BINARY_NAME = "ScannerManager"
+
+_LINUX_SWAP_SH = """#!/bin/sh
+# Args: $1=pid $2=new_binary $3=current_exe
+set -eu
+pid="$1"
+new_bin="$2"
+cur_exe="$3"
+i=0
+while kill -0 "$pid" 2>/dev/null; do
+  i=$((i + 1))
+  if [ "$i" -gt 120 ]; then
+    echo "scanner-manager update: timed out waiting for pid $pid" >&2
+    exit 1
+  fi
+  sleep 1
+done
+mv -f "$new_bin" "$cur_exe"
+chmod +x "$cur_exe"
+nohup "$cur_exe" >/dev/null 2>&1 &
+rm -f -- "$0"
+"""
+
+
+def is_running_as_appimage() -> bool:
+    """True when launched from an AppImage (env or path heuristic)."""
+    if os.environ.get("APPIMAGE", "").strip():
+        return True
+    try:
+        argv0 = Path(sys.argv[0]).as_posix()
+    except (IndexError, TypeError):
+        return False
+    return ".AppImage" in argv0
+
+
+def frozen_executable_path() -> Path:
+    """Path of the running frozen binary (best-effort)."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve()
+    return Path(sys.argv[0]).resolve()
+
+
+def extract_linux_release_binary(archive: Path, dest_dir: Path) -> Path:
+    """Extract the top-level ``ScannerManager`` member from a release tar.gz.
+
+    Writes ``dest_dir / "ScannerManager.new"`` and returns that path.
+    Rejects path traversal and archives that lack the expected member.
+    """
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    out = dest_dir / f"{_LINUX_BINARY_NAME}.new"
+    found: Optional[tarfile.TarInfo] = None
+    with tarfile.open(archive, "r:gz") as tar:
+        for member in tar.getmembers():
+            name = member.name.replace("\\", "/")
+            while name.startswith("./"):
+                name = name[2:]
+            if name.startswith("/"):
+                name = name.lstrip("/")
+            if any(part == ".." for part in name.split("/")):
+                raise ValueError(f"Refusing tar member with path traversal: {member.name}")
+            base = Path(name).name
+            if base != _LINUX_BINARY_NAME:
+                continue
+            # Only accept a top-level ScannerManager (no nested dirs)
+            if "/" in name:
+                continue
+            if not member.isfile():
+                continue
+            found = member
+            break
+        if found is None:
+            raise ValueError(
+                f"Release archive {archive.name} has no {_LINUX_BINARY_NAME} file"
+            )
+        extracted = tar.extractfile(found)
+        if extracted is None:
+            raise ValueError(f"Could not read {_LINUX_BINARY_NAME} from {archive.name}")
+        with out.open("wb") as fh:
+            fh.write(extracted.read())
+    out.chmod(0o755)
+    return out
+
+
+def build_linux_swap_script(script_path: Path) -> Path:
+    """Write the Linux swap shell script and return its path."""
+    script_path.write_text(_LINUX_SWAP_SH, encoding="utf-8", newline="\n")
+    script_path.chmod(0o755)
+    return script_path
+
+
+def apply_update_linux(
+    new_binary: Path,
+    current_exe: Path,
+    *,
+    script_dir: Optional[Path] = None,
+    spawn: Optional[Callable[[List[str]], Any]] = None,
+) -> Path:
+    """Spawn the Linux swap script and return its path.
+
+    The caller should ``os._exit(0)`` after this returns so the running
+    binary releases its file lock and the script can complete the move.
+    """
+    script_dir = script_dir or Path(tempfile.gettempdir())
+    script_path = script_dir / "scanner_manager_update.sh"
+    build_linux_swap_script(script_path)
+    args = [
+        "/bin/sh",
+        str(script_path),
+        str(os.getpid()),
+        str(new_binary),
+        str(current_exe),
+    ]
+    spawner = spawn or (
+        lambda cmd: subprocess.Popen(
+            cmd,
+            start_new_session=True,
+            close_fds=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    )
+    spawner(args)
+    return script_path
+
+
+def install_linux_update_from_release(
+    info: UpdateInfo,
+    current_exe: Path,
+    *,
+    work_dir: Optional[Path] = None,
+    progress_cb: Optional[Callable[[int, int], bool]] = None,
+    urlopen: Optional[Callable[..., Any]] = None,
+    spawn: Optional[Callable[[List[str]], Any]] = None,
+) -> Path:
+    """Download, verify, extract, and schedule a Linux frozen-binary swap.
+
+    Returns the path to the spawned swap script. Caller should exit soon
+    after. Raises ``ValueError`` / ``OSError`` on failure.
+    """
+    asset = pick_platform_asset(info, platform="linux")
+    if asset is None:
+        raise ValueError("No Linux release asset found for this update.")
+    sha = pick_sha_asset(info, asset)
+    work = Path(work_dir) if work_dir else Path(tempfile.mkdtemp(prefix="sm-update-"))
+    work.mkdir(parents=True, exist_ok=True)
+    archive = work / asset.name
+    download_and_verify(
+        asset,
+        archive,
+        sha_asset=sha,
+        progress_cb=progress_cb,
+        urlopen=urlopen,
+    )
+    new_bin = extract_linux_release_binary(archive, work)
+    return apply_update_linux(
+        new_bin,
+        current_exe,
+        script_dir=work,
+        spawn=spawn,
+    )

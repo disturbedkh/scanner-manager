@@ -59,6 +59,9 @@ User-facing ops docs live in sibling [`../docs/`](../docs/) under Metacache.
 9. `CURSOR.md` - Cursor rules, skills, hooks, and MCP setup for this
    repo (also see root `AGENTS.md`).
 
+Linux beta closeout / Ubuntu HIL checklist (when verifying a real
+desktop install): `LINUX_BARE_METAL_HANDOFF.md`.
+
 ## Write order on session end
 
 Before you stop working in a session, append to:

@@ -10,6 +10,17 @@ from the **Qt default** entry (`packaging/entry_qt.py` → `gui.app:main`).
   notices, and the full Qt + `core/` backend (including `virtual_sd`,
   firmware, streaming). Does **not** bundle `vendor/uniden_installers/`.
 - `icon.ico` / `icon.icns` - app icons for Windows/Linux and macOS.
+- `linux/99-uniden-scanner.rules` - udev rules for Uniden CDC serial
+  (ModemManager ignore + `dialout`). Copy to `/etc/udev/rules.d/` on
+  Debian/Ubuntu; see `wiki/Install.md`.
+- `linux/scanner-manager.desktop` / `linux/scanner-manager.png` -
+  AppImage / desktop launcher assets (staged by
+  `scripts/linux_appimage.py`).
+
+Release artifacts for Linux are **`ScannerManager-linux-x64.tar.gz`**
+(smoke/verify SSOT) and **`ScannerManager-x86_64.AppImage`**. Bare-metal
+HIL is manual — see
+[`Metacache/Dev/LINUX_BARE_METAL_HANDOFF.md`](../Metacache/Dev/LINUX_BARE_METAL_HANDOFF.md).
 
 ## Build locally
 
@@ -35,7 +46,7 @@ Outputs land under `build/<OS>/<Release|Development>/`:
 | -------- | --------------------- | ----------------------- |
 | Windows | `build/Windows/Development/ScannerManager.exe` | `build/Windows/Release/ScannerManager.exe` (+ zip in CI) |
 | macOS | `build/macOS/Development/ScannerManager.app` | `build/macOS/Release/ScannerManager.app` (+ tar.gz in CI) |
-| Linux | `build/Linux/Development/ScannerManager` | `build/Linux/Release/ScannerManager` (+ tar.gz in CI) |
+| Linux | `build/Linux/Development/ScannerManager` | `build/Linux/Release/ScannerManager` (+ tar.gz + AppImage in CI) |
 
 Set `SCANNER_MANAGER_BUILD_TYPE=Release` for release-mode local smoke.
 Set `SCANNER_MANAGER_VERSION` when building macOS bundles so Info.plist

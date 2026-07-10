@@ -26,13 +26,9 @@ logger = logging.getLogger(__name__)
 
 def _crash_log_dir() -> Path:
     """Return a writable directory for crash logs."""
-    if sys.platform == "win32":
-        base = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local")))
-    elif sys.platform == "darwin":
-        base = Path.home() / "Library" / "Logs"
-    else:
-        base = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local" / "state")))
-    out = base / "scanner-manager" / "crash"
+    from core.paths import state_dir
+
+    out = state_dir() / "crash"
     out.mkdir(parents=True, exist_ok=True)
     return out
 

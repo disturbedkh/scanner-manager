@@ -86,7 +86,7 @@ are available as GitLab CI job artifacts on `v*` tags.
 | ------- | ------------------------------------- | -------------------- |
 | Windows | `ScannerManager-windows-x64.zip`      | Unzip, double-click `ScannerManager.exe`. Windows SmartScreen may warn because the EXE isn't code-signed; click **More info → Run anyway**. |
 | macOS   | `ScannerManager-macos.tar.gz`         | Extract, move `ScannerManager.app` to `/Applications`. First launch: right-click → **Open** (unsigned, Gatekeeper will ask once). |
-| Linux   | `ScannerManager-linux-x64.tar.gz`     | Extract, `chmod +x ScannerManager`, run. Tk and glibc 2.31+ required. |
+| Linux   | `ScannerManager-linux-x64.tar.gz` or `ScannerManager-x86_64.AppImage` | Tar: extract, `chmod +x ScannerManager`, run. AppImage: `chmod +x` and run. Needs glibc 2.31+; on minimal distros also `libxcb-cursor0` (and related X11 libs). |
 
 Every asset ships with a matching `.sha256`. Verify if you like:
 
@@ -107,7 +107,7 @@ shasum -a 256 ScannerManager-*.tar.gz
 
 ### Option B — from source (any OS)
 
-Requires Python 3.9+. The default UI is Qt (PySide6); legacy Tk is
+Requires Python 3.11+. The default UI is Qt (PySide6); legacy Tk is
 still available via `scanner-manager-tk` for one release.
 
 ```bash
@@ -125,9 +125,18 @@ Platform notes:
 - **macOS**: `python.org` Python or `brew install python-tk@3.12`.
   The system Python on recent macOS has a stripped Tk; prefer the
   python.org build.
-- **Linux**: install your distro's Tk package
-  (`sudo apt install python3-tk` on Debian/Ubuntu, `sudo dnf install
-  python3-tkinter` on Fedora).
+- **Linux (Debian/Ubuntu)** — Qt from-source / Live serial:
+
+  ```bash
+  sudo apt install libegl1 libgl1 libglib2.0-0 libxcb-cursor0 \
+    libportaudio2 python3-tk
+  sudo usermod -aG dialout "$USER"   # re-login after
+  sudo cp packaging/linux/99-uniden-scanner.rules /etc/udev/rules.d/
+  sudo udevadm control --reload-rules && sudo udevadm trigger
+  ```
+
+  Prefer `pip install -r requirements.lock && pip install -e . --no-deps`
+  (universal lock) or `pip install -e ".[full,dev]"`.
 
 ## Quickstart
 

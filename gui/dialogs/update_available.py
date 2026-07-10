@@ -7,13 +7,16 @@ Surfaces the result of :func:`updater.check_for_update`. Three modes:
 - ``"current"`` - user manually checked, no newer version.
 - ``"offline"`` - check failed (no network, GitHub down, etc.).
 
-All network code lives in :mod:`updater`; the dialog is purely a thin
-shell around :class:`updater.UpdateInfo`.
+All network code lives in :mod:`core.app_updater`; the dialog is a thin
+shell around :class:`updater.UpdateInfo`. Frozen Linux tar.gz/ELF builds
+can Update Now in-place; AppImage / macOS / source installs open the
+release page.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import webbrowser
 from typing import Optional
@@ -114,18 +117,69 @@ class UpdateAvailableDialog(QDialog):
         if self._info is None:
             self.accept()
             return
-        # In-place swap currently targets Windows-frozen builds. On other
-        # platforms we direct the user to the release page.
-        if sys.platform != "win32" or not getattr(sys, "frozen", False):
+
+        frozen = bool(getattr(sys, "frozen", False))
+        if not frozen:
             self._on_open_release()
             return
-        webbrowser.open(self._info.html_url or APP_RELEASES_URL)
+
+        if updater.is_running_as_appimage():
+            QMessageBox.information(
+                self,
+                "AppImage update",
+                "In-place Update Now applies to the Linux tar.gz/ELF build.\n\n"
+                "For AppImage installs, download the new "
+                "ScannerManager-x86_64.AppImage from the release page and "
+                "replace this file.",
+            )
+            self._on_open_release()
+            return
+
+        if sys.platform.startswith("linux"):
+            self._apply_linux_frozen_update()
+            return
+
+        # Windows frozen: swap helper exists but dialog still directs to
+        # the release page until Windows Update Now is fully wired.
+        if sys.platform == "win32":
+            webbrowser.open(self._info.html_url or APP_RELEASES_URL)
+            QMessageBox.information(
+                self,
+                "Manual update",
+                "Download the new EXE from the release page and replace this one. "
+                "In-place swap is staged for a future release.",
+            )
+            self.accept()
+            return
+
+        # macOS frozen (and anything else)
+        self._on_open_release()
+
+    def _apply_linux_frozen_update(self) -> None:
+        assert self._info is not None
+        current = updater.frozen_executable_path()
+        try:
+            updater.install_linux_update_from_release(
+                self._info,
+                current,
+            )
+        except Exception as exc:  # noqa: BLE001 — surface any download/swap failure
+            logger.exception("Linux in-place update failed")
+            QMessageBox.critical(
+                self,
+                "Update failed",
+                f"Could not download or apply the update:\n\n{exc}\n\n"
+                "You can still use Open Release Page for a manual install.",
+            )
+            return
         QMessageBox.information(
-            self, "Manual update",
-            "Download the new EXE from the release page and replace this one. "
-            "In-place swap is staged for a future release."
+            self,
+            "Updating",
+            "The update was downloaded and verified. Scanner Manager will "
+            "restart with the new version.",
         )
         self.accept()
+        os._exit(0)
 
     def _on_open_release(self) -> None:
         target = (self._info.html_url if self._info else "") or APP_RELEASES_URL

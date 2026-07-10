@@ -9,7 +9,6 @@ the user's browser. The crash log path comes from the same
 from __future__ import annotations
 
 import logging
-import os
 import platform
 import sys
 import urllib.parse
@@ -34,13 +33,9 @@ ISSUES_NEW_URL = "https://github.com/disturbedkh/scanner-manager/issues/new"
 
 
 def _crash_log_dir() -> Path:
-    if sys.platform == "win32":
-        base = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local")))
-    elif sys.platform == "darwin":
-        base = Path.home() / "Library" / "Logs"
-    else:
-        base = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local" / "state")))
-    return base / "scanner-manager" / "crash"
+    from core.paths import state_dir
+
+    return state_dir() / "crash"
 
 
 def find_latest_crash_log() -> Optional[Path]:

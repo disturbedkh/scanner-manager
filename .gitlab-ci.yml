@@ -37,7 +37,9 @@ lockfile:check:
   stage: lint
   image: python:3.12
   before_script:
-    - python -m pip install -U pip pip-tools
+    - python -m pip install -U pip
+    - curl -LsSf https://astral.sh/uv/install.sh | sh
+    - export PATH="$HOME/.local/bin:$PATH"
   script:
     - python scripts/check_lockfile_stale.py
   rules:
@@ -78,12 +80,6 @@ test:integration:
     - pytest -m "not requires_serial and not slow and not qt" -q
     - python -c "import gui.app; import core.metastore, core.uniden_tools; print('import ok')"
     - python -c "import legacy_tk.scanner_manager; print('legacy tk ok')"
-
-test:linux:3.9:
-  extends: .test_linux_base
-  image: python:3.9
-  script:
-    - !reference [.test_matrix, script]
 
 test:linux:3.11:
   extends: .test_linux_base
@@ -188,15 +184,25 @@ release:linux:
   image: python:3.12
   before_script:
     - apt-get update -qq
-    - apt-get install -y -qq tk
+    - apt-get install -y -qq xvfb python3-tk libegl1 libgl1 libglib2.0-0 wget file
+    - |
+      # Pinned continuous appimagetool (x86_64); FUSE-less via APPIMAGE_EXTRACT_AND_RUN
+      wget -q -O /usr/local/bin/appimagetool \
+        https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+      chmod +x /usr/local/bin/appimagetool
+      export APPIMAGE_EXTRACT_AND_RUN=1
     - python -m pip install -U pip pip-tools
     - python -m pip install -r requirements.lock
     - python -m pip install -e . --no-deps
+  variables:
+    APPIMAGE_EXTRACT_AND_RUN: "1"
   artifacts:
     paths:
       - build/Linux/Release/ScannerManager
       - build/Linux/Release/ScannerManager-linux-x64.tar.gz
       - build/Linux/Release/ScannerManager-linux-x64.tar.gz.sha256
+      - build/Linux/Release/ScannerManager-x86_64.AppImage
+      - build/Linux/Release/ScannerManager-x86_64.AppImage.sha256
       - build/Linux/Release/build-provenance.json
 
 .verify_linux:
@@ -288,6 +294,10 @@ release:publish:
         - path: build/Linux/Release/ScannerManager-linux-x64.tar.gz
           job: release:linux
         - path: build/Linux/Release/ScannerManager-linux-x64.tar.gz.sha256
+          job: release:linux
+        - path: build/Linux/Release/ScannerManager-x86_64.AppImage
+          job: release:linux
+        - path: build/Linux/Release/ScannerManager-x86_64.AppImage.sha256
           job: release:linux
         - path: build/Windows/Release/build-provenance.json
           job: release:windows

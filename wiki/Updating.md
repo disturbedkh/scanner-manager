@@ -5,7 +5,7 @@
 Scanner Manager ships with a built-in GitHub-release updater so you
 don't need to use git or track the download page to stay current.
 
-## One-click updates (Windows EXE builds)
+## One-click updates
 
 1. **Help → Check for Updates...** runs a fresh query and always shows
    a dialog, even when you're already on the latest version.
@@ -13,10 +13,7 @@ don't need to use git or track the download page to stay current.
    startup. If a newer release is out — and you haven't skipped that
    specific version — an *Update available* dialog appears.
 3. The dialog shows release notes and four actions:
-   - **Update Now** — downloads the matching asset, verifies its
-     SHA-256 against the sibling `.sha256` file in the release, and
-     (on Windows frozen builds) swaps the EXE via a small helper
-     script.
+   - **Update Now** — platform-dependent (see below).
    - **Open Release Page** — sends you straight to the GitHub
      Releases page for manual download.
    - **Skip This Version** — remembers the version in
@@ -25,12 +22,30 @@ don't need to use git or track the download page to stay current.
    - **Remind Me Later** — closes the dialog but leaves the check
      alive so it'll re-prompt after 24 hours.
 
-## macOS and Linux
+### Windows EXE (frozen)
 
-The updater detects new releases and opens the release page in your
-default browser. In-place swaps on those platforms need Gatekeeper /
-executable-bit handling that isn't built yet; until then, download the
-new archive and replace your install manually.
+**Update Now** opens the release page for a manual EXE replace today.
+An in-place `.bat` swap helper exists in code but is not fully wired
+in the Qt dialog yet.
+
+### Linux tar.gz / ELF (frozen)
+
+**Update Now** downloads `ScannerManager-linux-x64.tar.gz`, verifies
+its SHA-256 against the sibling `.sha256` asset, extracts the
+`ScannerManager` binary, swaps it over the running file via a small
+shell helper, and relaunches.
+
+### Linux AppImage
+
+In-place Update Now is **not** supported for AppImage installs.
+Download the new `ScannerManager-x86_64.AppImage` from the release
+page and replace the old file (`chmod +x` again if needed).
+
+### macOS
+
+The updater detects new releases and opens the release page. In-place
+swaps need Gatekeeper handling that isn't built yet; download the new
+archive and replace your install manually.
 
 ## Running from source (`pip install`)
 

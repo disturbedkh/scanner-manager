@@ -88,10 +88,24 @@ def test_city_manager_dialog_builds(qtbot, tmp_path: Path):
     assert "overrides" in dlg.windowTitle().lower()
 
 
-def test_uniden_tools_dialog_builds(qtbot):
+def test_uniden_tools_dialog_builds(qtbot, monkeypatch):
+    import sys
+
+    monkeypatch.setattr(sys, "platform", "win32")
     dlg = UnidenToolsDialog()
     qtbot.addWidget(dlg)
     assert "uniden" in dlg.windowTitle().lower()
+
+
+def test_uniden_tools_dialog_shows_windows_only_banner(qtbot, monkeypatch):
+    import sys
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    dlg = UnidenToolsDialog()
+    qtbot.addWidget(dlg)
+    assert dlg._windows_only
+    assert not dlg._run_btn.isEnabled()
+    assert not dlg._install_btn.isEnabled()
 
 
 def test_update_available_dialog_renders_each_mode(qtbot):
@@ -318,9 +332,13 @@ def test_changes_dialog_revert_failure_shows_critical(
 def test_uniden_tools_dialog_launch_and_install(
     qtbot, monkeypatch, auto_msgbox
 ):
+    import sys
+
     from PySide6.QtWidgets import QMessageBox
 
     from core.uniden_tools import UnidenTool
+
+    monkeypatch.setattr(sys, "platform", "win32")
 
     installed = UnidenTool(
         tool_id="bt885_update_manager",
@@ -376,9 +394,13 @@ def test_uniden_tools_dialog_launch_and_install(
 def test_uniden_tools_dialog_install_without_bundled_installer(
     qtbot, monkeypatch, auto_msgbox
 ):
+    import sys
+
     from PySide6.QtWidgets import QMessageBox
 
     from core.uniden_tools import UnidenTool
+
+    monkeypatch.setattr(sys, "platform", "win32")
 
     tool = UnidenTool(
         tool_id="bt885_update_manager",
@@ -402,9 +424,13 @@ def test_uniden_tools_dialog_install_without_bundled_installer(
 def test_uniden_tools_dialog_launch_failure(
     qtbot, monkeypatch, auto_msgbox
 ):
+    import sys
+
     from PySide6.QtWidgets import QMessageBox
 
     from core.uniden_tools import UnidenTool
+
+    monkeypatch.setattr(sys, "platform", "win32")
 
     tool = UnidenTool(
         tool_id="bt885_update_manager",
@@ -668,6 +694,76 @@ def test_update_available_dialog_update_now_windows_frozen(
     qtbot.addWidget(dlg)
     dlg._on_update_now()
     assert opened == ["https://example.com/frozen"]
+
+
+def test_update_available_dialog_update_now_linux_frozen(
+    qtbot, monkeypatch, auto_msgbox
+):
+    import gui.dialogs.update_available as ua
+    from core.app_updater import UpdateInfo
+
+    opened: list = []
+    applied: list = []
+    exits: list = []
+    monkeypatch.setattr(ua.webbrowser, "open", lambda url: opened.append(url))
+    monkeypatch.setattr(ua.sys, "platform", "linux")
+    monkeypatch.setattr(ua.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(ua.updater, "is_running_as_appimage", lambda: False)
+    monkeypatch.setattr(
+        ua.updater,
+        "frozen_executable_path",
+        lambda: Path("/opt/ScannerManager"),
+    )
+    monkeypatch.setattr(
+        ua.updater,
+        "install_linux_update_from_release",
+        lambda info, current, **kw: applied.append((info.version, str(current))) or Path("/tmp/swap.sh"),
+    )
+    monkeypatch.setattr(ua.os, "_exit", lambda code: exits.append(code))
+
+    info = UpdateInfo(
+        tag="v0.12.0",
+        version="0.12.0",
+        html_url="https://example.com/linux",
+    )
+    dlg = UpdateAvailableDialog(
+        info=info, current_version="0.11.0", mode=UpdateAvailableDialog.MODE_AVAILABLE
+    )
+    qtbot.addWidget(dlg)
+    dlg._on_update_now()
+    assert applied == [("0.12.0", str(Path("/opt/ScannerManager")))]
+    assert not opened
+    assert exits == [0]
+
+
+def test_update_available_dialog_update_now_linux_appimage(
+    qtbot, monkeypatch, auto_msgbox
+):
+    import gui.dialogs.update_available as ua
+    from core.app_updater import UpdateInfo
+
+    opened: list = []
+    monkeypatch.setattr(ua.webbrowser, "open", lambda url: opened.append(url))
+    monkeypatch.setattr(ua.sys, "platform", "linux")
+    monkeypatch.setattr(ua.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(ua.updater, "is_running_as_appimage", lambda: True)
+    monkeypatch.setattr(
+        ua.updater,
+        "install_linux_update_from_release",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not install")),
+    )
+
+    info = UpdateInfo(
+        tag="v0.12.0",
+        version="0.12.0",
+        html_url="https://example.com/appimage",
+    )
+    dlg = UpdateAvailableDialog(
+        info=info, current_version="0.11.0", mode=UpdateAvailableDialog.MODE_AVAILABLE
+    )
+    qtbot.addWidget(dlg)
+    dlg._on_update_now()
+    assert opened == ["https://example.com/appimage"]
 
 
 def test_update_available_dialog_update_now_without_info(qtbot, monkeypatch):

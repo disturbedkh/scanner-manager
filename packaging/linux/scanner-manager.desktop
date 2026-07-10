@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Scanner Manager
+GenericName=Scanner SD card manager
+Comment=Uniden BearTracker 885 and SDS100/200 HPD editor
+Exec=ScannerManager
+Icon=scanner-manager
+Terminal=false
+Categories=AudioVideo;HamRadio;
+Keywords=uniden;scanner;sds100;beartracker;hpd;
+StartupNotify=true

@@ -21,11 +21,18 @@ One row per stream. Keep this short.
 | Legacy Tk `detect_from_card` | After Qt path stable | Tk open dialog still assumes BT885. |
 | Retire `scanner_profiles/compat.py` | After legacy Tk globals migrated | Step 2 of `MULTI_SCANNER_BACKEND.md`. |
 | Favorites Lists editor (SDS100 / SDS200) | User demand | Round-trip via ancillary path; no dedicated UI yet. |
+| Linux packaging formats (`.deb`) | After AppImage | tar.gz + AppImage are SSOT; `.deb` still parked. |
+| Bash Sonar / publish without `pwsh` | Linux-only contributors | Dual-gate scripts still PowerShell-primary. |
+| Migrate `legacy_tk` / `dev_mcp` onto `core.paths` | After XDG settle | Crash logs + `dev_mcp.token` still use `~/.scanner-manager`; non-blocking. |
 
 ## Recently completed
 
 | Stream | Released in | Notes |
 | --- | --- | --- |
+| **Linux compat closeout (docs + HIL handoff)** | `v0.11.x` (2026-07-10) | Beta-complete pending bare-metal HIL; checklist `LINUX_BARE_METAL_HANDOFF.md`; `.deb`/bash Sonar/RE still parked. |
+| **Linux in-place updater** | `v0.11.x` (2026-07-10) | Frozen tar.gz/ELF Update Now: download, SHA-256, extract, `sh` swap + relaunch; AppImage stays manual. |
+| **Linux AppImage + desktop** | `v0.11.x` (2026-07-10) | `ScannerManager-x86_64.AppImage` beside tar.gz; landing harden (GitHub apt, docs); `.deb`/bash ops still parked. |
+| **Linux compatibility pass** | `v0.11.x` (2026-07-10) | Universal lock (uv), Python ≥3.11, udev rules, volume UUID, mount detect, `core/paths.py`, Uniden banner, docs; residuals parked in ROADMAP. |
 | **Phase 2 tail (dual-scan + Qt teardown policy)** | `v0.11.x` (2026-07-10) | Dual-scan baseline recorded in `SONARQUBE.md`; permanent Qt teardown CI tolerance in `BUILD_SYSTEM.md`. ROADMAP Phase 2 → Done. |
 | **Auto profile switch on card load** | `v0.11.x` (2026-07-10) | Confirm dialog → update `Device.scanner_profile_id` + metastore sidecar; banner on decline. |
 | **BT885 fixture/alias cleanup** | `v0.11.x` (2026-07-10) | Fixtures use `TargetModel\tBCDx36HP`; dropped stale `Beartracker885` aliases. |

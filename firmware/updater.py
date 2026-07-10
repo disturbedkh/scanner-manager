@@ -126,7 +126,9 @@ def backup_card(card_root: Path, dst_root: Optional[Path] = None) -> Path:
     if not src.exists():
         raise FirmwareError(f"Card has no BCDx36HP/ folder: {card_root}")
     if dst_root is None:
-        dst_root = card_root.parent / "scanner-manager-backups"
+        from core.paths import data_dir
+
+        dst_root = data_dir() / "card-backups"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     target = Path(dst_root) / f"{src.name}_{timestamp}"
     target.mkdir(parents=True, exist_ok=True)

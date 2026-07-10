@@ -3,10 +3,11 @@
 Design (see Feature 1 plan):
 
     * An SD card is identified by (volume_serial, content_fingerprint).
-      Volume serial is the Windows per-volume 32-bit serial number; content
-      fingerprint is a sha256 over a deterministic digest of
-      firmware/ZipTable*.dat + TargetModel of the first HPD file found.
-      We try volume serial first, fall back to fingerprint.
+      Volume serial is a stable per-volume id (Windows 32-bit serial, or
+      Linux filesystem UUID with dashes stripped); content fingerprint is
+      a sha256 over a deterministic digest of firmware/ZipTable*.dat +
+      TargetModel of the first HPD file found. We try volume serial first,
+      fall back to fingerprint.
 
     * A *workspace* is a local folder that mirrors the card's layout on
       disk. Each workspace is tracked as a "profile" in GlobalMetaStore.
@@ -35,6 +36,7 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
+import sys
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -75,15 +77,13 @@ class CardIdentity:
 def _windows_volume_serial(path: str) -> str:
     """Return the Windows volume serial as an 8-char hex string, or ''.
 
-    Uses ``GetVolumeInformationW`` via ctypes; returns '' on non-Windows
-    or when the API call fails (e.g. path does not exist).
+    Uses ``GetVolumeInformationW`` via ctypes; returns '' when the API
+    call fails (e.g. path does not exist). Caller must gate on Windows.
     """
     try:
         import ctypes
         from ctypes import wintypes
     except Exception:
-        return ""
-    if os.name != "nt":
         return ""
     try:
         drive_root = os.path.splitdrive(os.path.abspath(path))[0]
@@ -109,6 +109,87 @@ def _windows_volume_serial(path: str) -> str:
         return f"{serial.value:08X}"
     except Exception:
         return ""
+
+
+def _linux_mount_device(path: str, mounts_file: str = "/proc/mounts") -> str:
+    """Return the block device for the longest mount prefix covering *path*."""
+    try:
+        if os.path.exists(path):
+            abs_path = os.path.realpath(path)
+        else:
+            abs_path = path
+    except OSError:
+        abs_path = path
+    # /proc/mounts always uses forward slashes
+    abs_path = abs_path.replace("\\", "/")
+    best_mnt = ""
+    best_dev = ""
+    try:
+        with open(mounts_file, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                parts = line.split()
+                if len(parts) < 2:
+                    continue
+                device, mountpoint = parts[0], parts[1]
+                # /proc/mounts escapes spaces as \040
+                mountpoint = mountpoint.replace("\\040", " ")
+                if not mountpoint:
+                    continue
+                if abs_path == mountpoint or abs_path.startswith(
+                    mountpoint.rstrip("/") + "/"
+                ) or (mountpoint == "/" and abs_path.startswith("/")):
+                    if len(mountpoint) >= len(best_mnt):
+                        best_mnt = mountpoint
+                        best_dev = device
+    except OSError:
+        return ""
+    return best_dev
+
+
+def _linux_uuid_for_device(
+    device: str, by_uuid_dir: str = "/dev/disk/by-uuid"
+) -> str:
+    """Map a block device path to its filesystem UUID via by-uuid symlinks."""
+    if not device:
+        return ""
+    try:
+        target = os.path.realpath(device)
+    except OSError:
+        target = device
+    try:
+        entries = os.listdir(by_uuid_dir)
+    except OSError:
+        return ""
+    for name in entries:
+        link = os.path.join(by_uuid_dir, name)
+        try:
+            if os.path.realpath(link) == target:
+                return name.upper().replace("-", "")
+        except OSError:
+            continue
+    return ""
+
+
+def _linux_volume_serial(path: str) -> str:
+    """Return a stable Linux volume id (filesystem UUID, no dashes), or ''."""
+    device = _linux_mount_device(path)
+    if not device:
+        return ""
+    return _linux_uuid_for_device(device)
+
+
+def _volume_serial(path: str) -> str:
+    """Cross-platform volume identity string, or '' when unavailable.
+
+    Windows: 8-char hex volume serial via ``GetVolumeInformationW``.
+    Linux: filesystem UUID from ``/dev/disk/by-uuid`` (dashes stripped).
+    Other platforms: empty (content fingerprint still identifies cards).
+    """
+    if os.name == "nt":
+        return _windows_volume_serial(path)
+    if sys.platform.startswith("linux"):
+        return _linux_volume_serial(path)
+    return ""
 
 
 def _first_file_matching(root: Path, glob: str) -> Optional[Path]:
@@ -182,7 +263,7 @@ def probe_card_identity(root_path: str) -> CardIdentity:
     root = Path(root_path)
     if not root.exists():
         return CardIdentity(root_path=str(root))
-    vs = _windows_volume_serial(str(root))
+    vs = _volume_serial(str(root))
     target = _read_target_model(root)
     fp = _content_fingerprint(root, target_model=target)
     return CardIdentity(

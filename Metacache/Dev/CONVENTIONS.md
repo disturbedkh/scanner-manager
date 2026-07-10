@@ -6,7 +6,7 @@ Rules of the road for editing this repo. Read once, follow always.
 
 ## Code
 
-- **Python 3.9+**. Default UI is Qt (`gui/`). Legacy Tk lives in
+- **Python 3.11+**. Default UI is Qt (`gui/`). Legacy Tk lives in
   `legacy_tk/scanner_manager.py`. Shared backend modules live in
   `core/` — import `core.metastore`, `core.sdcard`, etc. in new code.
 - **No new top-level `.py` modules** at repo root. Add code under

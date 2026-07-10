@@ -269,23 +269,20 @@ def _default_devices_path() -> Path:
 
     We write into the user's app-config dir (so PyInstaller-packaged
     builds can mutate it). For dev runs from source we still prefer
-    ``data/devices.json`` next to the repo so changes show up in
+    ``data/devices.json`` at the repo root so changes show up in
     git status; the user-config path is the fallback.
     """
-    repo_data = Path(__file__).resolve().parent / "data" / "devices.json"
-    if repo_data.parent.exists():
+    # core/device_manager.py -> parents[1] == repo root
+    repo_data = Path(__file__).resolve().parents[1] / "data" / "devices.json"
+    if repo_data.is_file() or repo_data.parent.is_dir():
         return repo_data
     return _user_config_path()
 
 
 def _user_config_path() -> Path:
-    if sys.platform == "win32":
-        base = Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming")))
-    elif sys.platform == "darwin":
-        base = Path.home() / "Library" / "Application Support"
-    else:
-        base = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
-    return base / "scanner-manager" / "devices.json"
+    from core.paths import config_dir
+
+    return config_dir() / "devices.json"
 
 
 def _short_path_label(path: str) -> str:

@@ -108,9 +108,24 @@ path. Use it — maintainers need tracebacks to fix beta regressions.
 
 ## Serial / Live dock won't connect (SDS100/200)
 
-- Scanner must be in **serial USB mode** (two COM ports), not mass
-  storage only.
+- Scanner must be in **serial USB mode** (two COM ports / `/dev/ttyACM*`),
+  not mass storage only.
 - Pick MAIN and SUB ports in the Live dock; click Refresh if you just
   plugged in.
 - Only one host app should hold the serial ports — close Sentinel if
   it has the device open.
+- **Linux:** join the `dialout` group and install
+  `packaging/linux/99-uniden-scanner.rules` so ModemManager does not
+  claim the CDC ports (see [Install](Install)).
+
+## Blank window / map broken on Linux
+
+- Need a real display (or `xvfb-run` for tests).
+- On Wayland, try `QT_QPA_PLATFORM=xcb`.
+- Minimal distros may need `libxcb-cursor0` and GL/EGL packages
+  ([Install](Install)).
+
+## Firmware write then unplug (Linux VFAT)
+
+After applying firmware/HPDB to a card, eject safely (Desktop eject, or
+`sync` / `udisksctl unmount`) before removing the media.

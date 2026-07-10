@@ -332,12 +332,14 @@ def test_short_path_label_empty_and_windows_root() -> None:
 def test_user_config_path_win32(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+    monkeypatch.delenv("SCANNER_MANAGER_CONFIG_DIR", raising=False)
     assert _user_config_path() == tmp_path / "Roaming" / "scanner-manager" / "devices.json"
 
 
 def test_user_config_path_darwin(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.delenv("SCANNER_MANAGER_CONFIG_DIR", raising=False)
     assert _user_config_path() == (
         tmp_path / "Library" / "Application Support" / "scanner-manager" / "devices.json"
     )
@@ -346,26 +348,33 @@ def test_user_config_path_darwin(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 def test_user_config_path_linux(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    monkeypatch.delenv("SCANNER_MANAGER_CONFIG_DIR", raising=False)
     assert _user_config_path() == tmp_path / "xdg" / "scanner-manager" / "devices.json"
 
 
 def test_default_devices_path_falls_back_to_user_config(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    fake_module = tmp_path / "device_manager.py"
+    # parents[1] of this stub is tmp_path; no data/ dir → user config
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    fake_module = pkg / "device_manager.py"
     fake_module.write_text("# stub", encoding="utf-8")
     monkeypatch.setattr("core.device_manager.__file__", str(fake_module))
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+    monkeypatch.delenv("SCANNER_MANAGER_CONFIG_DIR", raising=False)
     assert _default_devices_path() == _user_config_path()
 
 
 def test_default_devices_path_uses_repo_data_when_present(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    # Mimic repo layout: <root>/core/device_manager.py and <root>/data/
     core_dir = tmp_path / "core"
-    data_dir = core_dir / "data"
+    data_dir = tmp_path / "data"
     data_dir.mkdir(parents=True)
+    core_dir.mkdir(parents=True)
     fake_module = core_dir / "device_manager.py"
     fake_module.write_text("# stub", encoding="utf-8")
     monkeypatch.setattr("core.device_manager.__file__", str(fake_module))

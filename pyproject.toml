@@ -2,9 +2,9 @@
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
-# Dependency lock SSOT: requirements.lock (pip-compile from this file).
-# Regenerate: pip-compile --extra=dev --extra=full -o requirements.lock pyproject.toml
-# Sonar text:S8565 — pip-tools lock file (not uv.lock/poetry.lock); see Metacache/Dev/SONARQUBE.md.
+# Dependency lock SSOT: requirements.lock (uv pip compile --universal).
+# Regenerate: scripts/refresh_lockfile.sh or scripts/refresh_lockfile.ps1
+# Sonar text:S8565 — lock file (not poetry.lock); see Metacache/Dev/SONARQUBE.md.
 
 [tool.pip-tools]
 output-file = "requirements.lock"
@@ -15,7 +15,7 @@ version = "0.11.2"
 description = "Multi-scanner Qt desktop app for Uniden BearTracker 885 and SDS100/200 — HPD editing, live serial mirror, LAN streaming, firmware updates, ZIP/coverage simulation, and RadioReference import."
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 authors = [
     { name = "Scanner Manager contributors" },
 ]
@@ -44,10 +44,9 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
     "Operating System :: MacOS",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Communications :: Ham Radio",
     "Topic :: Utilities",
 ]

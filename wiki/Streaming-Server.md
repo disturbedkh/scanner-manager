@@ -89,6 +89,19 @@ falling back to `app_settings.json` if not.
 Switch to the **Live** central page in the Qt shell, connect serial
 ports, then configure the Streaming dock tab.
 
+## Firewall / LAN reachability
+
+The server binds **`0.0.0.0:8765`** by default so other devices on your
+LAN can open the listener page. If clients cannot connect:
+
+```bash
+# Ubuntu / Debian with ufw
+sudo ufw allow 8765/tcp
+```
+
+On Linux, streaming capture also needs PortAudio (`libportaudio2`).
+See [Install](Install).
+
 ## Cross-references
 
 - Live dock: see [Qt-UI](Qt-UI)

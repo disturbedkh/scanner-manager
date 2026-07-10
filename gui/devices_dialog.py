@@ -87,6 +87,10 @@ class AddDeviceDialog(QDialog):
         browse_btn = QPushButton("Browse…")
         browse_btn.clicked.connect(self._on_browse)
         path_row.addWidget(browse_btn)
+        detect_btn = QPushButton("Detect cards…")
+        detect_btn.setToolTip("Scan removable mounts for Uniden BCDx36HP / HPDB layout")
+        detect_btn.clicked.connect(self._on_detect_cards)
+        path_row.addWidget(detect_btn)
         path_widget = QWidget()
         path_widget.setLayout(path_row)
         form.addRow("SD card folder:", path_widget)
@@ -121,6 +125,38 @@ class AddDeviceDialog(QDialog):
             start,
         )
         if chosen:
+            from core.removable_media import normalize_card_root
+
+            self._path_edit.setText(str(normalize_card_root(chosen)))
+
+    def _on_detect_cards(self) -> None:
+        from core.removable_media import discover_uniden_cards
+
+        cards = discover_uniden_cards()
+        if not cards:
+            QMessageBox.information(
+                self,
+                "Detect cards",
+                "No Uniden SD card layouts found on removable mounts.\n\n"
+                "Mount the card (or copy it), then Browse to the volume "
+                "root that contains BCDx36HP/.",
+            )
+            return
+        if len(cards) == 1:
+            self._path_edit.setText(str(cards[0]))
+            return
+        from PySide6.QtWidgets import QInputDialog
+
+        labels = [str(p) for p in cards]
+        chosen, ok = QInputDialog.getItem(
+            self,
+            "Detect cards",
+            "Select an SD card root:",
+            labels,
+            0,
+            False,
+        )
+        if ok and chosen:
             self._path_edit.setText(chosen)
 
     def _maybe_autodetect(self, path: str) -> None:
@@ -260,7 +296,9 @@ class ManageDevicesDialog(QDialog):
         )
         if not chosen:
             return
-        device.sd_card_path = chosen
+        from core.removable_media import normalize_card_root
+
+        device.sd_card_path = str(normalize_card_root(chosen))
         device.update_seen()
         self._dm.update_device(device)
         self._refresh()

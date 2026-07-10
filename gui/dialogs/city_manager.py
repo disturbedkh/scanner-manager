@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import sys
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -34,13 +33,9 @@ logger = logging.getLogger(__name__)
 
 
 def _city_overrides_path() -> Path:
-    if sys.platform == "win32":
-        base = Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming")))
-    elif sys.platform == "darwin":
-        base = Path.home() / "Library" / "Application Support"
-    else:
-        base = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
-    return base / "scanner-manager" / "city_overrides.json"
+    from core.paths import config_dir
+
+    return config_dir() / "city_overrides.json"
 
 
 def load_overrides(path: Optional[Path] = None) -> Dict[str, Dict]:

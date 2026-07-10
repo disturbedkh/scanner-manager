@@ -9,6 +9,7 @@ copies. All detection / install logic delegates to the existing
 from __future__ import annotations
 
 import logging
+import sys
 from typing import List
 
 from PySide6.QtCore import Qt
@@ -28,6 +29,15 @@ import core.uniden_tools as uniden_tools
 
 logger = logging.getLogger(__name__)
 
+_WINDOWS_ONLY_NOTICE = (
+    "Uniden Sentinel and the BT885 Update Manager are Windows-only "
+    "applications. This panel cannot launch or install them on "
+    "{platform}. Everything else in Scanner Manager (HPD editing, "
+    "RadioReference import, ZIP/GPS simulation, workspaces) works here; "
+    "you just won't be able to drive Uniden's vendor tools from this "
+    "host. Run Scanner Manager on Windows to use them."
+)
+
 
 class UnidenToolsDialog(QDialog):
     """Detect, install, and launch the Uniden desktop ecosystem apps."""
@@ -37,16 +47,24 @@ class UnidenToolsDialog(QDialog):
         self.setWindowTitle("Uniden tools")
         self.resize(720, 420)
         self._tools: List[uniden_tools.UnidenTool] = []
+        self._windows_only = sys.platform != "win32"
         self._build_ui()
         self._refresh()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel("<b>Uniden ecosystem apps</b>"))
-        layout.addWidget(QLabel(
-            "We auto-detect installed Sentinel + BT885 Update Manager. "
-            "Use the bundled installers if you don't have them yet."
-        ))
+        if self._windows_only:
+            platform = "macOS" if sys.platform == "darwin" else "this platform"
+            notice = QLabel(_WINDOWS_ONLY_NOTICE.format(platform=platform))
+            notice.setWordWrap(True)
+            notice.setStyleSheet("color: #a33;")
+            layout.addWidget(notice)
+        else:
+            layout.addWidget(QLabel(
+                "We auto-detect installed Sentinel + BT885 Update Manager. "
+                "Use the bundled installers if you don't have them yet."
+            ))
 
         self._table = QTableWidget(0, 4, self)
         self._table.setHorizontalHeaderLabels(["Tool", "Family", "Installed", "Version"])
@@ -57,17 +75,23 @@ class UnidenToolsDialog(QDialog):
         layout.addWidget(self._table, 1)
 
         button_row = QHBoxLayout()
-        run_btn = QPushButton("Launch selected")
-        run_btn.clicked.connect(self._on_launch)
-        button_row.addWidget(run_btn)
+        self._run_btn = QPushButton("Launch selected")
+        self._run_btn.clicked.connect(self._on_launch)
+        button_row.addWidget(self._run_btn)
 
-        install_btn = QPushButton("Install bundled…")
-        install_btn.clicked.connect(self._on_install)
-        button_row.addWidget(install_btn)
+        self._install_btn = QPushButton("Install bundled…")
+        self._install_btn.clicked.connect(self._on_install)
+        button_row.addWidget(self._install_btn)
 
-        refresh_btn = QPushButton("Re-detect")
-        refresh_btn.clicked.connect(self._refresh)
-        button_row.addWidget(refresh_btn)
+        self._refresh_btn = QPushButton("Re-detect")
+        self._refresh_btn.clicked.connect(self._refresh)
+        button_row.addWidget(self._refresh_btn)
+
+        if self._windows_only:
+            self._run_btn.setEnabled(False)
+            self._install_btn.setEnabled(False)
+            self._refresh_btn.setEnabled(False)
+            self._table.setEnabled(False)
 
         button_row.addStretch(1)
         close_btn = QPushButton("Close")

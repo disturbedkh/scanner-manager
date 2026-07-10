@@ -19,6 +19,7 @@ _APP_BUNDLE = f"{_APP_NAME}.app"
 _WIN_ZIP = f"{_APP_NAME}-windows-x64.zip"
 _MACOS_TAR = f"{_APP_NAME}-macos.tar.gz"
 _LINUX_TAR = f"{_APP_NAME}-linux-x64.tar.gz"
+_LINUX_APPIMAGE = f"{_APP_NAME}-x86_64.AppImage"
 
 
 def _repo_root() -> Path:
@@ -104,6 +105,19 @@ def _package_release(root: Path, build_type: str) -> list[Path]:
             tar.add(binary, arcname=_APP_NAME)
         _write_sidecar(tar_path)
         outputs.append(tar_path)
+
+        # Optional AppImage (skipped when appimagetool is absent)
+        sys.path.insert(0, str(root / "scripts"))
+        from linux_appimage import build_appimage  # noqa: E402
+
+        appimage = build_appimage(
+            repo_root=root,
+            binary=binary,
+            out_dir=out_dir,
+        )
+        if appimage is not None:
+            _write_sidecar(appimage)
+            outputs.append(appimage)
     return outputs
 
 

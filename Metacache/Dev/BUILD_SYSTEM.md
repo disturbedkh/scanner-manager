@@ -26,19 +26,26 @@ lint → test (tiered + matrix) → quality (coverage + SonarQube) → release �
 
 ## Install path (SSOT)
 
+Requires **Python ≥3.11**. Lockfile is a **universal** resolve (OS markers
+for `pywin32`, `macholib`, `SecretStorage`, etc.) produced by
+`uv pip compile --universal`.
+
 ```bash
-python -m pip install -U pip pip-tools
+python -m pip install -U pip
 python -m pip install -r requirements.lock
 pip install -e . --no-deps
 ```
 
-Refresh lockfile after editing `pyproject.toml`:
+Refresh lockfile after editing `pyproject.toml` (requires
+[uv](https://docs.astral.sh/uv/) on PATH):
 
 ```powershell
 .\scripts\refresh_lockfile.ps1
 # Linux/macOS: ./scripts/refresh_lockfile.sh
 ```
 
+`scripts/check_lockfile_stale.py` (GitLab `lockfile:check`) recompiles
+with the same `uv` flags and diffs the body.
 ## Test pyramid
 
 Markers (see `pyproject.toml`):
@@ -65,6 +72,13 @@ PyInstaller output: `build/<Windows|macOS|Linux>/<Release|Development>/`
 Wheel/sdist: repo-root `dist/` via `python -m build`.
 
 Release builds also emit `build-provenance.json` (git sha, lock hash, platform).
+
+**Linux extras:** `scripts/build_release.py` packages
+`ScannerManager-linux-x64.tar.gz` (SSOT for verify/smoke) and, when
+`appimagetool` is on PATH (GitLab `release:linux` downloads it), also
+`ScannerManager-x86_64.AppImage` via `scripts/linux_appimage.py`.
+Set `APPIMAGE_TOOL` to override the tool path; set
+`APPIMAGE_EXTRACT_AND_RUN=1` on FUSE-less CI images.
 
 ## Local build
 

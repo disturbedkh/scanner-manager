@@ -766,3 +766,52 @@ def test_sync_push_copy_error_is_recorded(tmp_path: Path, monkeypatch):
     )
     assert report.errors
 
+
+# ---------------------------------------------------------------------------
+# Volume serial (cross-platform helpers)
+# ---------------------------------------------------------------------------
+
+def test_linux_mount_device_picks_longest_prefix(tmp_path: Path):
+    from core import sdcard as sd
+
+    mounts = tmp_path / "mounts"
+    mounts.write_text(
+        "/dev/sda1 / ext4 rw 0 0\n"
+        "/dev/sdb1 /media/user/CARD vfat rw 0 0\n",
+        encoding="utf-8",
+    )
+    card_path = "/media/user/CARD/BCDx36HP"
+    assert sd._linux_mount_device(card_path, mounts_file=str(mounts)) == "/dev/sdb1"
+
+
+def test_linux_uuid_for_device_resolves_symlink(tmp_path: Path, monkeypatch):
+    from core import sdcard as sd
+
+    by_uuid = tmp_path / "by-uuid"
+    by_uuid.mkdir()
+    (by_uuid / "ABCD-1234").write_text("", encoding="utf-8")
+    monkeypatch.setattr(sd.os, "listdir", lambda _d: ["ABCD-1234"])
+    monkeypatch.setattr(
+        sd.os.path,
+        "realpath",
+        lambda p: "/dev/sdb1" if "ABCD" in str(p) or p == "/dev/sdb1" else str(p),
+    )
+    assert sd._linux_uuid_for_device("/dev/sdb1", by_uuid_dir=str(by_uuid)) == "ABCD1234"
+
+
+def test_volume_serial_linux_path(monkeypatch, tmp_path: Path):
+    from core import sdcard as sd
+
+    monkeypatch.setattr(sd.os, "name", "posix")
+    monkeypatch.setattr(sd.sys, "platform", "linux")
+    monkeypatch.setattr(sd, "_linux_volume_serial", lambda _p: "DEADBEEF01")
+    assert sd._volume_serial(str(tmp_path)) == "DEADBEEF01"
+
+
+def test_volume_serial_non_linux_posix_empty(monkeypatch, tmp_path: Path):
+    from core import sdcard as sd
+
+    monkeypatch.setattr(sd.os, "name", "posix")
+    monkeypatch.setattr(sd.sys, "platform", "darwin")
+    assert sd._volume_serial(str(tmp_path)) == ""
+

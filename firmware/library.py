@@ -21,7 +21,6 @@ import hashlib
 import logging
 import os
 import re
-import sys
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -188,13 +187,9 @@ def latest(versions: Sequence) -> Optional:
 
 
 def _user_cache_root() -> Path:
-    if sys.platform == "win32":
-        base = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local")))
-    elif sys.platform == "darwin":
-        base = Path.home() / "Library" / "Caches"
-    else:
-        base = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache")))
-    return base / "scanner-manager" / "firmware_cache"
+    from core.paths import cache_dir
+
+    return cache_dir() / "firmware_cache"
 
 
 class FirmwareCache:

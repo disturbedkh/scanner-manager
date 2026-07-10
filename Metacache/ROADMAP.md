@@ -97,6 +97,36 @@ Parked release blockers and outcomes:
 | Clean-VM smoke of GitLab Release assets | Installer/runtime parity outside CI runners |
 | Nightly / canary pipeline (optional) | Regression signal between tags |
 | Opt-in hardware-in-loop serial (`RUN_SERIAL_TESTS=1`) | Live/waterfall/firmware paths not covered by headless CI |
+| Linux HIL smoke (SDS100 dialout + Live dock) | Confirm udev/ModemManager on real Ubuntu — checklist: [`Dev/LINUX_BARE_METAL_HANDOFF.md`](Dev/LINUX_BARE_METAL_HANDOFF.md) |
+
+## Linux compatibility (0.11.x beta)
+
+**Status: Done for 0.11.x beta** (product code + docs). Remaining work is
+**Phase 4 bare-metal HIL** (operator checklist below) and optional parked
+polish—not blockers for continued public beta.
+
+**Shipped in-tree (2026-07-10):**
+
+- Universal `requirements.lock` (uv), Python ≥3.11
+- udev rules, volume UUID, mount discovery, XDG `core/paths.py`
+- Uniden Tools Windows-only banner, backup → XDG data
+- GitLab/GitHub Linux release + `--smoke`
+- AppImage + `.desktop` / PNG (`packaging/linux/`, `scripts/linux_appimage.py`);
+  tar.gz remains verify/smoke SSOT
+- Linux frozen in-place updater (`apply_update_linux` / Qt Update Now for
+  tar.gz/ELF); AppImage Update Now stays manual
+
+**Parked (not blocking beta):**
+
+| Residual | Notes |
+| --- | --- |
+| Native `.deb` | After AppImage proves useful; tar.gz + AppImage remain SSOT |
+| Bash-native Sonar Cloud compare + `publish_github` without `pwsh` | Dual-gate / mirror publish still PowerShell-primary |
+| RE: Wine MSI unpack / `usbmon` instead of USBPcap | Lab tooling only; product serial path is portable |
+| Windows Update Now full wiring | `apply_update_windows` exists; dialog still opens release page |
+| `legacy_tk` / `dev_mcp` → `core.paths` | Soft XDG alignment; see WORKSTREAMS backlog |
+
+**Bare-metal verification:** [`Dev/LINUX_BARE_METAL_HANDOFF.md`](Dev/LINUX_BARE_METAL_HANDOFF.md)
 
 ## Related docs
 
@@ -108,4 +138,8 @@ Parked release blockers and outcomes:
 | [`docs/README.md`](docs/README.md) | Contributor ops index |
 | [`Dev/PROJECT_STATE.md`](Dev/PROJECT_STATE.md) | Current snapshot |
 | [`Dev/WORKSTREAMS.md`](Dev/WORKSTREAMS.md) | Feature residuals (Tk detect, Favorites) |
+| [`Dev/LINUX_BARE_METAL_HANDOFF.md`](Dev/LINUX_BARE_METAL_HANDOFF.md) | Ubuntu/Debian bare-metal HIL checklist (beta closeout) |
 | [`packaging/README.md`](../packaging/README.md) | PyInstaller local build |
+| [`packaging/linux/99-uniden-scanner.rules`](../packaging/linux/99-uniden-scanner.rules) | Linux CDC udev rules |
+| [`packaging/linux/scanner-manager.desktop`](../packaging/linux/scanner-manager.desktop) | AppImage desktop entry |
+| [`scripts/linux_appimage.py`](../scripts/linux_appimage.py) | AppDir staging + appimagetool wrapper |

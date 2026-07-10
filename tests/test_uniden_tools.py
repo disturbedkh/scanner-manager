@@ -630,10 +630,8 @@ def test_default_cache_dir_fallback_without_localappdata(
 
     monkeypatch.delenv("SCANNER_MANAGER_CACHE_DIR", raising=False)
     monkeypatch.delenv("LOCALAPPDATA", raising=False)
-    monkeypatch.setattr(uniden_tools.Path, "home", lambda: tmp_path)
-    assert default_cache_dir() == (
-        tmp_path / ".local" / "share" / "scanner-manager" / "installers"
-    )
+    monkeypatch.setenv("SCANNER_MANAGER_DATA_DIR", str(tmp_path / "data"))
+    assert default_cache_dir() == tmp_path / "data" / "installers"
 
 
 def test_load_installer_manifest_missing_and_invalid(tmp_path: Path) -> None:

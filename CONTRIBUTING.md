@@ -5,11 +5,19 @@ accepts contributions via GitHub pull requests.
 
 ## Dev setup
 
-Python **3.9+** (see `requires-python` in `pyproject.toml`). The default
+Python **3.11+** (see `requires-python` in `pyproject.toml`). The default
 UI is Qt (PySide6) via `scanner-manager`; legacy Tk remains as
-`scanner-manager-tk`. On Linux, install your distro's Tk package if you
-need the legacy entry or Tk-only tests (`sudo apt install python3-tk` on
-Debian/Ubuntu).
+`scanner-manager-tk`.
+
+**Linux (Debian/Ubuntu) system packages** for Qt, audio, and Live serial:
+
+```bash
+sudo apt install libegl1 libgl1 libglib2.0-0 libxcb-cursor0 \
+  libportaudio2 python3-tk xvfb
+sudo usermod -aG dialout "$USER"   # re-login after
+sudo cp packaging/linux/99-uniden-scanner.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
 
 ```bash
 git clone https://github.com/disturbedkh/scanner-manager.git

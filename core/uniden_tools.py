@@ -128,18 +128,15 @@ class InstallerResolution:
 def default_cache_dir() -> Path:
     """Root directory for downloaded-and-verified Uniden installers.
 
-    Honors ``%LOCALAPPDATA%`` on Windows and falls back to
-    ``~/.local/share`` on other platforms so tests and non-Windows dev
-    hosts don't crash.
+    Honors ``SCANNER_MANAGER_CACHE_DIR``, else ``data_dir()/installers``
+    (XDG_DATA on Linux).
     """
     override = os.environ.get("SCANNER_MANAGER_CACHE_DIR")
     if override:
         return Path(override)
-    local = os.environ.get("LOCALAPPDATA")
-    if local:
-        return Path(local) / "scanner-manager" / "installers"
-    home = Path.home()
-    return home / ".local" / "share" / "scanner-manager" / "installers"
+    from core.paths import data_dir
+
+    return data_dir() / "installers"
 
 
 def _resolve_cache_target(raw: str) -> Path:
@@ -586,6 +583,11 @@ def run_tool(
     exits. Returns the exit code. If the tool is not installed the caller
     should use :func:`install_tool` instead; this raises ``FileNotFoundError``.
     """
+    if sys.platform != "win32":
+        raise OSError(
+            "Uniden vendor tools (Sentinel / BT885 Update Manager) are "
+            "Windows-only and cannot be launched on this platform."
+        )
     if not tool.installed or not tool.exe_path:
         raise FileNotFoundError(
             f"Tool {tool.tool_id} is not installed; nothing to launch."
@@ -638,6 +640,11 @@ def install_tool(tool: UnidenTool, *, wait: bool = True) -> int:
     bootstrappers). Raises ``FileNotFoundError`` when no installer is
     available - the UI should route to the download dialog in that case.
     """
+    if sys.platform != "win32":
+        raise OSError(
+            "Uniden vendor tool installers are Windows-only and cannot "
+            "run on this platform."
+        )
     if not tool.bundled_installer or not os.path.isfile(tool.bundled_installer):
         raise FileNotFoundError(
             f"No bundled installer found for {tool.tool_id}."

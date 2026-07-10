@@ -271,3 +271,149 @@ def test_apply_update_windows_spawns_bat_with_expected_args(tmp_path: Path):
     assert args[4] == "current.exe"
     assert args[5] == str(tmp_path / "new.exe")
     assert args[6] == str(tmp_path / "current.exe")
+
+
+# ---------------------------------------------------------------------------
+# Linux swap + extract
+# ---------------------------------------------------------------------------
+
+
+def test_build_linux_swap_script_has_expected_shape(tmp_path: Path):
+    script = tmp_path / "swap.sh"
+    updater.build_linux_swap_script(script)
+    content = script.read_text(encoding="utf-8")
+    assert content.startswith("#!/bin/sh")
+    assert "kill -0" in content
+    assert 'mv -f "$new_bin" "$cur_exe"' in content
+    assert "chmod +x" in content
+    assert "nohup" in content
+    assert 'rm -f -- "$0"' in content
+
+
+def test_apply_update_linux_spawns_sh_with_expected_args(tmp_path: Path):
+    spawn = MagicMock()
+    script = updater.apply_update_linux(
+        new_binary=tmp_path / "ScannerManager.new",
+        current_exe=tmp_path / "ScannerManager",
+        script_dir=tmp_path,
+        spawn=spawn,
+    )
+    assert script.exists()
+    spawn.assert_called_once()
+    args = spawn.call_args[0][0]
+    assert args[0] == "/bin/sh"
+    assert args[1] == str(script)
+    assert args[3] == str(tmp_path / "ScannerManager.new")
+    assert args[4] == str(tmp_path / "ScannerManager")
+
+
+def test_extract_linux_release_binary(tmp_path: Path):
+    import tarfile
+
+    archive = tmp_path / "ScannerManager-linux-x64.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        payload = b"#!/bin/sh\necho ok\n"
+        info = tarfile.TarInfo(name="ScannerManager")
+        info.size = len(payload)
+        tar.addfile(info, io.BytesIO(payload))
+    out = updater.extract_linux_release_binary(archive, tmp_path / "out")
+    assert out.name == "ScannerManager.new"
+    assert out.read_bytes() == payload
+
+
+def test_extract_linux_release_binary_rejects_traversal(tmp_path: Path):
+    import tarfile
+
+    archive = tmp_path / "bad.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        payload = b"x"
+        info = tarfile.TarInfo(name="../ScannerManager")
+        info.size = len(payload)
+        tar.addfile(info, io.BytesIO(payload))
+    with pytest.raises(ValueError, match="traversal"):
+        updater.extract_linux_release_binary(archive, tmp_path / "out")
+
+
+def test_extract_linux_release_binary_missing_member(tmp_path: Path):
+    import tarfile
+
+    archive = tmp_path / "empty.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        payload = b"readme"
+        info = tarfile.TarInfo(name="README")
+        info.size = len(payload)
+        tar.addfile(info, io.BytesIO(payload))
+    with pytest.raises(ValueError, match="no ScannerManager"):
+        updater.extract_linux_release_binary(archive, tmp_path / "out")
+
+
+def test_is_running_as_appimage(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("APPIMAGE", raising=False)
+    monkeypatch.setattr(updater.sys, "argv", ["/opt/ScannerManager"])
+    assert not updater.is_running_as_appimage()
+    monkeypatch.setenv("APPIMAGE", "/tmp/ScannerManager-x86_64.AppImage")
+    assert updater.is_running_as_appimage()
+    monkeypatch.delenv("APPIMAGE", raising=False)
+    monkeypatch.setattr(
+        updater.sys, "argv", ["/home/u/ScannerManager-x86_64.AppImage"]
+    )
+    assert updater.is_running_as_appimage()
+
+
+def test_install_linux_update_from_release(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    import tarfile
+
+    payload = b"new-bin"
+    archive_bytes = io.BytesIO()
+    with tarfile.open(fileobj=archive_bytes, mode="w:gz") as tar:
+        info = tarfile.TarInfo(name="ScannerManager")
+        info.size = len(payload)
+        tar.addfile(info, io.BytesIO(payload))
+    archive_data = archive_bytes.getvalue()
+    digest = hashlib.sha256(archive_data).hexdigest()
+
+    info = updater.UpdateInfo(
+        tag="v0.12.0",
+        version="0.12.0",
+        assets=[
+            updater.Asset(
+                name="ScannerManager-linux-x64.tar.gz",
+                browser_download_url="https://x/lin.tar.gz",
+                size=len(archive_data),
+            ),
+            updater.Asset(
+                name="ScannerManager-linux-x64.tar.gz.sha256",
+                browser_download_url="https://x/lin.tar.gz.sha256",
+            ),
+        ],
+    )
+
+    def fake_urlopen(req, timeout=60.0):  # noqa: ANN001
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        body = archive_data if url.endswith(".tar.gz") else (digest + "\n").encode()
+        resp = MagicMock()
+        resp.read = MagicMock(side_effect=[body, b""] if url.endswith(".tar.gz") else [body])
+        resp.headers = {"Content-Length": str(len(body))}
+        resp.__enter__ = MagicMock(return_value=resp)
+        resp.__exit__ = MagicMock(return_value=False)
+        # stream reads in a loop — for sha one read is enough; for tar need chunks
+        if url.endswith(".tar.gz"):
+            chunks = [archive_data[i : i + 100] for i in range(0, len(archive_data), 100)]
+            chunks.append(b"")
+            resp.read = MagicMock(side_effect=chunks)
+        return resp
+
+    spawn = MagicMock()
+    current = tmp_path / "ScannerManager"
+    current.write_bytes(b"old")
+    script = updater.install_linux_update_from_release(
+        info,
+        current,
+        work_dir=tmp_path / "work",
+        urlopen=fake_urlopen,
+        spawn=spawn,
+    )
+    assert script.exists()
+    spawn.assert_called_once()
+    new_bin = tmp_path / "work" / "ScannerManager.new"
+    assert new_bin.read_bytes() == payload

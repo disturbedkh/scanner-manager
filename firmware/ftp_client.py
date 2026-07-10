@@ -13,7 +13,6 @@ from __future__ import annotations
 import ftplib
 import json
 import logging
-import sys
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime
@@ -70,18 +69,10 @@ SENTINEL_FTP, BT885_FTP, _FTP_ALLOWED_HOSTS = _build_endpoints()
 
 def _allowed_download_roots() -> tuple[Path, ...]:
     """Roots where ``download`` may write firmware blobs."""
+    from core.paths import cache_dir
+
     roots = [Path(tempfile.gettempdir()).resolve(strict=False)]
-    if sys.platform == "win32":
-        import os
-
-        base = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local")))
-    elif sys.platform == "darwin":
-        base = Path.home() / "Library" / "Caches"
-    else:
-        import os
-
-        base = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache")))
-    roots.append((base / "scanner-manager" / "firmware_cache").resolve(strict=False))
+    roots.append((cache_dir() / "firmware_cache").resolve(strict=False))
     return tuple(roots)
 
 

@@ -20,9 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import shutil
-import sys
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -47,13 +45,9 @@ logger = logging.getLogger(__name__)
 
 
 def _snapshots_root() -> Path:
-    if sys.platform == "win32":
-        base = Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming")))
-    elif sys.platform == "darwin":
-        base = Path.home() / "Library" / "Application Support"
-    else:
-        base = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
-    return base / "scanner-manager" / "snapshots"
+    from core.paths import config_dir
+
+    return config_dir() / "snapshots"
 
 
 @dataclass

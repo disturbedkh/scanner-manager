@@ -20,7 +20,7 @@ folder README, the folder README wins.
 
 | Tool | Purpose | Install |
 |---|---|---|
-| **Python 3.10+** | Probe scripts, decoders, analyzers | `winget install Python.Python.3.13` (or any 3.10+) |
+| **Python 3.11+** | Probe scripts, decoders, analyzers | `winget install Python.Python.3.13` (or any 3.11+) |
 | **pyserial** | USB CDC access for probes | `py -m pip install --user pyserial` |
 | **Java 21 JDK** | Required by Ghidra | `winget install --id EclipseAdoptium.Temurin.21.JDK -e --source winget` |
 | **Ghidra** | Static analysis of SUB firmware | `powershell -ExecutionPolicy Bypass -File Metacache\Dev\RE\tools\automation\bootstrap_ghidra.ps1` (auto-installs latest to `<GHIDRA_INSTALL>\`) |
