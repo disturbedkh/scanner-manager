@@ -2,18 +2,28 @@
 
 > Status: shipped (v0.11.x)
 
-Scanner Manager runs on all three major desktop OSes. The core — HPD
-editing, ZIP/GPS simulation, workspaces, MetaStore — works identically
-everywhere on whichever shell you launch. The Uniden vendor tools
-(Sentinel and BT885 Update Manager) are Windows-only binaries, so on
-macOS and Linux the Uniden Tools panel shows a "Windows only" notice.
-Everything else is unaffected.
+Get Scanner Manager running on your PC so you can edit scanner channel
+files, preview coverage, and (on supported models) mirror live activity.
+
+The same core features work on Windows, macOS, and Linux. **Uniden
+Tools** (Sentinel and BT885 Update Manager) are **Windows only** — on
+macOS and Linux that panel shows a Windows-only notice; everything else
+still works.
+
+## Prerequisites
+
+- A desktop PC (Windows, macOS, or Linux)
+- For SD-card editing: the scanner's microSD card (or the scanner in
+  **Mass Storage** USB mode — the card appears like a USB drive; see
+  [Glossary](Glossary))
+- Optional: USB serial connection for SDS100/200 live features (**Serial**
+  mode — see [Glossary](Glossary))
 
 ## Prebuilt downloads (easiest)
 
-Every tagged release ships binaries for Windows, macOS, and Linux. Go
-to the [Releases page](https://github.com/disturbedkh/scanner-manager/releases)
-and grab the one for your OS. Prebuilt builds launch the **Qt shell**
+Every tagged release ships binaries for Windows, macOS, and Linux. Open
+the [Releases page](https://github.com/disturbedkh/scanner-manager/releases)
+and download the build for your OS. Prebuilt builds open the **Qt** app
 (`ScannerManager` / `ScannerManager.exe`).
 
 ### Windows
@@ -26,28 +36,30 @@ and grab the one for your OS. Prebuilt builds launch the **Qt shell**
 ### macOS
 
 1. Download `ScannerManager-macos.tar.gz`.
-2. Double-click to extract, move `ScannerManager.app` to `/Applications`.
-3. First launch: right-click the app → **Open**. Gatekeeper will warn
-   once because the app isn't notarized; after you approve it, it
-   launches normally from then on.
+2. Double-click to extract, then move `ScannerManager.app` to
+   `/Applications`.
+3. First launch: right-click the app → **Open**. Gatekeeper warns once
+   because the app isn't notarized; after you approve it, later launches
+   are normal.
 
 ### Linux
 
-Tagged releases ship two Linux artifacts (same binary payload):
+Tagged releases ship two Linux downloads (same program, different
+packaging):
 
-| Artifact | Use |
+| Download | When to use it |
 | --- | --- |
-| `ScannerManager-linux-x64.tar.gz` | Portable extract (CI SSOT / smoke) |
-| `ScannerManager-x86_64.AppImage` | Double-click / desktop launcher |
+| `ScannerManager-x86_64.AppImage` | Easiest on a desktop — one file you can double-click |
+| `ScannerManager-linux-x64.tar.gz` | Portable folder; also what **Update Now** can replace automatically |
 
-**AppImage (easiest on a desktop):**
+**AppImage (recommended for most desktops):**
 
 ```bash
 chmod +x ScannerManager-x86_64.AppImage
 ./ScannerManager-x86_64.AppImage
 ```
 
-**Tar.gz:**
+**Tar.gz (folder install):**
 
 ```bash
 tar -xzf ScannerManager-linux-x64.tar.gz
@@ -55,15 +67,16 @@ chmod +x ScannerManager
 ./ScannerManager
 ```
 
-The binary was built on Ubuntu 22.04 and bundles the Qt runtime.
-On minimal distros install host X11/GL libs:
+The binary was built on Ubuntu 22.04 and includes the Qt runtime. On
+minimal distros, install display libraries:
 
 ```bash
 sudo apt install libxcb-cursor0 libegl1 libgl1 libglib2.0-0
 ```
 
-**Live serial (SDS100/200):** add your user to `dialout`, install the
-udev rule so ModemManager does not claim the CDC ports, then re-login:
+**Live serial (SDS100/200):** add your user to the `dialout` group,
+install the udev rule so ModemManager does not grab the scanner ports,
+then log out and back in:
 
 ```bash
 sudo usermod -aG dialout "$USER"
@@ -71,19 +84,20 @@ sudo cp packaging/linux/99-uniden-scanner.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
-(The AppImage does **not** install udev rules automatically; a copy is
-bundled under `usr/share/doc/scanner-manager/` inside the AppDir.)
+(The AppImage does **not** install udev rules for you. A copy of the
+rule file is bundled under `usr/share/doc/scanner-manager/` inside the
+AppImage.)
 
-**Wayland:** if the window is blank or the coverage map fails, try
-`QT_QPA_PLATFORM=xcb ./ScannerManager` (same env works with the AppImage).
+**Wayland:** if the window is blank or the coverage map fails, try:
 
-After writing firmware/HPDB to a VFAT card, eject safely (or
-`sync` / `udisksctl unmount -b /dev/sdX1`) before unplugging.
+```bash
+QT_QPA_PLATFORM=xcb ./ScannerManager
+```
 
-**Bare-metal verification (operators / agents):** full Ubuntu/Debian
-smoke checklist (Live serial, SD, streaming, updater) lives in
-[`Metacache/Dev/LINUX_BARE_METAL_HANDOFF.md`](../Metacache/Dev/LINUX_BARE_METAL_HANDOFF.md)—not
-required for a normal install.
+(Same environment variable works with the AppImage.)
+
+After writing firmware or HPDB files to a VFAT card, eject the card
+safely (or run `sync`) before unplugging.
 
 ### Verifying the download
 
@@ -100,48 +114,60 @@ shasum -a 256 ScannerManager-macos.tar.gz
 sha256sum   ScannerManager-linux-x64.tar.gz
 ```
 
-Compare against the value inside the `.sha256` file next to the
+Compare the result to the value inside the `.sha256` file next to the
 download. If they don't match, do **not** run the binary.
 
 ### Staying current
 
-After the first install you don't need to re-download manually. **Help
-→ Check for Updates...** from inside the app will pull the next
-release directly from GitHub, verify its SHA-256, and swap the EXE
-for you on Windows. See [Updating](Updating) for the full flow.
+After the first install you usually don't need to re-download by hand.
+Use **Help → Check for Updates...** inside the app. See
+[Updating](Updating) for what **Update Now** does on each platform
+(Windows, Linux tar.gz, Linux AppImage, macOS).
 
-## First-run (Qt default)
+## First run (Qt default)
 
-Launch `scanner-manager` (or the prebuilt binary). Register your
-scanner under **Devices → Add device…**, point it at your SD card's
-`BCDx36HP` folder (or the card root — the app resolves
-`BCDx36HP/HPDB/hpdb.cfg` automatically), and pick the device in the
-header dropdown. The HPDB tree loads when a valid path is bound.
+1. Launch `ScannerManager` (prebuilt) or `scanner-manager` (from source).
+2. **Devices → Add device…** — choose BearTracker 885 or SDS100/200,
+   give it a name, and point at your SD card's `BCDx36HP` folder (or the
+   card root — the app finds `BCDx36HP/HPDB/hpdb.cfg` for you).
+3. Pick the device in the header dropdown.
+
+**HPDB** is the scanner's channel database on the card (`hpdb.cfg` plus
+the `s_*.hpd` files). The tree loads when a valid path is bound. See
+[Glossary](Glossary) and [Quickstart](Quickstart).
 
 ## From source (any OS)
 
-Requires **Python 3.11+**. Qt is the default; Tk is optional for the
-legacy entry only.
+Requires **Python 3.11+**. Qt is the default; Classic Tk is optional.
 
 ```bash
 git clone https://github.com/disturbedkh/scanner-manager.git
 cd scanner-manager
 python -m pip install -U pip
-# Prefer the universal lock (CI SSOT), then editable without re-resolving:
 python -m pip install -r requirements.lock
 python -m pip install -e . --no-deps
-# Or: python -m pip install -e ".[full,dev]"
 scanner-manager          # Qt (default)
+```
+
+<details>
+<summary>Classic Tk shell</summary>
+
+```bash
 scanner-manager-tk       # legacy Tk fallback
 ```
 
+Use this only if you need a Classic Tk workflow (for example RadioReference
+import) or prefer the older layout.
+
+</details>
+
 ### Per-OS notes
 
-- **Windows**: the standard python.org installer is fine for Qt.
+- **Windows:** the standard python.org installer is fine for Qt.
   Install Tk only if you need `scanner-manager-tk`.
-- **macOS**: prefer the python.org build for Tk fallback; Qt/PySide6
-  works with Homebrew or python.org Python.
-- **Linux (Debian/Ubuntu)**:
+- **macOS:** Qt/PySide6 works with Homebrew or python.org Python.
+  Prefer the python.org build if you use Classic Tk.
+- **Linux (Debian/Ubuntu):**
 
   ```bash
   sudo apt install libegl1 libgl1 libglib2.0-0 libxcb-cursor0 \
@@ -151,52 +177,67 @@ scanner-manager-tk       # legacy Tk fallback
   sudo udevadm control --reload-rules && sudo udevadm trigger
   ```
 
-  Fedora: `sudo dnf install python3-tkinter portaudio`. Arch: `sudo pacman -S tk portaudio`.
+  Fedora: `sudo dnf install python3-tkinter portaudio`. Arch:
+  `sudo pacman -S tk portaudio`.
 
-## Optional extras
+## Optional extras (from source)
 
 Install feature groups as needed:
 
 | Install | Adds |
 | --- | --- |
-| `pip install -e .[radioreference]` | RadioReference SOAP API (`zeep`) + credential storage (`keyring`). |
-| `pip install -e .[streaming]` | LAN streaming server (FastAPI, encoders). |
-| `pip install -e .[firmware]` | Firmware FTP client (included in full installs). |
-| `pip install -e .[map]` | Legacy Tk tile map (`tkintermapview`). Qt coverage uses PySide6 + Leaflet instead. |
-| `pip install -e .[donate-qr]` | QR codes in the Donate dialog (legacy Tk). |
-| `pip install -e .[full]` | All optional groups above. |
+| `pip install -e .[radioreference]` | RadioReference SOAP API + credential storage |
+| `pip install -e .[streaming]` | LAN streaming server |
+| `pip install -e .[firmware]` | Firmware FTP client (included in full installs) |
+| `pip install -e .[map]` | Classic Tk tile map (`tkintermapview`). Qt coverage uses PySide6 + Leaflet instead |
+| `pip install -e .[donate-qr]` | QR codes in the Donate dialog (Classic Tk) |
+| `pip install -e .[full]` | All optional groups above |
 
 ## Uninstall / reset
 
-Prebuilt binaries are self-contained — delete the EXE / .app /
-binary. User data lives under:
+Prebuilt binaries are self-contained — delete the EXE / `.app` /
+binary / AppImage. User data lives under:
 
-- Windows: `%APPDATA%\scanner-manager\` (config), `%LOCALAPPDATA%\scanner-manager\` (cache/state)
-- macOS: `~/Library/Application Support/scanner-manager/` (and crash logs under `~/Library/Logs/scanner-manager/`)
+- Windows: `%APPDATA%\scanner-manager\` (config),
+  `%LOCALAPPDATA%\scanner-manager\` (cache/state)
+- macOS: `~/Library/Application Support/scanner-manager/`
+  (crash logs under `~/Library/Logs/scanner-manager/`)
 - Linux:
-  - Config: `$XDG_CONFIG_HOME/scanner-manager/` (default `~/.config/scanner-manager/`)
-  - Cache: `$XDG_CACHE_HOME/scanner-manager/` (default `~/.cache/scanner-manager/`)
-  - State/crash: `$XDG_STATE_HOME/scanner-manager/` (default `~/.local/state/scanner-manager/`)
-  - Data (virtual cards, card backups): `$XDG_DATA_HOME/scanner-manager/` (default `~/.local/share/scanner-manager/`)
+  - Config: `~/.config/scanner-manager/` (or `$XDG_CONFIG_HOME/...`)
+  - Cache: `~/.cache/scanner-manager/`
+  - State/crash: `~/.local/state/scanner-manager/`
+  - Data (virtual cards, backups): `~/.local/share/scanner-manager/`
 
 Source installs: `pip uninstall beartracker-885-scanner-manager`.
 
-## Troubleshooting
+## If something goes wrong
 
 - **`ImportError: No module named _tkinter`** — only affects
-  `scanner-manager-tk`. Install your distro's Tk package or use the Qt
+  `scanner-manager-tk`. Install your distro's Tk package, or use the Qt
   default.
-- **macOS dialogs look cut off (Tk only)** — switch to python.org Python
-  or use the Qt shell.
-- **Blank window on Linux/X11 over SSH** — Scanner Manager needs a
-  real display or `xvfb-run`. On Wayland, try `QT_QPA_PLATFORM=xcb`.
+- **macOS dialogs look cut off (Classic Tk only)** — switch to
+  python.org Python or use the Qt shell.
+- **Blank window on Linux** — needs a real display. On Wayland, try
+  `QT_QPA_PLATFORM=xcb`. Over SSH, use a local desktop or `xvfb-run`.
 - **Permission denied on `/dev/ttyACM*`** — add yourself to `dialout`
-  and install `packaging/linux/99-uniden-scanner.rules` (see Linux
-  section above).
-- **Streaming clients cannot connect** — the LAN server binds
-  `0.0.0.0:8765`. Allow the port in your firewall (`ufw allow 8765/tcp`
-  on Ubuntu) or bind only on trusted networks.
+  and install the udev rule (Linux section above).
+- **Streaming clients cannot connect** — the LAN server listens on port
+  `8765`. Allow it in your firewall (`ufw allow 8765/tcp` on Ubuntu) or
+  bind only on trusted networks.
 - **EXE / .app doesn't start** — delete corrupt files under the
   user-data paths above and relaunch.
 - **Uniden Tools panel says "Windows only"** — expected on macOS /
-  Linux. Use a Windows host for Sentinel / BT885 Update Manager.
+  Linux. Use a Windows PC for Sentinel / BT885 Update Manager.
+
+More recovery tips: [Troubleshooting](Troubleshooting).
+
+## Internals
+
+Operators verifying a full Ubuntu/Debian install (Live serial, SD,
+streaming, updater) can follow
+[`Metacache/Dev/LINUX_BARE_METAL_HANDOFF.md`](../Metacache/Dev/LINUX_BARE_METAL_HANDOFF.md).
+That checklist is not required for a normal desktop install.
+
+From-source installs that prefer an editable resolve without the lock
+file can use `python -m pip install -e ".[full,dev]"` instead of the
+`requirements.lock` + `--no-deps` path above.

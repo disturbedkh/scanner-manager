@@ -2,12 +2,21 @@
 
 > Status: shipped (v0.11.x)
 
-Notes for contributors and anyone trying to understand why Scanner
-Manager behaves the way it does. For release checklists and file-format
-specs, see
+Edits you make in Scanner Manager are recorded so you can undo them.
+Every change lands in a change history next to your channel file; one
+**Revert** can roll back a single edit or a whole import. A session
+backup is written on every save as a second safety net.
+
+For the user-facing tour of docks and menus, see [Qt UI](Qt-UI).
+Release checklists and file-format specs live in
 [`Metacache/docs/`](https://github.com/disturbedkh/scanner-manager/tree/main/Metacache/docs).
 
-## Product layout (v0.11.x)
+## Internals / For contributors
+
+Package layout, MetaStore event types, and how the shells share domain
+logic. Prefer `0.11.x` when referring to the current product line.
+
+### Product layout (0.11.x)
 
 Scanner Manager is no longer a single `scanner_manager.py` monolith.
 The default entry (`scanner-manager`) launches the PySide6 shell under
@@ -32,7 +41,7 @@ packaging/            # PyInstaller specs + Qt entry shim
 wiki/                 # In-repo wiki SSOT (published to GitHub wiki)
 ```
 
-## Data model
+### Data model
 
 HPD parsing and the tree model live in `core/hpd.py`:
 
@@ -49,12 +58,12 @@ it across renames and re-parses. `legacy_tk/scanner_manager.py`
 re-exports these types for backward compatibility; new code should
 import from `core.hpd`.
 
-## MetaStore event log
+### MetaStore event log
 
 `core/metastore.py` defines an `Event` dataclass plus a `MetaStore`
 singleton backed by a sidecar JSON file (`<hpdname>.meta.json`).
 
-### Event types
+#### Event types
 
 - `OP_ADD_GROUP`, `OP_ADD_CFREQ`, `OP_ADD_TGID` — additions.
 - `OP_EDIT_ENTRY`, `OP_EDIT_GROUP`, `OP_EDIT_SYSTEM` — in-place edits.
@@ -67,7 +76,7 @@ singleton backed by a sidecar JSON file (`<hpdname>.meta.json`).
 - `OP_EXTERNAL_CHANGE` — wraps a Uniden-updater pass; the replayer
   re-applies pre-existing events on top.
 
-### Batching
+#### Batching
 
 `MetaStore.batch()` is a context manager. Inside it:
 
@@ -80,27 +89,27 @@ Callers that perform hundreds of mutations inside a batch (imports,
 bulk remaps, pipeline updates) therefore produce exactly one sidecar
 write regardless of mutation count.
 
-### `log=False`
+#### `log=False`
 
 Mutation helpers accept an optional `log: bool = True`. Inside a batch
 the caller can opt out of the per-mutation event and rely on a single
 composite event (e.g. the import apply). This keeps the change log
 small and human-readable.
 
-### Revert semantics
+#### Revert semantics
 
 `Event.revert(tree)` is responsible for undoing itself. For composite
 events, that means walking the payload and reversing every sub-
 mutation in reverse order. The UI never re-derives revert logic; it
 just calls `Event.revert()`.
 
-## Multi-scanner backend
+### Multi-scanner backend
 
 `scanner_profiles/` registers concrete profiles at import time via
 `register_profile()`. The active profile is a runtime singleton
 (`get_active_profile()` / `set_active_profile()`).
 
-Shipping profiles (v0.11.1):
+Shipping profiles (0.11.x):
 
 | ID | Scanner | Notes |
 | --- | --- | --- |
@@ -117,7 +126,7 @@ confirm dialog to switch the device profile (and persist
 `data/scanner_profiles.json` is the manifest of known models;
 `data/devices.json` holds user device rows (label, profile id, SD path).
 
-## Device manager
+### Device manager
 
 `core/device_manager.py` loads and persists the device manifest.
 The Qt header combobox (`gui/header.py`) lists registered devices and
@@ -125,7 +134,7 @@ emits `deviceChanged`; `gui/main_window.py` rebroadcasts
 `activeDeviceChanged` so every dock reloads HPDB state for the new
 device.
 
-## Import pipeline
+### Import pipeline
 
 RadioReference import (HTML scrape + optional SOAP via `core/rr_api.py`)
 is implemented in `legacy_tk/scanner_manager.py` and its helper
@@ -141,7 +150,7 @@ Typical import flow (Tk):
    the whole operation.
 4. `record(payload)` once; end the batch (one sidecar write).
 
-## Update pipeline
+### Update pipeline
 
 `_run_update_pipeline` (legacy Tk) wraps Uniden tool runs in an
 `OP_EXTERNAL_CHANGE` event and replays pre-existing user events on top
@@ -149,13 +158,13 @@ of whatever the tool wrote. Qt exposes the same Uniden Tools dialog
 (`gui/dialogs/uniden_tools.py`) for launch/detection; the full
 push → update → pull orchestration remains strongest in legacy Tk.
 
-## Session snapshot
+### Session snapshot
 
 On every save, the app copies the current HPD to
 `<hpdname>.session.bak`. This is a single-file safety net; it is
 deliberately not timestamped or rotated.
 
-## Qt shell structure
+### Qt shell structure
 
 `gui/main_window.py` hosts:
 
@@ -174,7 +183,7 @@ Tk `tkintermapview` path.
 
 See [Qt UI](Qt-UI) for the user-facing tour.
 
-## Legacy Tk fallback
+### Legacy Tk fallback
 
 `legacy_tk/scanner_manager.py` is the original monolith, split into
 helper modules (`sm_helpers.py`, `geo_tables.py`, `import_dialogs.py`,
@@ -188,7 +197,7 @@ etc.) but still one process. It retains features not yet ported to Qt:
 Launch with `scanner-manager-tk`. Parity constants for BT885 remain
 locked by `tests/test_bt885_parity.py`.
 
-## Tests
+### Tests
 
 - `tests/test_metastore.py` — event logging, batching, revert.
 - `tests/test_scanner_profiles.py` / `tests/test_sds100_profile.py` —

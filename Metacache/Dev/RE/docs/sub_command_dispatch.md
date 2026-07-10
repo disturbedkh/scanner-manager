@@ -1,15 +1,15 @@
 # SUB Command Dispatch Table
 
 > **Canonical narrative is in the wiki**:
-> [`wiki/RE-Serial-Protocol.md`](../../../wiki/RE-Serial-Protocol.md)
+> [`wiki/RE-Serial-Protocol.md`](../../../../wiki/RE-Serial-Protocol.md)
 > (the "SUB port" section). This file is the lab notebook with the
 > full dispatch decompile.
 
 > Manually curated from Track A Round 1-3 RE work, 2026-05-03.
 > Source function: `FUN_14006ca6` (sub_1.03.15_inflated.bin, 0x14006b20-0x14006f45).
 > Companion artefacts:
-> - [`firmware/decompiles/14006ca6_FUN_14006ca6.json`](firmware/decompiles/14006ca6_FUN_14006ca6.json) - full decompile.
-> - [`sessions/round1_2_findings_2026-05-03.md`](sessions/round1_2_findings_2026-05-03.md) - narrative.
+> - [`firmware/decompiles/14006ca6_FUN_14006ca6.json`](../firmware/decompiles/14006ca6_FUN_14006ca6.json) - full decompile.
+> - [`sessions/round1_2_findings_2026-05-03.md`](../sessions/round1_2_findings_2026-05-03.md) - narrative.
 > - [`sessions/dispatch_candidates.txt`](../sessions/dispatch_candidates.txt) - input for [`tools/probes/verify_dispatch.py`](../tools/probes/verify_dispatch.py).
 >
 > **Status: `pending Round 4 live verification` for the inline-emitter handlers.**
@@ -193,7 +193,7 @@ confirmed.
 ## Round 4 candidates file
 
 The 13 mnemonics above are written into
-[`sessions/dispatch_candidates.txt`](sessions/dispatch_candidates.txt) for
+[`sessions/dispatch_candidates.txt`](../sessions/dispatch_candidates.txt) for
 [`tools/probes/verify_dispatch.py`](../tools/probes/verify_dispatch.py) to falsify against the live
 COM3 port. Five of them (`h`, plus `t`, `u`, `s` per their handler
 shapes) we expect to be silent or behave specially - the verifier will

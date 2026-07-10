@@ -1,7 +1,7 @@
 # SDS100 Inter-MCU Protocol (USART2)
 
 > **Canonical narrative is in the wiki**:
-> [`wiki/RE-Inter-MCU-Bus.md`](../../../wiki/RE-Inter-MCU-Bus.md).
+> [`wiki/RE-Inter-MCU-Bus.md`](../../../../wiki/RE-Inter-MCU-Bus.md).
 > This file is the lab notebook with full bit-level detail.
 
 > Replaces the auto-generated draft. Curated from Track A Round 5 RE work,
@@ -140,7 +140,7 @@ Open questions for Phase 7 (MAIN MCU dump):
 
 ## Open empirical follow-ups
 
-These don't need MAIN flash; they can be done with `_probe_batch.py`
+These don't need MAIN flash; they can be done with `tools/probes/probe_batch.py`
 and a USART2 logic-analyser tap (the latter requires opening the
 scanner case):
 
@@ -157,9 +157,9 @@ scanner case):
 
 ## Cross-reference
 
-- [`firmware/decompiles/1400e9e0_FUN_1400e9e0.json`](firmware/decompiles/1400e9e0_FUN_1400e9e0.json) - USART2 RX class decoder
-- [`firmware/decompiles/1400eafc_FUN_1400eafc.json`](firmware/decompiles/1400eafc_FUN_1400eafc.json) - USART2 TX
-- [`firmware/decompiles/14008340_FUN_14008340.json`](firmware/decompiles/14008340_FUN_14008340.json) - byte-stream framer
-- [`firmware/decompiles/140068a4_FUN_140068a4.json`](firmware/decompiles/140068a4_FUN_140068a4.json) - channel-1 byte feeder
-- [`firmware/decompiles/1400e57c_FUN_1400e57c.json`](firmware/decompiles/1400e57c_FUN_1400e57c.json) - 4-USART init (baud, LCR)
-- [`firmware/decompiles/1400eb24_FUN_1400eb24.json`](firmware/decompiles/1400eb24_FUN_1400eb24.json) - USART2-specific GPIO/SCU mux
+- [`firmware/decompiles/1400e9e0_FUN_1400e9e0.json`](../firmware/decompiles/1400e9e0_FUN_1400e9e0.json) - USART2 RX class decoder
+- [`firmware/decompiles/1400eafc_FUN_1400eafc.json`](../firmware/decompiles/1400eafc_FUN_1400eafc.json) - USART2 TX
+- [`firmware/decompiles/14008340_FUN_14008340.json`](../firmware/decompiles/14008340_FUN_14008340.json) - byte-stream framer
+- [`firmware/decompiles/140068a4_FUN_140068a4.json`](../firmware/decompiles/140068a4_FUN_140068a4.json) - channel-1 byte feeder
+- [`firmware/decompiles/1400e57c_FUN_1400e57c.json`](../firmware/decompiles/1400e57c_FUN_1400e57c.json) - 4-USART init (baud, LCR)
+- [`firmware/decompiles/1400eb24_FUN_1400eb24.json`](../firmware/decompiles/1400eb24_FUN_1400eb24.json) - USART2-specific GPIO/SCU mux

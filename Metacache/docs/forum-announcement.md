@@ -1,9 +1,18 @@
 # Forum announcement (copy-pasteable)
 
-> Status: shipped (v0.11.x) — beta template for RadioReference / Reddit.
-> Strip HTML comments before posting.
+> Status: **historical** — retained beta announce template for
+> RadioReference / Reddit. Not a living product page. Prefer current
+> [wiki Home](https://github.com/disturbedkh/scanner-manager/wiki) +
+> GitLab/GitHub Release notes for public wording. Strip HTML comments
+> before posting if you reuse a block below.
 
 ---
+
+## Historical — v0.11.x beta template
+
+> Status: **historical** — 0.11.x beta forum draft (Qt UI, SDS100/200,
+> multi-device). Superseded as living copy by wiki + release notes;
+> keep for diff / reuse only.
 
 **Scanner Manager v0.11.x beta — Qt UI, SDS100/200, multi-device**
 
@@ -72,7 +81,7 @@ Feedback, issues, and PRs welcome. Happy scanning.
 
 ## Historical — v0.9.0 alpha template
 
-> Status: historical — superseded by the 0.11.x block above.
+> Status: **historical** — superseded by the 0.11.x block above.
 
 The original BearTracker-885-only alpha announcement targeted
 `v0.9.0-alpha.1` with Tk as the primary UI. Retained for diff reference

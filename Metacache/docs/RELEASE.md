@@ -7,6 +7,10 @@
 Build-system design: [`../Dev/BUILD_SYSTEM.md`](../Dev/BUILD_SYSTEM.md).
 Sonar gates: [`../Dev/SONARQUBE.md`](../Dev/SONARQUBE.md).
 Release-blocker triage / GA gate: [`../ROADMAP.md`](../ROADMAP.md).
+GitHub Metacache filter: [`../EXPORT_POLICY.md`](../EXPORT_POLICY.md).
+
+Prefer version wording **`0.11.x`** in docs; pin **`0.11.2` / `v0.11.2`**
+only where the cut must match `pyproject.toml` + tag.
 
 ## 0. Pre-flight
 
@@ -25,9 +29,9 @@ Release-blocker triage / GA gate: [`../ROADMAP.md`](../ROADMAP.md).
 - [ ] Sonar: SonarCloud gate green on GitHub `main`; optional local
       `.\scripts\sonar_scan.ps1` (VPS compliance) + `.\scripts\sonar_compare.ps1`.
 - [ ] **Version sync (hard gate):** all three match the intended release:
-      1. `pyproject.toml` `version` (e.g. `0.11.1`)
-      2. `CHANGELOG.md` heading `## [0.11.1] - YYYY-MM-DD`
-      3. Intended annotated tag name `v0.11.1`
+      1. `pyproject.toml` `version` (e.g. `0.11.2`)
+      2. `CHANGELOG.md` heading `## [0.11.2] - YYYY-MM-DD`
+      3. Intended annotated tag name `v0.11.2`
 - [ ] **Tag existence check:** confirm the intended tag is **not** already
       on GitLab, and that you are not shipping a version that will remain
       tagless:
@@ -72,8 +76,8 @@ Only cut/push a tag when a human explicitly requests that release step.
 For a release candidate or final tag:
 
 ```bash
-git tag -a v0.11.1 -m "v0.11.1 - description"
-git push origin v0.11.1
+git tag -a v0.11.2 -m "v0.11.2 - description"
+git push origin v0.11.2
 ```
 
 GitLab CI on `v*` tags:
@@ -86,7 +90,8 @@ GitLab CI on `v*` tags:
 | -- | -------- |
 | Windows | `ScannerManager-windows-x64.zip` (+ `.sha256`) |
 | macOS | `ScannerManager-macos.tar.gz` (+ `.sha256`) |
-| Linux | `ScannerManager-linux-x64.tar.gz` (+ `.sha256`) |
+| Linux | `ScannerManager-linux-x64.tar.gz` (+ `.sha256`) — smoke/verify SSOT |
+| Linux | `ScannerManager-x86_64.AppImage` (+ `.sha256`) |
 
 Also attached: wheel/sdist, `build-provenance.json`.
 
@@ -104,7 +109,7 @@ manual (`workflow_dispatch`) only — use after GitLab-validated tag.
 ### CI (automatic on tag)
 
 Frozen binaries run `--smoke` in the `verify` stage (bundled data,
-imports, version print).
+imports, version print). Linux verify SSOT is the **tar.gz** (not AppImage).
 
 ### Manual (clean machine)
 
@@ -125,6 +130,9 @@ On a clean Windows 10 / 11 machine:
    python -c "import legacy_tk.scanner_manager"
    ```
 
+Linux bare-metal HIL (optional, Phase 4): 
+[`../Dev/LINUX_BARE_METAL_HANDOFF.md`](../Dev/LINUX_BARE_METAL_HANDOFF.md).
+
 If anything fails, fix on `main`, bump to `-rc2` or a new beta tag, and
 repeat. Do **not** re-use a tag for a second attempt.
 
@@ -133,11 +141,12 @@ repeat. Do **not** re-use a tag for a second attempt.
 After GitLab-validated tag, publish the filtered public tree:
 
 ```powershell
-.\scripts\publish_github.ps1 -Tag v0.11.1 -Force
+.\scripts\publish_github.ps1 -Tag v0.11.2 -Force
 ```
 
-See [`../EXPORT_POLICY.md`](../EXPORT_POLICY.md) for Metacache export
-tiers (`public_original` / `public_sanitize` / `gitignore_only`).
+**Required reading:** [`../EXPORT_POLICY.md`](../EXPORT_POLICY.md) —
+tiers `public_original` / `public_sanitize` / `gitignore_only`; machine
+rules in `scripts/metacache_export_rules.yaml`.
 
 **Secondary:** manually dispatch `.github/workflows/release.yml` on the
 public GitHub mirror when intentionally publishing lean release assets.
@@ -145,8 +154,9 @@ Draft release notes from `CHANGELOG.md`.
 
 ## 4. Announce
 
-- Post [`forum-announcement.md`](forum-announcement.md) to RadioReference
-  Forums and /r/scanners when ready for a public beta.
+- Reuse [`forum-announcement.md`](forum-announcement.md) only as a
+  **historical** template; refresh wording against wiki + `CHANGELOG.md`
+  before posting to RadioReference / Reddit.
 - Pin the release announcement on the repo.
 - Reply to any "is this tool still maintained?" threads you've been
   saving for this moment.
@@ -162,5 +172,7 @@ Draft release notes from `CHANGELOG.md`.
 | Doc | Purpose |
 | --- | --- |
 | [`README.md`](README.md) | Ops doc index |
+| [`../EXPORT_POLICY.md`](../EXPORT_POLICY.md) | GitLab full tree vs GitHub filtered export |
 | [`../ROADMAP.md`](../ROADMAP.md) | Build phases, release-blocker triage, GA gate |
+| [`../Dev/LINUX_BARE_METAL_HANDOFF.md`](../Dev/LINUX_BARE_METAL_HANDOFF.md) | Ubuntu HIL checklist |
 | [Updating wiki](https://github.com/disturbedkh/scanner-manager/wiki/Updating) | End-user update instructions |

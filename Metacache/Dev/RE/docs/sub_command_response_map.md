@@ -1,7 +1,7 @@
 # Sub command -> firmware string correlation map
 
 > **Canonical narrative is in the wiki**:
-> [`wiki/RE-Serial-Protocol.md`](../../../wiki/RE-Serial-Protocol.md)
+> [`wiki/RE-Serial-Protocol.md`](../../../../wiki/RE-Serial-Protocol.md)
 > (the "SUB port" + "35 untriggered SUB format strings" sections).
 > This file is the lab notebook with the raw correlation matrix.
 

@@ -96,10 +96,19 @@ expected deltas vs. unchanged data.
 
 **TBD:** detailed flow diffs from paired capture sessions.
 
+## Implementer checklist
+
+- [ ] Fill SOAP method table from decompiles (no copied Uniden code).
+- [ ] Document launch/shutdown card-touch behavior from capture.
+- [ ] Record reconcile heuristics vs `core/` MetaStore apply paths.
+- [ ] Keep BT885 vs Sentinel table current with profile flags.
+- [ ] User-facing Uniden Tools steps stay on the wiki (link above).
+
 ## Related
 
 | Doc | Purpose |
 | --- | --- |
 | [`rr-api-notes.md`](rr-api-notes.md) | Clean-room RR SOAP surface |
+| [`hpe-format.md`](hpe-format.md) | Favorites / `.hpe` backlog |
 | [`../Dev/RE/README.md`](../Dev/RE/README.md) | RE lab index + wiki mapping |
 | [RE-Sentinel wiki](https://github.com/disturbedkh/scanner-manager/wiki/RE-Sentinel) | Public RE narrative |

@@ -1,16 +1,16 @@
 # Ghidra Import - Guided Walkthrough (Phase 6.2)
 
 > Status: historical — prefer automated path in [`AUTOMATION.md`](AUTOMATION.md)
-> and [`wiki/RE-Toolchain.md`](../../../wiki/RE-Toolchain.md).
+> and [`wiki/RE-Toolchain.md`](../../../../wiki/RE-Toolchain.md).
 
 > **Canonical narrative is in the wiki**:
-> [`wiki/RE-Workflows.md`](../../../wiki/RE-Workflows.md) "Decompile
+> [`wiki/RE-Workflows.md`](../../../../wiki/RE-Workflows.md) "Decompile
 > a SUB function" recipe. This file is the lab notebook with the
 > original manual walkthrough.
 
 > **RECOMMENDED PATH (automated):** see [`AUTOMATION.md`](AUTOMATION.md).
 > Two PowerShell commands install Ghidra and produce
-> `firmware/analysis_dump.json` end-to-end. The manual walkthrough
+> `../firmware/analysis_dump.json` end-to-end. The manual walkthrough
 > below is preserved as a fallback for when you want to do RE
 > interactively in the GUI, or as a reference for what each
 > automated step is doing under the hood.
@@ -47,7 +47,7 @@ By the end of this walkthrough you'll have:
 - [ ] Phase 6.1 complete - file
       `Metacache/Dev/RE/firmware/sub_1.03.15_inflated.bin` exists and is
       90,076 bytes
-- [ ] [`firmware/sub_1.03.15_chunk_map.md`](firmware/sub_1.03.15_chunk_map.md)
+- [ ] [`firmware/sub_1.03.15_chunk_map.md`](../firmware/sub_1.03.15_chunk_map.md)
       exists (documents reset vector at `0x140001D5`, SP at
       `0x10020000`)
 - [ ] [`sub_static_analysis.md`](sub_static_analysis.md) exists
@@ -365,7 +365,7 @@ After each major step you should have a way to confirm progress:
 ## Status (snapshot)
 
 - **Phase 6.1** (extract payload): ✅ COMPLETE -
-  `firmware/sub_1.03.15_inflated.bin` ready to import
+  `../firmware/sub_1.03.15_inflated.bin` ready to import
 - **Phase 6.2** (Ghidra import): ⏳ NOT STARTED - this runbook
 - **Phase 6.3** (dispatch enumeration): ⚠️ PARTIAL -
   static-analysis pass in

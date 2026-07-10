@@ -1,7 +1,8 @@
 # Multi-Device GUI — As-Built Reference
 
-> Status: **shipped (v0.11.0)** — Qt header device selector, Live/Storage mode
-> gating, workspace-aware device manifests. Residual gaps listed below.
+> Status: **shipped (v0.11.x)** — Qt header device selector, Live/Storage mode
+> gating, workspace-aware device manifests, **auto profile switch on card
+> load**. Residual gaps listed below.
 
 Companion to [`MULTI_SCANNER_BACKEND.md`](MULTI_SCANNER_BACKEND.md). The
 backend doc covers `scanner_profiles/`; this doc covers the **Qt GUI shell**

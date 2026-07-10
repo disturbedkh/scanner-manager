@@ -3,15 +3,33 @@
 > Status: shipped (v0.11.x) — on-disk layout for BT885 + SDS100 profiles.
 
 > Where this fits: the FAT32 layout the BCDx36HP family writes to
-> the microSD, and how its file shapes are the actual API our app
-> (and Sentinel) uses for persistent edits. For the consolidated
-> narrative start at [Reverse Engineering](Reverse-Engineering).
+> microSD — the real API Sentinel and our app use for persistent
+> edits. Start at [Reverse Engineering](Reverse-Engineering).
 
-The SDS100, BT885, BCD436HP, BCD536HP, SDS200, and SDS150 all
-write the same on-disk layout. We've imaged BT885 and SDS100
-cards directly; the deltas are documented inline.
+## What this answers
 
-## Volume properties
+What lives under `BCDx36HP/` on BT885 vs SDS100, which files are
+round-trip-safe, and how to fingerprint a mounted card without
+trusting `TargetModel`.
+
+## Known vs OPEN
+
+| Topic | State | Notes |
+|---|---|---|
+| Folder skeleton (family-wide) | DONE | Identical dirs; SDS100 populates more |
+| `scanner.inf` model fingerprint | DONE | Field 1 = model; field 9 = SUB (SDS-only) |
+| HPD record alphabet + SDS trailing fields | DONE | Parser in `core/hpd.py` |
+| Favorites (`f_list.cfg` + `f_*.hpd`) | DONE (round-trip); UI backlog | |
+| `profile.cfg` (~30 record types) | Round-trip DONE; record-level UI OPEN | |
+| Populated `discvery.cfg` / discovery payloads | OPEN | Stub only on imaged cards |
+| SDS150 / SDS200 card image | OPEN | Expected same family layout |
+
+## Deep dive
+
+We've imaged BT885 and SDS100 cards directly. SDS200 is expected to
+match SDS100 (~99% shared per lab); confirm when a card is available.
+
+### Volume properties
 
 | Property | BT885 | SDS100 | Notes |
 |---|---|---|---|
@@ -20,16 +38,12 @@ cards directly; the deltas are documented inline.
 | Volume label | (none) | (none) | Both |
 | Sector size | 512 B | 512 B | Standard |
 
-The volume's **content fingerprint is not a model differentiator**
-in our app's `sdcard.py:_content_fingerprint` because BT885 and
-SDS100 ship bit-identical `CityTable*.dat` and `ZipTable*.dat`
-files (same SHA-256). Use volume serial + `scanner.inf` for
-identity instead. See `Metacache/Dev/RE/docs/SD_CARD_COMPARISON.md`.
+Content fingerprint via `CityTable`/`ZipTable` SHA-256 is **not** a
+model differentiator (bit-identical across family). Use volume serial
++ `scanner.inf` instead. See
+`Metacache/Dev/RE/docs/SD_CARD_COMPARISON.md`.
 
-## Folder skeleton
-
-Both BT885 and SDS100 have the **identical folder skeleton**.
-The SDS100 just populates more of it.
+### Folder skeleton
 
 ```
 <DRIVE>:\
@@ -37,11 +51,11 @@ The SDS100 just populates more of it.
     ├── activity_log\                      (empty on stock card)
     ├── alert\                             (empty on stock card)
     ├── audio\
-    │   ├── inner_rec\                     (empty on stock; populated when scanner records)
-    │   └── user_rec\                      (empty on stock; populated by user record button)
+    │   ├── inner_rec\
+    │   └── user_rec\
     ├── discovery\
-    │   ├── Conventional\                  (empty until Discovery sessions run)
-    │   └── Trunk\                         (empty until Discovery sessions run)
+    │   ├── Conventional\
+    │   └── Trunk\
     ├── favorites_lists\
     │   ├── f_list.cfg                     SDS100 populated; BT885 empty 42-B stub
     │   └── f_NNNNNN.hpd                   SDS100 only (per-favorite payload)
@@ -54,247 +68,62 @@ The SDS100 just populates more of it.
     ├── scanner.inf                        identity / firmware versions
     ├── profile.cfg                        SDS100 only (giant settings file)
     ├── app_data.cfg                       SDS100 only (last-active state)
-    └── discvery.cfg                       SDS100 only (discovery stub - sic, typo in firmware)
+    └── discvery.cfg                       SDS100 only (discovery stub - sic)
 ```
 
-> The folder name `BCDx36HP` is the firmware **family**, not the
-> scanner model. Treat it as fixed; never localise it.
-> Likewise `discvery.cfg` is missing an `o` - this is a Uniden
-> typo and we must preserve it verbatim.
+`BCDx36HP` is the firmware **family** name, not the model. Preserve
+`discvery.cfg` spelling — Uniden typo.
 
-## File-by-file reference
+### File-by-file (summary)
 
-### `scanner.inf` - identity (always present)
+**`scanner.inf`** — 3 tab-separated records. `Scanner` field 1 is the
+canonical model fingerprint (`BT885-SCN` vs `SDS100`). Field 9 (SUB
+FW) exists only on SDS100. Detect on field 1, **not** `TargetModel`
+(both write `TargetModel\tBCDx36HP`).
 
-3 records, tab-separated. Sample lines from each scanner:
+**`HPDB/hpdb.cfg`** — same shape; BT885 ~178 KB (state-only), SDS100
+~1.6 MB (state + county + agency). Preserve trailing tabs.
 
-```
-# BT885
-TargetModel	BCDx36HP
-FormatVersion	1.00
-Scanner	BT885-SCN	<SERIAL>	1.01.02 	01		1.00.00	1.00.00	0
+**`HPDB/s_*.hpd`** — SDS100 record set is a **strict superset** of
+BT885 (extra trailing fields). Preserve empties — they are feature
+slots. See lab comparison for per-record field counts.
 
-# SDS100
-TargetModel	BCDx36HP
-FormatVersion	1.00
-Scanner	SDS100	<SERIAL>	1.23.07 	01		1.00.00	1.00.00	0	1.03.05
-```
+**`favorites_lists/`** — BT885: empty `f_list.cfg` stub. SDS100:
+populated `F-List` rows + `f_*.hpd` with `DQKs_Status` masks.
 
-The `Scanner` line is **the canonical model fingerprint**. Field 1
-is the literal model string (`BT885-SCN` vs `SDS100`); field 9
-is **only present on SDS100** and carries the SUB MCU firmware
-version (BT885 has no SUB MCU).
+**`profile.cfg`** — SDS100-only (~15.6 KB, ~30 record types:
+`GlobalSetting`, `ServiceType`, `Waterfall`, `QuickKeys`, …).
+Round-trip verbatim; don't rebuild from a minimal field set.
 
-| Idx | BT885 | SDS100 | Likely meaning |
-|---:|---|---|---|
-| 1 | `BT885-SCN` | `SDS100` | **Model fingerprint** |
-| 2 | `41626-...` | `38326-...` | Serial / part number |
-| 3 | `1.01.02` | `1.23.07` | MAIN firmware version |
-| 4 | `01` | `01` | Hardware revision |
-| 5 | (blank) | (blank) | Reserved |
-| 6 | `1.00.00` | `1.00.00` | DSP firmware? |
-| 7 | `1.00.00` | `1.00.00` | DSP firmware? |
-| 8 | `0` | `0` | Reserved flag |
-| 9 | (absent) | `1.03.15` | **SUB firmware (SDS100-only)** |
+**`app_data.cfg`** — ephemeral last-active scan state; copy verbatim
+on push.
 
-> Codebase note: `Bt885Profile.target_model_aliases =
-> ("Beartracker885", "BearTracker885", "BT885")` is **stale**.
-> Real BT885 firmware writes `TargetModel\tBCDx36HP`. Detect on
-> `scanner.inf` field 1, not `TargetModel`.
+**`firmware/CityTable_*.dat` + `ZipTable_*.dat`** — required for boot;
+parsed in `legacy_tk/geo_tables.py`. **Never delete or modify.**
+Firmware update drops (`.bin` / `.firm`) also land here — see
+[RE-Firmware](RE-Firmware).
 
-### `HPDB/hpdb.cfg` - state/county/agency master index
+### What this means for our app
 
-The same shape on both cards; sizes differ:
-
-- **BT885**: 178 KB - state-only index. The BT885 is happy with
-  just-the-states.
-- **SDS100**: 1.6 MB - state + county + agency index. The SDS100
-  needs the deeper hierarchy for its bigger UI.
-
-Sample lines:
-
-```
-TargetModel	BCDx36HP
-FormatVersion	1.00
-DateModified	04/07/2024 17:00:01
-StateInfo	StateId=0	CountryId=0	_MultipleStates	
-StateInfo	StateId=1	CountryId=1	Alabama	AL
-...
-```
-
-Round-trip rule: preserve every record verbatim, including
-trailing tabs.
-
-### `HPDB/s_NNNNNN.hpd` - per-state HPDs
-
-Tab-separated record-oriented format. The same record types appear
-on both BT885 and SDS100 - **the SDS100 record set is a strict
-superset**. Every record type the BT885 writes is also written by
-the SDS100, just with extra trailing fields.
-
-| Record | Purpose | BT885 fields | SDS100 fields |
-|---|---|---:|---:|
-| `Conventional` | Conventional system | 7 | 14 |
-| `Trunk` | Trunked system | varies | varies |
-| `Site` | Trunked site | ~10 | 13 |
-| `T-Group` | Talkgroup category | varies | varies |
-| `T-Freq` | Trunked control/voice | varies | varies |
-| `TGID` | Talkgroup ID | varies | varies |
-| `C-Group` | Conventional group | 8 | 10 |
-| `C-Freq` | Conventional frequency | 7 | 17 |
-| `AreaState` | State binding | 2 | 2 |
-| `AreaCounty` | County binding | 2 | 2 |
-| `BandPlan_Mot` | Motorola band plan | not used | observed |
-| `FleetMap` | Motorola fleet map | not observed | observed |
-| `DateModified` | Header | yes | **no** (BT885-only) |
-
-The trailing tab fields on SDS100 are real and round-trip-significant
-- preserve them. Our parser does. The empty trailing slots are
-"feature slots" (lockout count, recording hold, per-channel volume,
-etc.) that the firmware allocates but the user doesn't always
-populate.
-
-### `favorites_lists/` - SDS100 favourites system
-
-BT885 has the empty 42-byte stub `f_list.cfg`; that's the only
-indication on disk that the family format includes favourites.
-The BT885 firmware lacks the UI to populate it. SDS100 fills it
-in:
-
-#### `f_list.cfg` (manifest)
-
-One `F-List` row per favourite list. 116 columns:
-- Idx 1: display name
-- Idx 2: per-list payload filename (`f_NNNNNN.hpd`)
-- Idx 3-118: 116 enable/disable slots (Quick Key + per-favorite-bit
-  mask; exact slot semantics TBD)
-
-Sample:
-
-```
-F-List	Alachua	f_000001.hpd	Off	Off	...   (116 columns)
-F-List	Home	f_000002.hpd	Off	On	...
-```
-
-#### `f_NNNNNN.hpd` (per-favorite payloads)
-
-Same record alphabet as `s_*.hpd` (Trunk / Site / T-Freq / T-Group
-/ TGID / Conventional / C-Group / C-Freq) plus:
-
-- **`DQKs_Status`** at the top of each system: 100-slot Department
-  Quick Key on/off mask.
-- Site rows have 13 fields (vs ~10 on BT885 state HPDs).
-- No `Id` fields on records (favourites are name-keyed, not
-  ID-keyed).
-
-This is one of the things our app already reads/writes for the
-SDS100 even though Sentinel is doing the same job - we have the
-parser, we have the schema.
-
-### `profile.cfg` - giant SDS100 settings (SDS100-only)
-
-15.6 KB, 184 lines. Every SDS100-specific feature lives here.
-Header lines:
-
-```
-TargetModel	BCDx36HP
-FormatVersion	1.00
-ProductName	SDS100
-GlobalSetting	Off	Off		Off	Off	Off	2	100	Custom1	Custom2	Custom3	Off	Auto	0	2	Off	Off	Ignore	Normal	0
-```
-
-Major record types (~30):
-
-| Record | Slots | Purpose |
-|---|---:|---|
-| `ProductName` | - | Model name |
-| `GlobalSetting` | 20 | Global toggles (key beep, opening msg, charge time, contrast, attenuator) |
-| `SearchCommon` | 12 | Search-mode global params |
-| `PresetBroadcastScreen` | 5 | Pre-defined skip bands (FM, weather, ...) |
-| `CustomBroadcastScreen` | 30 | 10 user-defined skip-bands |
-| `CurrentLocation` | 3 | Last GPS fix (lat, lon, accuracy radius) |
-| `GpsOption` | 2 | GPS coordinate display + serial baud |
-| `ServiceType` | 36 | **36-slot service-type mask (vs BT885's 14)** |
-| `CustomServiceType` | 10 | 10 user-defined service-type slots |
-| `Weather` / `WxSameList` | several | Weather priority + SAME alerts |
-| `DisplayOption`, `DispOptItems`, `DispColors` | many | Layout/colour customization |
-| `Backlight`, `Battery`, `OwnerInfo`, `ClockOption` | - | Hardware settings |
-| `RecordingOption`, `StandbyOption` | several | Recording + standby |
-| `LimitSearch` | 10 rows × ~16 | User-defined limit-search ranges |
-| `CloseCall` | ~16 | Close Call (RF nearest-frequency capture) |
-| `ToneOut` | 32 rows | Paging tone-out slots |
-| `Waterfall`, `CustomWfBand` × 10 | many | SDS100 waterfall display (not on BT885) |
-| `WfColors` | 6 | Waterfall colour palette (hex) |
-| `IfxFreqs` | - | Intermod frequencies |
-| `BandDefault` | 31 | Per-band default mod + step |
-| `QuickKeys` | 100 | Quick-key enable mask (not on BT885) |
-
-Round-trip rule: capture every record verbatim. Don't rebuild
-from a minimal field set or the firmware silently reverts to
-defaults. Our parser already does this via opaque preservation
-of unrecognised records.
-
-### `app_data.cfg` - last-active state (SDS100-only)
-
-386-486 bytes. Sample:
-
-```
-TargetModel	BCDx36HP
-FormatVersion	1.00
-ModeInfo	IDscan
-ScanListType	FavoritesList	Home
-ScanTrunkSystem	Off	Trunk	... (per-trunk state)
-ScanT-Group	Off	T-Group	... (per-group state)
-ScanSite	Off	Site	... (per-site state)
-ScanT-Freq	T-Freq	... (per-freq state)
-```
-
-Treat as ephemeral. Don't merge or version. On a push, copy
-verbatim.
-
-### `discvery.cfg` (SDS100-only, sic - the typo is in the firmware)
-
-42 bytes; just the standard header. Discovery records will be
-appended after a Discovery session - we have not yet RE'd the
-populated state.
-
-### `firmware/` - firmware data tables
-
-```
-firmware/
-├── CityTable_V1_00_00.dat    566,492 B   (bit-identical BT885 = SDS100)
-└── ZipTable_V1_00_00.dat     693,758 B   (bit-identical BT885 = SDS100)
-```
-
-Already RE'd in `legacy_tk/geo_tables.py` (`FirmwareCityTable` /
-`FirmwareZipTable`) and used by both scanner profiles. 47,204 city
-records and 41,771 ZIPs respectively. Same SHA-256 across the family.
-
-> **Never** delete or modify these files - the scanner refuses to
-> boot without them. They're also where firmware updates are
-> dropped (see [RE-Firmware](RE-Firmware) and
-> [RE-Sentinel](RE-Sentinel)).
-
-## What this means for our app
-
-| Need | File(s) | Already supported in our parser? |
+| Need | File(s) | Supported? |
 |---|---|---|
-| Identify which scanner is mounted | `BCDx36HP/scanner.inf` field 1 | Yes — `detect_from_card()` in Qt (legacy Tk: manual profile) |
-| Read/write per-state channel data | `BCDx36HP/HPDB/s_*.hpd` | Yes |
-| Read/write favourites | `BCDx36HP/favorites_lists/f_*.hpd` + `f_list.cfg` | Yes (round-trip preservation; Favorites Lists editor UI backlog) |
-| Read/write SDS100 settings | `BCDx36HP/profile.cfg` | Round-trip yes; record-level UI for edit pending |
-| Drop a firmware update | `BCDx36HP/firmware/*.bin` (MAIN) or `*.firm` (SUB) | Yes — Firmware Updater dock + FTP discovery ([RE-Update-Endpoints](RE-Update-Endpoints)) |
-| Backup everything | walk `BCDx36HP/` | Yes |
-| Restore everything | walk `BCDx36HP/` in reverse | Yes |
+| Identify mounted scanner | `scanner.inf` field 1 | Yes — `detect_from_card()` in Qt |
+| Channels | `HPDB/s_*.hpd` | Yes |
+| Favourites | `favorites_lists/` | Round-trip yes; editor UI backlog |
+| SDS100 settings | `profile.cfg` | Round-trip yes; record UI pending |
+| Firmware drop | `firmware/*.bin` / `*.firm` | Yes — Firmware Updater + FTP |
+| Backup / restore | walk `BCDx36HP/` | Yes |
 
-This is the same set of operations Sentinel does (see
-[RE-Sentinel](RE-Sentinel)). Our app does them with the additional
-benefit of the MetaStore audit trail, virtual SD workspaces, and
-RadioReference import - all features Sentinel doesn't have.
+Same ops Sentinel does ([RE-Sentinel](RE-Sentinel)), plus MetaStore
+audit trail, workspaces, and RR import.
 
-## Lab data
+## Lab pointers
 
-- `Metacache/Dev/RE/docs/SD_CARD_COMPARISON.md` - exhaustive BT885 vs SDS100 diff with raw bytes.
-- `Metacache/Dev/RE/docs/BT885.md` - per-scanner SD-card RE notes.
-- `Metacache/Dev/RE/docs/SDS100.md` - same for SDS100.
-- `Metacache/Dev/RE/tools/sentinel/compare_cards.py` - read-only side-by-side script.
+| Path | Role |
+|---|---|
+| `Metacache/Dev/RE/docs/SD_CARD_COMPARISON.md` | Exhaustive BT885 vs SDS100 diff |
+| `Metacache/Dev/RE/docs/BT885.md` | BT885 SD-card RE notes |
+| `Metacache/Dev/RE/docs/SDS100.md` | SDS100 SD-card + serial lab notebook |
+| `Metacache/Dev/RE/tools/sentinel/compare_cards.py` | Read-only side-by-side |
+| `Metacache/Dev/RE/tools/sentinel/dump_sd_inventory.ps1` | Mounted-card inventory |
+| `Metacache/Dev/RE/sessions/` | Inventory dumps / probe notes |

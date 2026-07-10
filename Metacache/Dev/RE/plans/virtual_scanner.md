@@ -91,13 +91,13 @@ control, RSSI metering, GLG-equivalent live-channel monitor, etc.
 
 Use what we know about the SUB firmware's DSP path (R840 tuner ->
 ADC -> FFT -> filter chain -> decoder ->
-[Inter-MCU bus](../../../wiki/RE-Inter-MCU-Bus.md)) and reimplement
+[Inter-MCU bus](../../../../wiki/RE-Inter-MCU-Bus.md)) and reimplement
 the same pipeline in software.
 
 - **What we'd reuse**: the format-string xrefs we found (`R840_FM`,
   `FFT_PEAK,%ddB`, `Noise Squelch,%6d`), the per-state DSP probes
   (`q`/`r`/`s`/`m`/`v` from the
-  [SUB debug surface](../../../wiki/RE-Serial-Protocol.md)), and the
+  [SUB debug surface](../../../../wiki/RE-Serial-Protocol.md)), and the
   command dispatch in `tools/firmware/extract_dispatch.py`.
 - **What we'd build**: a Python or C++ DSP pipeline matching the
   SUB's filter-bank semantics, fed from a generic SDR front-end.

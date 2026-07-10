@@ -2,117 +2,82 @@
 
 > Status: shipped (v0.11.x)
 
-> The Firmware dock discovers Main / Sub firmware images and HPDB
-> snapshots from Uniden's two FTP servers, caches them locally with
-> SHA-256 verification, and applies them to the SD card with
-> backup + atomic copy + post-flash verify.
+Find Main / Sub firmware and HPDB channel-database snapshots from
+Uniden's update servers, download them safely, and apply them to your
+SD card with backup and verification.
 
-Open from **Tools → Firmware updater…** in the Qt shell (or the legacy
-Tk Tools menu). The header **FW pill** shows on-card Main/Sub versions
-when an SD path is bound.
+Open **Tools → Firmware updater…** in the Qt app (also available from
+the Classic Tk Tools menu). The header **FW** pill shows on-card
+Main/Sub versions when an SD path is bound.
 
-The full reverse-engineered endpoint reference lives at
-[`Metacache/Dev/RE/docs/uniden_update_endpoints.md`](../Metacache/Dev/RE/docs/uniden_update_endpoints.md);
-this page is the user-facing summary.
+## Prerequisites
 
-## Endpoints
+- SD card mounted with a `BCDx36HP` folder (**Mass Storage** or card
+  reader)
+- Device registered with the correct scanner family ([Qt UI](Qt-UI))
+- Internet access to Uniden's FTP update hosts
+- Enough free space for a full `BCDx36HP/` backup beside the card
 
-| Family              | Server                  | Path           |
-| ------------------- | ----------------------- | -------------- |
-| BCDx36HP / SDS100/200 | `ftp.homepatrol.com`  | `/BCDx36HP/`   |
-| BT885               | `ftp.uniden.com`        | `/BT885/`      |
+## Steps
 
-Both are plain FTP, anonymous-ish credentials baked into Uniden's
-publicly-distributed installers (Sentinel + BT885 Update Manager).
-We only ever issue `LIST + SIZE + MDTM + RETR`; we never write back
-to either server.
+1. **Tools → Firmware updater…**
+2. Discover / refresh available Main, Sub, and HPDB packages for your
+   scanner family.
+3. Download the package you want (cached locally with a checksum).
+4. Click **Run update wizard…** and follow the prompts:
+   1. Pre-flight checks (card identity, checksum, optional Sub minimum)
+   2. Backup of `BCDx36HP/`
+   3. Apply to the card
+   4. Eject / reboot guidance
+   5. Post-flash verify against `scanner.inf`
 
-## Filename grammar
+Always eject the card safely after a write — especially on Linux VFAT
+([Troubleshooting](Troubleshooting)).
 
-| Pattern | Decoded as |
-| ------- | ---------- |
-| `<MODEL>_V<MAJ>_<MIN>_<PAT>.bin`        | Main MCU firmware |
-| `<MODEL>-SUB_V<MAJ>_<MIN>_<PAT>.firm`   | Sub MCU firmware  |
-| `MasterHpdb_<MM>_<DD>_<YYYY>.gz`        | Weekly HPDB snapshot |
-| `CityTable_V<x>_<yy>_<zz>.dat`          | City lookup table |
-| `ZipTable_V<x>_<yy>_<zz>.dat`           | ZIP code lookup table |
-| `BC-WF1_V<X>_<XX>.bin`                  | BC-WF1 Wi-Fi adapter firmware |
+## Scanner families and servers
 
-`firmware.library.FirmwareVersion.parse` / `HpdbVersion.parse` decode
-each pattern into a sortable record. The dock filters per family by
-matching `FAMILY_MAIN_MODELS[family_id]`.
+| Family | Update host (read-only) |
+| --- | --- |
+| BCDx36HP / SDS100/200 | Uniden HomePatrol FTP (`/BCDx36HP/`) |
+| BT885 | Uniden FTP (`/BT885/`) |
 
-## Cache layout
+Scanner Manager only lists and downloads; it never uploads to those
+servers.
 
-`firmware.library.FirmwareCache` stores blobs under:
-
-```
-<user_cache>/scanner-manager/firmware_cache/
-    <family_id>/
-        main_<version>/
-            <filename>
-            <filename>.sha256
-        sub_<version>/
-            ...
-```
-
-`FirmwareCache.verify(family, version)` rehashes the blob and compares
-to the sidecar. The Update wizard refuses to apply a cached file that
-fails verification.
-
-## Wizard flow
-
-The dock's **Run update wizard…** button orchestrates:
-
-1. **Pre-flight** (`firmware.updater.preflight`)
-   - Confirm the SD card has `BCDx36HP/scanner.inf`.
-   - Confirm field 1 matches the active scanner profile.
-   - Verify the cached blob's SHA-256.
-   - If `requires_sub_min` is supplied, ensure the on-card sub firmware
-     meets the minimum.
-2. **Backup** (`firmware.updater.backup_card`) — copies
-   `BCDx36HP/` to `<card_parent>/scanner-manager-backups/<ts>/`.
-3. **Apply** (`apply_main_firmware` / `apply_sub_firmware` /
-   `apply_hpdb`)
-   - Purge stale `.bin` / `.firm` from the target dir (Sentinel does
-     the same to avoid bootloader name-precedence weirdness).
-   - Write to a `.partial` sibling, then `os.replace` for atomic
-     swap.
-4. **Eject + reboot** (modal in the dock).
-5. **Post-flash verify** (`postflash_verify`) — re-reads
-   `scanner.inf` after reboot and compares the new version field to
-   what we expected.
-
-Manifest on disk today: `data/uniden_installers.json` (installer URLs).
-A consolidated `firmware_manifest.json` remains a future ops doc item.
-
-## SD card layout
+## What gets written on the card
 
 ```
-\BCDx36HP\
-    scanner.inf
-    \HPDB\
-        MasterHpdb*.gz                <- HPDB snapshots land here
-    \firmware\
-        <MODEL>_V*.bin                <- Main firmware (transient,
-                                         scanner self-deletes after flash)
-        \sub\
-            <MODEL>-SUB_V*.firm       <- Sub firmware (transient)
+BCDx36HP/
+  scanner.inf
+  HPDB/          ← HPDB snapshots
+  firmware/      ← Main .bin (scanner removes after flash)
+    sub/         ← Sub .firm (scanner removes after flash)
 ```
 
-## Tests
+## If something goes wrong
 
-- `tests/test_firmware_library.py` — filename parsing + cache
-  store / verify roundtrips.
-- `tests/test_firmware_ftp_client.py` — fake `ftplib.FTP` validates
-  protocol verbs + MDTM parsing + chunked download.
-- `tests/test_firmware_updater.py` — card-shape fixtures cover
-  pre-flight, atomic apply, purge of stale firmware, post-flash
-  verify.
-- `tests/test_qt_firmware.py` — smoke tests for the dock UI.
+- Pre-flight fails — confirm `scanner.inf` matches the selected device
+  family and that the download checksum passed.
+- Apply interrupted — restore from the backup folder created beside the
+  card (`scanner-manager-backups/…`), then retry.
+- Scanner won't boot after flash — restore the backup, or re-pave with
+  Uniden Tools on Windows ([Uniden Tools](Uniden-Tools-Integration)).
 
-## Cross-references
+## Internals
 
-- [Qt UI](Qt-UI)
-- [`Metacache/Dev/RE/docs/uniden_update_endpoints.md`](../Metacache/Dev/RE/docs/uniden_update_endpoints.md)
-- [`Metacache/Dev/FIRMWARE_UPDATER.md`](../Metacache/Dev/FIRMWARE_UPDATER.md)
+Typical package names:
+
+| Pattern | Meaning |
+| --- | --- |
+| `<MODEL>_V… .bin` | Main firmware |
+| `<MODEL>-SUB_V… .firm` | Sub firmware |
+| `MasterHpdb_… .gz` | Weekly HPDB snapshot |
+| `CityTable_… .dat` / `ZipTable_… .dat` | Location tables |
+
+Cache lives under the user cache directory
+(`…/scanner-manager/firmware_cache/<family>/…`) with sidecar checksums.
+Apply uses write-to-`.partial` then atomic replace; stale firmware files
+are purged first (same idea as Sentinel).
+
+Contributor docs: [Architecture](Architecture). Deep endpoint notes live
+in the RE lab (not required for normal updates).

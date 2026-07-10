@@ -1,6 +1,6 @@
 # In-App Firmware Updater — As-Built Reference
 
-> Status: **shipped (v0.11.0)** — FTP discovery, local cache, SD-card apply
+> Status: **shipped (v0.11.x)** — FTP discovery, local cache, SD-card apply
 > workflow, Qt firmware dock. Optional enrichment manifest not shipped.
 
 User-facing tour: [Firmware Updater wiki](https://github.com/disturbedkh/scanner-manager/wiki/Firmware-Updater).

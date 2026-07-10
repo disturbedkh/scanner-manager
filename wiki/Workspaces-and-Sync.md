@@ -2,79 +2,84 @@
 
 > Status: shipped (v0.11.x)
 
-Scanner Manager uses the word **workspace** in two related ways depending
-on which shell you launch. Read the section that matches your entry
-point.
+Keep separate scanner setups without juggling files by hand. In Qt,
+**workspaces** are named device lists (Home vs Travel). In Classic Tk,
+**Virtual SD card** clones the card for offline edit and push/pull.
+
+## Prerequisites
+
+- Scanner Manager installed ([Install](Install))
+- At least one device registered ([Quickstart](Quickstart))
 
 ## Qt workspaces (device-list bundles)
 
-The default Qt shell (**Tools → Workspaces…**) manages **named bundles
-of device manifests** — not offline SD card clones.
+**Tools → Workspaces…** manages named bundles of your device list — not
+offline SD card clones.
 
-A workspace record points at a `devices.json` file (your registered
-scanners: label, model, SD path). Switching workspaces lets you jump
-between setups such as **Home** vs **Roadtrip** without overwriting
-the default manifest at:
+A workspace points at a `devices.json` (label, model, SD path for each
+scanner). Switching workspaces jumps between setups without overwriting
+the default list:
 
 - Windows: `%APPDATA%\scanner-manager\devices.json`
 - macOS: `~/Library/Application Support/scanner-manager/devices.json`
 - Linux: `~/.config/scanner-manager/devices.json`
 
 When a workspace is active the header shows **Workspace:** *name*;
-otherwise **Device list: default**. The editor toolbar may prefix HPDB
-status with the workspace name.
+otherwise **Device list: default**.
 
 ### Typical Qt workflow
 
-1. **Tools → Workspaces… → New…** — name the workspace and pick (or
-   copy) a `devices.json` path.
-2. **Load** — double-click the workspace row to activate it.
-3. Edit HPDB for whichever device is selected in the header.
-4. **New from default devices.json** — quick shortcut to snapshot your
-   current default device list.
+1. **Tools → Workspaces… → New…** — name it and pick (or copy) a
+   `devices.json` path.
+2. **Load** — double-click the row to activate.
+3. Edit HPDB for the device selected in the header.
+4. Optional: **New from default devices.json** to snapshot the current
+   default list.
 
-Profile snapshots (**Tools → Profile snapshots…**) capture a full
-`BCDx36HP/` folder copy for rollback — complementary to workspaces.
+**Tools → Profile snapshots…** captures a full `BCDx36HP/` folder for
+rollback — complementary to workspaces.
 
-## Virtual SD card (legacy Tk)
+<details>
+<summary>Classic Tk — Virtual SD card</summary>
 
-The **Virtual SD card** workflow — clone the card, edit while detached,
-reconcile both ways on return — lives in **`scanner-manager-tk`** under
-**Workspaces → New workspace from card…** (and related push/pull menu
-items).
+Clone the card, edit while detached, then reconcile both ways.
 
-### Why use Virtual SD card
+### Why use it
 
-- **Edit offline.** Car scanner stays in the car; you edit at your desk.
-- **Safer experiments.** Trash a workspace folder, not a card.
-- **Update cycles.** Run Uniden's updater against the card, then pull
-  new firmware tables into your workspace without losing offline edits.
+- Edit at your desk while the scanner stays in the car
+- Experiment safely (trash a folder, not a card)
+- Run Uniden's updater on the card, then pull new tables without losing
+  offline edits
 
-### Creating a virtual workspace (legacy Tk)
+### Create
 
 1. Insert the card and **Load** it.
 2. **Workspaces → New workspace from card...**
-3. Pick a local folder. Scanner Manager copies the BCDx36HP tree and
-   writes a manifest for drift detection.
+3. Pick a local folder. Scanner Manager copies the `BCDx36HP` tree.
 
-### Push / pull (legacy Tk)
+### Push / pull
 
-- **Push workspace → card...** — file-level diff then apply; MetaStore
-  events remain revertable on the card.
-- **Pull card → workspace...** — three buckets (card-only, workspace-
-  only, conflicts) with per-file resolution.
+- **Push workspace → card...** — file-level diff, then apply
+- **Pull card → workspace...** — card-only / workspace-only / conflicts
+  with per-file resolution
 
-Conflict rules follow the same replay logic as the RadioReference update
-pipeline — see [Architecture](Architecture).
+</details>
 
 ## Limitations
 
 - Qt workspaces switch device lists only; they do not replace Virtual
-  SD card clone/push/pull (legacy Tk).
-- Virtual SD diff UI is functional but spartan on large trees.
-- No cloud sync service — everything is local folders and JSON manifests.
+  SD card clone/push/pull (Classic Tk)
+- Virtual SD diff UI is functional but plain on large trees
+- No cloud sync — local folders and JSON only
 
-## Cross-references
+## If something goes wrong
 
-- [Qt UI](Qt-UI) — Tools menu workspace dialog
-- [Quickstart](Quickstart) — device registration
+- Wrong scanners after a switch — confirm the header **Workspace:**
+  name and reopen **Tools → Workspaces…**
+- Need folder rollback — **Tools → Profile snapshots…** or restore from
+  a card backup ([Troubleshooting](Troubleshooting))
+
+## Internals
+
+Conflict / replay rules for Virtual SD align with the RadioReference
+update pipeline — see [Architecture](Architecture).

@@ -1,14 +1,14 @@
 # Sentinel API (reverse-engineered) - 2026-05-03
 
 > **Canonical narrative is in the wiki**:
-> [`wiki/RE-Sentinel.md`](../../../wiki/RE-Sentinel.md). This file
+> [`wiki/RE-Sentinel.md`](../../../../wiki/RE-Sentinel.md). This file
 > is the lab notebook for ongoing decode work.
 
 > Goal: replicate (and extend) Sentinel's functionality from our own
 > app/GUI without depending on Sentinel.exe. This document captures
 > what Sentinel actually does over USB, derived from
-> [`sentinel_pcaps/`](sentinel_pcaps/) and decoded with
-> [`_decode_sentinel_pcap.py`](_decode_sentinel_pcap.py).
+> [`../sentinel_pcaps/`](../sentinel_pcaps/) and decoded with
+> [`tools/sentinel/decode_sentinel_pcap.py`](../tools/sentinel/decode_sentinel_pcap.py).
 
 ## TL;DR for app developers
 
@@ -30,7 +30,7 @@ serial mode** (the two CDC ports `COM3`/`COM4` are gone in
 mass-storage mode). If we want to support **both** modes simultaneously
 we'd need a firmware mod (parked under "future RE goal: mass storage
 in serial mode" - see the user note in
-[`sessions/phase0b_decision_2026-05-03.md`](sessions/phase0b_decision_2026-05-03.md)).
+[`sessions/phase0b_decision_2026-05-03.md`](../sessions/phase0b_decision_2026-05-03.md)).
 
 ## Sentinel's complete API surface = 4 ops, not 6
 
@@ -41,8 +41,8 @@ the user's build exposes. Findings:
 |---|---|---|
 | 1 Read From Scanner | 51 SCSI cmds, 9 reads / 3 writes (~42 KB read, 12 KB written) | Read manifest + per-device config files |
 | 2 Write to Scanner | 120 SCSI cmds, 27 reads / 30 writes (1.7 MB read, 78 KB written) | Read-modify-write FAT32 update |
-| 3 Get HPDB Update | 297 SCSI cmds, **0 reads / 0 writes** (only TUR + REQUEST_SENSE) | **Out-of-band HTTP** version check; would only WRITE_10 if outdated |
-| 4 Update Firmware | 40 SCSI cmds, 1 read at LBA 0x4280 (4 KB) / 0 writes | Read FAT32 directory of `BCDx36HP/firmware/`; HTTP-fetch latest version; would only WRITE_10 if outdated |
+| 3 Get HPDB Update | 297 SCSI cmds, **0 reads / 0 writes** (only TUR + REQUEST_SENSE) | **Out-of-band FTP** version check; would only WRITE_10 if outdated |
+| 4 Update Firmware | 40 SCSI cmds, 1 read at LBA 0x4280 (4 KB) / 0 writes | Read FAT32 directory of `BCDx36HP/firmware/`; FTP-fetch latest version; would only WRITE_10 if outdated |
 | 5 Backup | 3 SCSI cmds (housekeeping only) | **Feature absent** in this Sentinel build; alias for op 1 in some other builds |
 | 6 Restore | 3 SCSI cmds (housekeeping only) | **Feature absent** in this Sentinel build; alias for op 2 in some other builds |
 
@@ -60,10 +60,10 @@ ZipTable_V1_0...DAT     -> firmware data table
 So the firmware-update API in our app is just:
 
 1. Walk `BCDx36HP/firmware/` and parse filenames for installed versions.
-2. HTTP-fetch the current version from Uniden.
+2. FTP-fetch the current version from Uniden.
 3. If outdated, drop the new file.
 
-The HPDB-update flow uses the same out-of-band HTTP pattern with
+The HPDB-update flow uses the same out-of-band FTP pattern with
 `hpdb.cfg`'s `DateModified` field as the local-version marker.
 
 ## Volume geometry + ops 1-2 detail (from earlier Phase 0a)
@@ -164,12 +164,12 @@ class SDS100MassStorage:
     def write_favorites(self, lists: list[FavoritesList]) -> None: ...
     def write_profile(self, profile: ProfileConfig) -> None: ...
 
-    # Op 3: Get HPDB Update (HTTP-mediated)
+    # Op 3: Get HPDB Update (FTP-mediated)
     def get_installed_hpdb_version(self) -> str: ...           # parses hpdb.cfg
-    def check_hpdb_update_available(self) -> bool: ...         # HTTP
+    def check_hpdb_update_available(self) -> bool: ...         # FTP
     def install_hpdb_update(self, hpdb_zip: Path) -> None: ... # writes s_*.hpd
 
-    # Op 4: Update Firmware (HTTP-mediated)
+    # Op 4: Update Firmware (FTP-mediated)
     def get_installed_firmware_versions(self) -> FirmwareVersions: ...  # walks BCDx36HP/firmware/
     def install_firmware(self, fw_image: Path, kind: Literal["main", "sub"]) -> None: ...
 ```
@@ -181,7 +181,7 @@ operations. Sentinel's official surface is 4 ops, not 6.
 ## Open follow-up: capture an actual update
 
 We have the "up-to-date" path for ops 3 and 4 (which is itself
-useful: it confirms the version-check is HTTP-mediated and tells
+useful: it confirms the version-check is FTP-mediated and tells
 us where Sentinel reads the firmware-version directory entry).
 We don't yet have a capture of an actual HPDB or firmware update
 that triggers WRITE_10s.

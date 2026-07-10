@@ -2,80 +2,94 @@
 
 > Status: shipped (v0.11.x)
 
-Four complementary ways to visualize what the scanner will scan around
-a given point. Wording below covers **both shells** where they differ.
+See what the BearTracker 885 will scan around a point — ranked in the
+channel tree, as a heatmap, and on a map.
 
-## Nearest Systems (tree annotations)
+## Prerequisites
 
-When the **location filter** is active, the HPDB tree prefixes each
-system with its distance-rank (`#1`, `#2`, ...) and sorts groups
-inside by distance from the center point.
+- BearTracker 885 device with **HPDB** loaded
+- Location filter on ([ZIP & GPS Simulation](ZIP-and-GPS-Simulation))
+- Qt default: no extra packages for heatmap; map tiles need Qt WebEngine
+  when available
 
-- **Qt (BearTracker 885):** tick **Apply location filter** in the
-  location simulation bar.
-- **Legacy Tk:** tick **Enable Location Filter** in the toolbar.
+## Nearest systems (tree)
 
-## Coverage Heatmap
+With the location filter active, the tree prefixes each system with
+`#1`, `#2`, … and sorts groups by distance.
 
-### Qt default (`scanner-manager`)
+1. Tick **Apply location filter** in the location simulation bar (Qt).
+2. Enter ZIP / county / GPS and adjust **Tolerance**.
 
-**View → Coverage / heatmap…** opens a popout window with two tabs:
+<details>
+<summary>Classic Tk shell</summary>
 
-- **Heatmap** — `pyqtgraph` density grid of scannable groups.
-- **Map** — Leaflet tile map via QtWebEngine when available; text
-  fallback when WebEngine is missing.
+Tick **Enable Location Filter** in the toolbar, then apply ZIP / City /
+GPS.
 
-Controls include span (miles), tile provider, tower markers, coverage
-circles, and button-filter checkboxes (Police / Fire / EMS / DOT /
-Multi) that mirror BT885 hardware semantics.
+</details>
 
-No extra pip package is required beyond the base Qt install; WebEngine
-ships with many PySide6 builds.
+## Coverage heatmap and map (Qt)
 
-### Legacy Tk (`scanner-manager-tk`)
+**View → Coverage / heatmap…** opens a popout:
 
-**Heatmap...** opens a heatmap overlaid on a real tile-server map when
-`tkintermapview` is installed:
+| Tab | Contents |
+| --- | --- |
+| **Heatmap** | Density grid of scannable groups |
+| **Map** | Tile map when WebEngine is available; text fallback otherwise |
+
+Controls: span (miles), tile provider, tower markers, coverage circles,
+and button filters (Police / Fire / EMS / DOT / Multi) that match BT885
+hardware buttons.
+
+<details>
+<summary>Classic Tk shell</summary>
+
+**Heatmap...** / **Map...** use an optional tile map package:
 
 ```bash
 python -m pip install -e .[map]
-# or: pip install tkintermapview
 ```
 
-If `tkintermapview` isn't available, the heatmap falls back to a
-pure-Tk density grid (no map tiles).
+Without it, a pure-Tk density grid still works (no map tiles).
 
-Shared behavior (both shells):
+</details>
 
-- **Span (mi)** prunes tower markers and coverage circles to the
-  visible radius.
-- **Show removed towers (grayed)** — deleted groups/systems since
-  session open appear as gray markers when enabled.
-- Repeater sites shared by several systems collapse into one marker.
+Shared ideas in both shells:
 
-## Coverage Map
-
-- **Qt:** the **Map** tab inside the coverage popout (Leaflet).
-- **Legacy Tk:** **Map...** toolbar button (`tkintermapview`).
-
-Both use OSM / Google tile providers and tower-clustering logic.
+- **Span (mi)** limits markers and circles to the visible radius
+- **Show removed towers (grayed)** — groups/systems deleted since
+  session open appear gray when enabled
+- Shared repeater sites collapse to one marker
 
 ## Export Effective Scan Set
 
-**Legacy Tk only** today — **Export Effective Scan Set...** on the
-toolbar writes a CSV or TXT of rows visible under the current filter,
-with `Lat`, `Lon`, `Range (mi)`, `Distance (mi)` columns.
+<details>
+<summary>Classic Tk shell</summary>
+
+**Export Effective Scan Set...** writes CSV/TXT of rows visible under
+the current filter (includes Lat, Lon, Range, Distance).
+
+</details>
 
 Qt backlog: export from the location filter / coverage popout.
 
-## Tuning the filter
+## Tuning
 
-- **Tolerance** widens / narrows the effective radius by ± miles.
-- **Button filters** (Police/EMS/Fire/DOT/Multi) restrict to service
-  types that map to those physical buttons; see
-  [Scanner Button Service Types](Scanner-Button-Service-Types).
+- **Tolerance** — widen or narrow the effective radius
+- **Button filters** — restrict to service types for those physical
+  buttons ([Scanner Button Service Types](Scanner-Button-Service-Types))
 
-## Cross-references
+## If something goes wrong
 
-- [ZIP & GPS Simulation](ZIP-and-GPS-Simulation)
-- [Qt UI](Qt-UI) — location simulation bar
+- Empty map tiles (Qt) — use the **Heatmap** tab, or install a PySide6
+  build that includes WebEngine
+- Empty Classic Tk map — `pip install -e .[map]` and restart
+- Linux blank window / Wayland — try `QT_QPA_PLATFORM=xcb`
+  ([Install](Install), [Troubleshooting](Troubleshooting))
+
+## Internals
+
+Qt coverage uses pyqtgraph for the heatmap and Leaflet (via WebEngine)
+for the map tab. Classic Tk optionally uses `tkintermapview`.
+
+See [ZIP & GPS Simulation](ZIP-and-GPS-Simulation) and [Qt UI](Qt-UI).

@@ -23,11 +23,11 @@
 - [Service Types](Scanner-Button-Service-Types)
 - [Alerts](Alerts)
 
-**Reference**
+**Help**
 
-- [Architecture](Architecture)
 - [Troubleshooting](Troubleshooting)
 - [Glossary](Glossary)
+- [Architecture](Architecture)
 
 **RE / Development**
 

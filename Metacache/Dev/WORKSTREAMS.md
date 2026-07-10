@@ -29,6 +29,7 @@ One row per stream. Keep this short.
 
 | Stream | Released in | Notes |
 | --- | --- | --- |
+| **Dev notebook / docs IA drift** | `v0.11.x` (2026-07-10) | L0–L4 style-guide; end-users→wiki; archive policy; REVIEW residual auto-profile → shipped. |
 | **Linux compat closeout (docs + HIL handoff)** | `v0.11.x` (2026-07-10) | Beta-complete pending bare-metal HIL; checklist `LINUX_BARE_METAL_HANDOFF.md`; `.deb`/bash Sonar/RE still parked. |
 | **Linux in-place updater** | `v0.11.x` (2026-07-10) | Frozen tar.gz/ELF Update Now: download, SHA-256, extract, `sh` swap + relaunch; AppImage stays manual. |
 | **Linux AppImage + desktop** | `v0.11.x` (2026-07-10) | `ScannerManager-x86_64.AppImage` beside tar.gz; landing harden (GitHub apt, docs); `.deb`/bash ops still parked. |

@@ -58,15 +58,16 @@ Rules of the road for editing this repo. Read once, follow always.
 
 ## Documentation
 
-Pick the **right layer** when docs need to change:
+Pick the **right layer** when docs need to change. Language levels
+**L0–L4** (AI notebook → human front door): [`Metacache/docs/style-guide.md`](../docs/style-guide.md).
 
-| Change type | Edit first | Also update |
-| --- | --- | --- |
-| User-visible feature / UX tour | `wiki/<Page>.md` | Root `README.md` link table (Agent E) |
-| Release / format / contributor checklist | `Metacache/docs/` | Cross-link from wiki if users need a pointer |
-| Agent snapshot, as-built architecture, workstreams | `Metacache/Dev/` (this tree) | `WORKSTREAMS.md` if status changed |
-| Scanner on-disk / serial facts | `Metacache/Dev/RE/docs/` | Wiki RE pages (Agent C); lab wins on conflict |
-| Version / changelog | `CHANGELOG.md` + `pyproject.toml` | `PROJECT_STATE.md`, root README |
+| Change type | Edit first | Lang | Also update |
+| --- | --- | --- | --- |
+| User-visible feature / UX tour | `wiki/<Page>.md` | L4/L3 | Root `README.md` link table (Agent E) |
+| Release / format / contributor checklist | `Metacache/docs/` | L1 | Cross-link from wiki if users need a pointer |
+| Agent snapshot, as-built architecture, workstreams | `Metacache/Dev/` (this tree) | L0 | `WORKSTREAMS.md` if status changed |
+| Scanner on-disk / serial facts | `Metacache/Dev/RE/docs/` | L0/L2 | Wiki RE pages (Agent C); lab wins on conflict |
+| Version / changelog | `CHANGELOG.md` + `pyproject.toml` | — | `PROJECT_STATE.md`, root README |
 
 **Lifecycle banners** on topic docs you touch:
 
@@ -85,6 +86,8 @@ Other rules:
   directly.
 - Cross-links between layers: prefer full GitHub wiki URLs from repo-root
   docs; sibling links inside `wiki/`.
+- `WORKER_LOG.md` append-only; `REVIEW_YYYY-MM.md` historical (factual
+  residual fixes OK — do not rewrite narrative).
 
 ## Working with the multi-scanner backend
 
@@ -99,8 +102,8 @@ Other rules:
 ## AI / agent etiquette
 
 - Update `Metacache/Dev/WORKER_LOG.md` at the end of each substantive
-  session. One entry, terse, newest on top.
+  session. One entry, terse, newest on top (**append-only**).
 - Update topic docs (`PROJECT_STATE.md`, `MULTI_SCANNER_BACKEND.md`,
   `WORKSTREAMS.md`, as-built design refs) if the work you did invalidates them.
-- Don't delete content from these notes; archive instead. Other
-  workers may rely on it.
+- Don't delete / rewrite historical notebook content; append or mark
+  `historical`. Other workers may rely on it.

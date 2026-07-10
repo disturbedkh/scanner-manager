@@ -107,4 +107,4 @@ For Uniden update tools in the app registry, add to
 | --- | --- |
 | [`../Dev/MULTI_SCANNER_BACKEND.md`](../Dev/MULTI_SCANNER_BACKEND.md) | Registry, `set_active_profile()`, backend layout |
 | [`hpe-format.md`](hpe-format.md) | Favorites List (`.hpe`) format — SDS backlog |
-| [`../Dev/WORKSTREAMS.md`](../Dev/WORKSTREAMS.md) | Residual gaps (auto profile switch, Tk `detect_from_card`) |
+| [`../Dev/WORKSTREAMS.md`](../Dev/WORKSTREAMS.md) | Residuals: Tk `detect_from_card`, Favorites editor UI |

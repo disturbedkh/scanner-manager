@@ -4,7 +4,7 @@
 > narrative. Export tiers: [`Metacache/EXPORT_POLICY.md`](../../EXPORT_POLICY.md).
 
 > **Canonical narrative is the wiki.** Start at
-> [`wiki/Reverse-Engineering.md`](../../wiki/Reverse-Engineering.md)
+> [`wiki/Reverse-Engineering.md`](../../../wiki/Reverse-Engineering.md)
 > (or `Reverse-Engineering` on the GitHub Wiki) for the consolidated
 > story. The wiki tells you what we found and why it matters; this
 > folder is the **lab notebook** behind it - raw probe captures,
@@ -40,6 +40,7 @@ Metacache/Dev/RE/
 ├── firmware_analysis/    # strings dumps + diffs (public on GitHub)
 ├── sentinel_pcaps/       # raw USBPcap captures (GitLab-only) +
 │                          #  decoded *.summary.md / *.files.md (public)
+├── sentinel_decompile/   # Sentinel / BT885 installer strings + MSI trees
 └── sessions/             # raw probe logs (sanitized on GitHub export)
 ```
 
@@ -54,18 +55,18 @@ common workflows.
 
 | Topic | Wiki page (canonical) | Backed by |
 | --- | --- | --- |
-| Two-MCU architecture | [RE-Architecture](../../wiki/RE-Architecture.md) | `docs/SDS100.md`, `docs/sub_static_analysis.md`, `firmware/decompiles/` |
-| USB Mass Storage vs Serial mode | [RE-USB-Modes](../../wiki/RE-USB-Modes.md) | `tools/probes/list_ports.py`, `tools/automation/find_sds100_hub.ps1` |
-| SD card layout (BCDx36HP family) | [RE-SD-Card](../../wiki/RE-SD-Card.md) | `docs/SD_CARD_COMPARISON.md`, `docs/BT885.md`, `docs/SDS100.md`, `tools/sentinel/compare_cards.py` |
-| Serial command catalogs | [RE-Serial-Protocol](../../wiki/RE-Serial-Protocol.md) | `docs/SDS100_unofficial_commands.md`, `docs/sub_command_dispatch.md`, `tools/probes/serial_probe.py`, `tools/probes/sub_probe.py` |
-| Inter-MCU USART2 protocol | [RE-Inter-MCU-Bus](../../wiki/RE-Inter-MCU-Bus.md) | `docs/SDS100_inter_mcu_protocol.md`, `firmware/decompiles/` |
-| Firmware (SUB container, MAIN encryption) | [RE-Firmware](../../wiki/RE-Firmware.md) | `docs/SDS100_firmware.md`, `tools/firmware/inflate_sub.py`, `firmware/`, `tools/automation/` |
-| Uniden update FTP endpoints | [RE-Update-Endpoints](../../wiki/RE-Update-Endpoints.md) | `docs/uniden_update_endpoints.md`, `docs/uniden_firmware_inventory.md`; prod client: `firmware/ftp_client.py` |
-| Sentinel as UMS editor | [RE-Sentinel](../../wiki/RE-Sentinel.md) | `docs/sentinel_api.md`, `docs/sentinel_capture.md`, `sentinel_pcaps/`, `tools/sentinel/` |
-| Tool inventory | [RE-Toolchain](../../wiki/RE-Toolchain.md) | `tools/README.md` and the per-script docstrings |
-| Recipes / playbooks | [RE-Workflows](../../wiki/RE-Workflows.md) | `docs/AUTOMATION.md`, `docs/ghidra_import_runbook.md` |
-| Virtual scanner roadmap | [Virtual-Scanner-Roadmap](../../wiki/Virtual-Scanner-Roadmap.md) | `plans/virtual_scanner.md` |
-| RE glossary | [Glossary](../../wiki/Glossary.md) | (defined inline in lab docs) |
+| Two-MCU architecture | [RE-Architecture](../../../wiki/RE-Architecture.md) | `docs/SDS100.md`, `docs/sub_static_analysis.md`, `firmware/decompiles/` |
+| USB Mass Storage vs Serial mode | [RE-USB-Modes](../../../wiki/RE-USB-Modes.md) | `tools/probes/list_ports.py`, `tools/automation/find_sds100_hub.ps1` |
+| SD card layout (BCDx36HP family) | [RE-SD-Card](../../../wiki/RE-SD-Card.md) | `docs/SD_CARD_COMPARISON.md`, `docs/BT885.md`, `docs/SDS100.md`, `tools/sentinel/compare_cards.py` |
+| Serial command catalogs | [RE-Serial-Protocol](../../../wiki/RE-Serial-Protocol.md) | `docs/SDS100_unofficial_commands.md`, `docs/sub_command_dispatch.md`, `tools/probes/serial_probe.py`, `tools/probes/sub_probe.py` |
+| Inter-MCU USART2 protocol | [RE-Inter-MCU-Bus](../../../wiki/RE-Inter-MCU-Bus.md) | `docs/SDS100_inter_mcu_protocol.md`, `firmware/decompiles/` |
+| Firmware (SUB container, MAIN encryption) | [RE-Firmware](../../../wiki/RE-Firmware.md) | `docs/SDS100_firmware.md`, `tools/firmware/inflate_sub.py`, `firmware/`, `tools/automation/` |
+| Uniden update FTP endpoints | [RE-Update-Endpoints](../../../wiki/RE-Update-Endpoints.md) | `docs/uniden_update_endpoints.md`, `docs/uniden_firmware_inventory.md`; prod client: `firmware/ftp_client.py` |
+| Sentinel as UMS editor | [RE-Sentinel](../../../wiki/RE-Sentinel.md) | `docs/sentinel_api.md`, `docs/sentinel_capture.md`, `sentinel_pcaps/`, `tools/sentinel/` |
+| Tool inventory | [RE-Toolchain](../../../wiki/RE-Toolchain.md) | `tools/README.md` and the per-script docstrings |
+| Recipes / playbooks | [RE-Workflows](../../../wiki/RE-Workflows.md) | `docs/AUTOMATION.md`, `docs/ghidra_import_runbook.md` |
+| Virtual scanner roadmap | [Virtual-Scanner-Roadmap](../../../wiki/Virtual-Scanner-Roadmap.md) | `plans/virtual_scanner.md` |
+| RE glossary | [Glossary](../../../wiki/Glossary.md) | (defined inline in lab docs) |
 
 ## Running the probes (live scanner over USB)
 

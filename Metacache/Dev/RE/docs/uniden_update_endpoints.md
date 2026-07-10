@@ -1,7 +1,7 @@
 # Uniden update endpoints (reverse-engineered) - 2026-05-03
 
 > **Canonical narrative is in the wiki**:
-> [`wiki/RE-Update-Endpoints.md`](../../../wiki/RE-Update-Endpoints.md). This
+> [`wiki/RE-Update-Endpoints.md`](../../../../wiki/RE-Update-Endpoints.md). This
 > file is the lab notebook for ongoing endpoint work.
 
 > Goal: implement firmware + HPDB update flows in our app **without**
@@ -475,5 +475,5 @@ hunted for any RE-actionable plaintext. See
   format and update-by-file-drop semantics.
 - [`Metacache/Dev/RE/sentinel_decompile/strings/`](../sentinel_decompile/strings/) - raw
   string-extract artifacts that produced the endpoint discoveries.
-- [Reverse Engineering wiki home](../../../wiki/Reverse-Engineering.md) -
+- [Reverse Engineering wiki home](../../../../wiki/Reverse-Engineering.md) -
   high-level overview of the RE work.

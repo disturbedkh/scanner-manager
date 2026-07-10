@@ -100,7 +100,7 @@ exploit.
   predates BCDx36HP and was already mature when the BCD436HP/536HP
   launched in 2014.
 - Static RE of MAIN remains infeasible. (Already documented in
-  [RE-Firmware](../../../wiki/RE-Firmware.md); this analysis just
+  [RE-Firmware](../../../../wiki/RE-Firmware.md); this analysis just
   closes off the "maybe an older variant is plaintext" hypothesis.)
 
 ## BC-WF1 Wi-Fi adapter - the actionable RE win
@@ -344,5 +344,5 @@ re-verify against the live server if Uniden ever updates the layout.
   blob format and Sub firmware container parsing.
 - [`sub_static_analysis.md`](sub_static_analysis.md) - what we did
   pull out of the SDS100 SUB MCU plaintext firmware.
-- [Reverse Engineering wiki](../../../wiki/Reverse-Engineering.md) -
+- [Reverse Engineering wiki](../../../../wiki/Reverse-Engineering.md) -
   high-level RE narrative.

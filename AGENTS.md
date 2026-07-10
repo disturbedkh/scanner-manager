@@ -26,6 +26,9 @@ Use built-in Task subagents with prompts from [`.cursor/agents/`](.cursor/agents
 - **`re-explorer.md`** + `explore` — navigate RE lab notebook
 - **`profile-implementer.md`** + `generalPurpose` — profile + tests
 - **`gui-debugger.md`** + `generalPurpose` — Qt + optional dev_mcp
+- **`docs-*.md`** (Root / WikiUser / WikiRef / WikiRE / MetaOps /
+  DevNotebook / RELab / Integrator) — docs reform lanes; language levels
+  L0–L4 in [`Metacache/docs/style-guide.md`](Metacache/docs/style-guide.md)
 
 ## Hard stops
 
@@ -40,7 +43,8 @@ Use built-in Task subagents with prompts from [`.cursor/agents/`](.cursor/agents
 
 See [`Metacache/Dev/WORKSTREAMS.md`](Metacache/Dev/WORKSTREAMS.md).
 Current focus areas: SDS100 live-serial RE, Sub Ghidra disassembly,
-waterfall live-verify backlog, BT885 fixture/alias cleanup, build
-system Phase 2 tail (SonarCloud primary + VPS compliance). Shipped in
-v0.11.x — do not treat as planning: SDS100 profile, multi-device GUI,
-firmware updater, streaming, `detect_from_card()` (Qt banner only).
+waterfall live-verify backlog, multi-scanner residual (legacy Tk
+globals / `compat.py`). Shipped in v0.11.x — do not treat as planning:
+SDS100 profile, multi-device GUI, firmware updater, streaming,
+`detect_from_card()` (Qt), auto profile switch on card load, Linux
+AppImage + in-place updater.

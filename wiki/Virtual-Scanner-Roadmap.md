@@ -2,87 +2,88 @@
 
 > Status: active plan (v0.11.x) — exploratory sketch, not a tracked workstream.
 
-> Where this fits: forward-looking roadmap for an SDR-backed
-> "software SDS100" that reuses our existing RE work as a
-> compatibility layer. For the consolidated narrative start at
+> Where this fits: forward-looking SDR-backed “software SDS100” that
+> reuses existing RE as a compatibility layer. Start at
 > [Reverse Engineering](Reverse-Engineering).
->
-> Source plan (repo):
-> [`Metacache/Dev/RE/plans/virtual_scanner.md`](https://github.com/disturbedkh/scanner-manager/blob/main/Metacache/Dev/RE/plans/virtual_scanner.md)
 
-## TL;DR
+## What this answers
 
-A virtual SDS100 is feasible **as a compatibility-and-UX layer over
-an existing open-source SDR/decoder stack**, not as a ground-up
-reimplementation of the Uniden DSP pipeline. The user plugs in an
-RTL-SDR (or Airspy / HackRF / SDRplay), points our app at it, and
-sees the same favorites + scan workflow they'd see with a real
-SDS100 - except the radio is software, the audio comes from
-SDRTrunk / OP25 / DSDplus, and the compute headroom is whatever
-laptop they're on.
+Whether a virtual SDS100 is worth pursuing, which feasibility tier
+to start with, and which existing RE surfaces feed the design —
+without treating this as a committed milestone.
 
-## Why bother?
+## Known vs OPEN
 
-- **No hardware lock-in.** $30 RTL-SDR vs. $700 SDS100 for a casual
-  user; same UX surface either way.
-- **PC-class compute.** Waterfalls, parallel-decode every active
-  TGID, replay across recordings, etc. - things the embedded SUB
-  MCU can't physically do.
-- **Same data model.** Favorites / HPDB / GLT / GSI XML / ZIP
-  coverage all already round-trip thanks to our RE work. A user's
-  workspace ports between physical and virtual scanner without
-  conversion.
+| Topic | State | Notes |
+|---|---|---|
+| Tier A/B/C feasibility sketch | DONE (plan) | Lab plan is SSOT |
+| Recommended start = Tier A (SDRTrunk/OP25 IPC) | Proposed | Not scheduled |
+| GPL-3 (SDRTrunk) vs app license | OPEN | |
+| GLG ↔ decoder call-event mapping | OPEN | |
+| Recording format choice | OPEN | |
+| PC GPS source | OPEN | |
 
-## The three feasibility tiers
+## Deep dive
+
+### TL;DR
+
+A virtual SDS100 is feasible as a **compatibility-and-UX layer over
+an existing OSS SDR/decoder stack**, not as a ground-up Uniden DSP
+reimplementation. User plugs in RTL-SDR (or Airspy / HackRF /
+SDRplay), points the app at it, and keeps favorites / scan workflow
+while audio/decode come from SDRTrunk / OP25 / DSDplus.
+
+### Why bother?
+
+- No hardware lock-in ($30 dongle vs $700 scanner) with the same UX.
+- PC-class compute (parallel TGID decode, rich waterfalls, replay).
+- Same data model — HPDB / favorites / GSI-shaped UI already RE’d.
+
+### Three feasibility tiers
 
 | Tier | Approach | Effort | Recommended? |
 |---|---|---|---|
-| **A** | "Sentinel for SDR" - drive an existing OSS decoder (SDRTrunk / OP25 / DSDplus) from our app via its existing IPC | Medium | **Yes - start here** |
-| **B** | GNU Radio top-block configurator with our own scan-state machine, leveraging gr-dsd / gr-dmr / gr-osmosdr | Large | Maybe later |
-| **C** | Reimplement the SUB DSP pipeline (R840 -> FFT -> filter chain -> decoder) in software | Very large | Research-only |
+| **A** | Drive OSS decoder (SDRTrunk / OP25 / DSDplus) via existing IPC | Medium | **Yes — start here** |
+| **B** | GNU Radio top-block + our scan-state machine | Large | Later |
+| **C** | Reimplement SUB DSP pipeline in software | Very large | Research-only |
 
-Full reasoning - layer-by-layer breakdown, decoder choice, GLG
-mapping, license risk, packaging risk - lives in
-`Metacache/Dev/RE/plans/virtual_scanner.md`. This page is the wiki-facing
-TL;DR; the plan file is the authoritative spec.
+Full layer-by-layer reasoning, decoder choice, license/packaging
+risk: **`Metacache/Dev/RE/plans/virtual_scanner.md`** (authoritative).
+This page is the wiki TL;DR.
 
-## What from existing RE work feeds straight in
+### What existing RE feeds in
 
 | Wiki page | Used for |
 |---|---|
-| [RE-SD-Card](RE-SD-Card) + [RE-Sentinel](RE-Sentinel) | favorites / HPDB / scanner.cfg parsers we already use end-to-end |
-| [RE-Serial-Protocol](RE-Serial-Protocol) (GLG / GSI / STS) | UI/UX surface to mirror in software |
-| [RE-Firmware](RE-Firmware) (R840, FFT, noise-squelch format strings) | informs Tier C only |
-| [RE-Inter-MCU-Bus](RE-Inter-MCU-Bus) | informs Tier C only |
+| [RE-SD-Card](RE-SD-Card) + [RE-Sentinel](RE-Sentinel) | Favorites / HPDB parsers |
+| [RE-Serial-Protocol](RE-Serial-Protocol) (GLG / GSI / STS) | UI surface to mirror |
+| [RE-Firmware](RE-Firmware) (R840 / FFT strings) | Tier C only |
+| [RE-Inter-MCU-Bus](RE-Inter-MCU-Bus) | Tier C only |
 
-## Recommended starting spike
+### Recommended starting spike
 
-1. Get SDRTrunk running standalone with an RTL-SDR.
-2. Generate a SDRTrunk `.playlist` from a user's HPDB favorites
-   (Python prototype, no UI).
-3. Subscribe to SDRTrunk's call-event stream (REST or zeromq) and
-   render it in a GLG-equivalent panel in our app.
-4. If those three steps succeed, promote to a real workstream and
-   write a milestone.
+1. SDRTrunk standalone + RTL-SDR.
+2. Generate SDRTrunk `.playlist` from HPDB favorites (Python, no UI).
+3. Subscribe to call-event stream; render GLG-equivalent panel.
+4. If green, promote to a real workstream + milestones.
 
-## Risk register (summary)
+### Risk register (summary)
 
 | Risk | Mitigation |
 |---|---|
-| Encrypted talkgroups | Same limitation as a physical scanner; surface clearly. |
-| Decoder churn / IPC breaking | Pin a known-good SDRTrunk version; integration-test on captured baseband. |
-| GNU Radio packaging on Windows | Tier A doesn't need it; only kicks in if/when we move to Tier B. |
-| Legal restrictions on scanning | Same as physical scanners. |
+| Encrypted talkgroups | Same as physical scanner; surface clearly |
+| Decoder IPC churn | Pin known-good version; test on captured baseband |
+| GNU Radio on Windows | Tier A avoids it |
+| Legal scanning limits | Same as physical |
 
-## Open questions
+Until open questions resolve, treat this as a discussion artefact
+(GitHub Discussions: Ideas / Tooling).
 
-1. License compatibility (SDRTrunk is GPL-3, our app is MIT).
-2. How completely SDRTrunk's call events map to the GLG schema.
-3. Recording format choice (match SDS100 WAV layout vs. richer
-   FLAC/JSON).
-4. GPS source on a PC (manual, gpsd, phone bridge).
+## Lab pointers
 
-If any of those resolve cleanly, this moves from "exploratory" to
-"prioritised". Until then, treat this page as a discussion artefact
-- comments and counter-proposals welcome via GitHub Discussions
-("Ideas" or "Tooling / Development" categories).
+| Path | Role |
+|---|---|
+| `Metacache/Dev/RE/plans/virtual_scanner.md` | **SSOT** full plan |
+| `Metacache/Dev/RE/plans/README.md` | Plans index |
+| `Metacache/Dev/RE/docs/SDS100_unofficial_commands.md` | GLG / GSI field notes |
+| `Metacache/Dev/RE/docs/SDS100.md` | SD + serial context for compatibility surface |

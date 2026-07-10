@@ -135,9 +135,10 @@ polish—not blockers for continued public beta.
 | [`Dev/BUILD_SYSTEM.md`](Dev/BUILD_SYSTEM.md) | Pipeline stages, test pyramid, Qt teardown policy |
 | [`Dev/SONARQUBE.md`](Dev/SONARQUBE.md) | SonarCloud vs VPS roles, dual-scan baseline |
 | [`docs/RELEASE.md`](docs/RELEASE.md) | Release cut checklist (version↔tag sync) |
+| [`EXPORT_POLICY.md`](EXPORT_POLICY.md) | GitHub Metacache filter tiers |
 | [`docs/README.md`](docs/README.md) | Contributor ops index |
 | [`Dev/PROJECT_STATE.md`](Dev/PROJECT_STATE.md) | Current snapshot |
-| [`Dev/WORKSTREAMS.md`](Dev/WORKSTREAMS.md) | Feature residuals (Tk detect, Favorites) |
+| [`Dev/WORKSTREAMS.md`](Dev/WORKSTREAMS.md) | Feature residuals (Tk detect, Favorites); Linux AppImage / `.deb` park |
 | [`Dev/LINUX_BARE_METAL_HANDOFF.md`](Dev/LINUX_BARE_METAL_HANDOFF.md) | Ubuntu/Debian bare-metal HIL checklist (beta closeout) |
 | [`packaging/README.md`](../packaging/README.md) | PyInstaller local build |
 | [`packaging/linux/99-uniden-scanner.rules`](../packaging/linux/99-uniden-scanner.rules) | Linux CDC udev rules |

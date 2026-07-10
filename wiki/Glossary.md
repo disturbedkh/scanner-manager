@@ -2,150 +2,131 @@
 
 > Status: shipped (v0.11.x)
 
-Scanner hobby acronyms relevant to working with Scanner Manager.
+Short definitions for terms you will see in Scanner Manager and on the
+SD card. Reverse-engineering vocabulary is in the section at the bottom
+— day-to-day users can stop after **Coverage tags**.
 
 ## Scanner hardware / firmware
 
-- **BearTracker 885 (BT885)** — Uniden's all-in-one base + mobile
-  scanner with DOT / EMS / Fire / Police preset buttons. A primary
-  target of this project.
+- **BearTracker 885 (BT885)** — Uniden base/mobile scanner with DOT /
+  EMS / Fire / Police buttons. A primary target of this project.
 - **SDS100 / SDS200** — Uniden handheld/base scanners in the BCDx36HP
-  family with serial live mirror, streaming, and firmware FTP support
-  in Scanner Manager v0.11.x.
-- **BCDx36HP** — Uniden's firmware family folder name on the SD card.
-  Shared by BT885, SDS100, SDS200, SDS150, BCD436HP, BCD536HP. **Not
-  a model identifier** — read `scanner.inf` field 1 for the real model.
+  family. Scanner Manager 0.11.x supports serial live mirror, streaming,
+  and firmware updates for these.
+- **BCDx36HP** — Folder name on the SD card shared by several Uniden
+  models. **Not** a model name by itself — read `scanner.inf` for the
+  real model.
 - **Firmware tables** — `ZipTable*.dat` and `CityTable*.dat` on the
-  SD card. Used by the scanner to decide what to scan at a given
-  location.
+  card. Used to decide what to scan at a location.
+
+## USB modes
+
+- **Mass Storage** — USB mode where the SD card appears as a removable
+  drive. Use this (or a card reader) to edit files with Scanner Manager
+  or Sentinel.
+- **Serial** — USB mode with virtual COM ports for live control and
+  monitoring (SDS100/200). The SD volume is hidden in this mode.
 
 ## File formats
 
-- **HPD** — Uniden's binary configuration file format (`.hpd`). A
-  single HPD file holds one or more systems, the groups inside them,
-  and every conventional frequency and trunked talkgroup inside those
-  groups. The BearTracker splits these by state.
-- **`hpdb.cfg`** — the master HPD file the scanner loads from the card
-  root. Points at the per-state `s_*.hpd` files.
-- **`s_*.hpd`** — per-state HPD files the scanner loads on demand
-  when you pick a location.
-- **`f_*.hpd`** — per-favorite payload (SDS100 only).
-- **`profile.cfg`** — giant settings file (SDS100 only).
-- **`.meta.json`** — Scanner Manager's change-history sidecar, stored
-  next to each HPD file. It's how **Undo** knows what to reverse.
-  Never hand-edit it.
-- **`.session.bak`** — automatic safety copy of the HPD file written
-  on every save. Used to recover if a save goes wrong.
+- **HPD** — Uniden channel-database file (`.hpd`). Holds systems,
+  groups, and entries (frequencies or talkgroups). The BearTracker
+  often splits these by state (`s_*.hpd`).
+- **HPDB** — The on-card channel database as a whole: master
+  `hpdb.cfg` plus the HPD files it references.
+- **`hpdb.cfg`** — Master index the scanner loads; points at per-state
+  `s_*.hpd` files.
+- **`s_*.hpd`** — Per-state HPD files loaded when you pick a location.
+- **`f_*.hpd`** — Per-favorite payload (SDS100 only).
+- **`profile.cfg`** — Large settings file (SDS100 only).
+- **`.meta.json`** — Scanner Manager change-history sidecar next to
+  each HPD. How **Revert** knows what to undo. Do not hand-edit.
+- **`.session.bak`** — Automatic safety copy written on save. Use it to
+  recover a bad save.
 
 ## RadioReference
 
 - **RR** — [RadioReference.com](https://www.radioreference.com/).
-- **SID** (or System ID) — RR's identifier for a trunked system.
+- **SID** (System ID) — RR identifier for a trunked system.
 - **TGID** — Trunked talkgroup ID.
-- **Category** — An RR grouping of related frequencies.
+- **Category** — RR grouping of related frequencies.
 
 ## This app
 
-- **MetaStore** — the event-sourced change log in `core/metastore.py`.
-  See [Architecture](Architecture).
-- **Workspace (Qt)** — named bundle pointing at a `devices.json`
-  manifest (Home vs Travel device lists). See
-  [Workspaces & Sync](Workspaces-and-Sync).
-- **Virtual SD card (legacy Tk)** — offline clone of the card for edit-
-  while-detached workflows. Same wiki page, different section.
-- **Pipeline / push-update-pull** — Uniden tool orchestration flow
-  that snapshots, runs the Uniden tool, and replays user events on
-  top. See [Uniden Tools](Uniden-Tools-Integration).
-- **`detect_from_card()`** — reads `scanner.inf` to pick the correct
-  profile; Qt shows a mismatch banner when the device row disagrees.
+- **Change history / MetaStore** — Revertable log of edits and imports.
+  Open **Tools → Recent changes…** in Qt. See [Architecture](Architecture).
+- **Workspace (Qt)** — Named device-list bundle (`devices.json`) for
+  Home vs Travel setups. See [Workspaces & Sync](Workspaces-and-Sync).
+- **Virtual SD card (Classic Tk)** — Offline clone of the card for
+  edit-while-detached. Same wiki page, different section.
+- **Push → update → pull** — Uniden tool cycle that snapshots, runs
+  Sentinel / BT885 Update Manager, then replays your edits. See
+  [Uniden Tools](Uniden-Tools-Integration).
+- **Card detect** — Reads `scanner.inf` to recognize the scanner model;
+  Qt can warn or confirm a profile switch when the device row disagrees.
 
 ## Coverage tags
 
-- `COVERAGE` — center point is inside the system's coverage circle.
-- `NEARBY` — edge of coverage is within the nearby threshold.
-- `LOCAL` — system is pinned to the active ZIP's primary county.
-- `STATEWIDE` — state-level system, relevant anywhere in-state.
-- `WIDE` — national / multi-state.
+- `COVERAGE` — Center point is inside the group's coverage circle.
+- `NEARBY` — Edge of coverage is within the nearby threshold.
+- `LOCAL` — Pinned to the active ZIP's primary county.
+- `STATEWIDE` — State-level system, relevant anywhere in-state.
+- `WIDE` — National / multi-state.
 
-See [ZIP & GPS Simulation](ZIP-and-GPS-Simulation) for full details.
+See [ZIP & GPS Simulation](ZIP-and-GPS-Simulation).
 
 ## Reverse engineering
 
-The terms below are specific to the
-[Reverse Engineering](Reverse-Engineering) section. See that page
-for the consolidated narrative.
+Terms below are for the [Reverse Engineering](Reverse-Engineering)
+section. Everyday use of Scanner Manager does not require them.
 
 ### Hardware
 
-- **MAIN MCU** — the SDS100's primary microcontroller (STM32 family).
-  Owns the LCD, keypad, scan engine, SD card, and USB-host endpoint.
-  Firmware is **encrypted** so we can't read it statically.
-- **SUB MCU** — the SDS100's secondary microcontroller (NXP LPC43xx,
-  ARM Cortex-M3/M4). Owns the RF tuner and DSP. Firmware is
-  **plaintext** and fully decompiled.
-- **R840** — Rafael Micro silicon TV-tuner IC the SDS100 uses as
-  the wide-band IF tuner. Driven over I2C from SUB.
-- **USART2** — LPC43xx UART block used as the **inter-MCU bus**
-  between SUB and MAIN. 115200/8N1, no flow control, internal
-  routing only.
+- **MAIN MCU** — SDS100 primary microcontroller. Owns LCD, keypad,
+  scan engine, SD card, USB-host. Firmware is encrypted.
+- **SUB MCU** — SDS100 secondary microcontroller. Owns RF tuner and
+  DSP. Firmware is plaintext and heavily analyzed.
+- **R840** — Wide-band IF tuner IC driven from SUB.
+- **USART2** — Inter-MCU serial link between SUB and MAIN.
 
-### USB modes
+### USB modes (detail)
 
-- **Mass-Storage mode** (or **UMS mode**) — one of the two USB
-  modes of the SDS100. The SD card appears as a removable FAT32
-  drive. Sentinel's only mode.
-- **Serial mode** — the other USB mode. Two CDC virtual COM ports
-  appear (`PID 0x0019` SUB and `PID 0x001A` MAIN). The SD volume
-  is hidden in this mode.
-- **CDC** — Communications Device Class. The USB class that
-  presents a serial-port-like interface to the host.
-- **MSC / UMS** — Mass Storage Class / USB Mass Storage. The class
-  that presents a SCSI block device to the host.
-- **BOT** — Bulk-Only Transport. The USB mass-storage transport
-  layer that wraps SCSI commands in CBW/CSW packets over bulk
-  endpoints.
-- **CBW / CSW** — Command Block Wrapper / Command Status Wrapper.
-  The CBW (31 bytes, magic `USBC`) carries the SCSI command;
-  CSW (13 bytes, magic `USBS`) carries the response status.
+- **Mass-Storage / UMS mode** — SD card as FAT32 drive (Sentinel's mode).
+- **Serial mode** — Two CDC COM ports (SUB and MAIN); SD hidden.
+- **CDC** — USB class that looks like a serial port.
+- **MSC / UMS** — Mass Storage Class.
+- **BOT** — Bulk-Only Transport for mass-storage commands.
+- **CBW / CSW** — Command / status wrappers for SCSI-over-USB.
 
 ### Files / format
 
-- **HPD** / **`s_*.hpd`** — per-state Hpdb-Per-... payload file.
-  Tab-separated record-oriented format. See [RE-SD-Card](RE-SD-Card).
-- **`scanner.inf`** — identity file. Field 1 of the `Scanner` line
-  is the canonical model fingerprint.
-- **`.bin`** — MAIN MCU firmware image (encrypted, ~2.16 MB).
-  Dropped into `BCDx36HP/firmware/` to update.
-- **`.firm`** — SUB MCU firmware image (plaintext, ~88-90 KB).
-  Same drop-and-reboot mechanism.
+- **HPD** / **`s_*.hpd`** — Per-state payload files. See
+  [RE-SD-Card](RE-SD-Card).
+- **`scanner.inf`** — Identity file; field 1 is the model fingerprint.
+- **`.bin`** — MAIN firmware image (encrypted).
+- **`.firm`** — SUB firmware image (plaintext).
 
 ### Tooling
 
-- **Sentinel** — Uniden's official SDS100 desktop tool. Just a
-  Mass-Storage filesystem editor with a UI. See [RE-Sentinel](RE-Sentinel).
-- **Ghidra** — the NSA's open-source software reverse-engineering
-  framework. We use it for headless analysis of the SUB firmware.
-- **USBPcap** — kernel-level USB packet capture driver for Windows.
-  Required to capture Sentinel's USB traffic.
-- **tshark** — Wireshark's CLI. Used by our SCSI/UMS/FAT32 decoder
-  to parse pcaps.
+- **Sentinel** — Uniden's official SDS100 desktop tool (mass-storage
+  editor). See [RE-Sentinel](RE-Sentinel).
+- **Ghidra** — Open-source reverse-engineering framework used on SUB
+  firmware.
+- **USBPcap** — Windows USB capture driver.
+- **tshark** — Wireshark CLI used to decode captures.
 
 ### Probes / techniques
 
-- **Whitelist + forbidden-list probe** — the safety contract our
-  probes follow. Mutating commands are hard-coded forbidden;
-  read-only commands must be on the whitelist before being sent.
-- **Anchor-and-compare** — re-send a known-good command (e.g.
-  `MDL`) between probes to detect buffer leakage on the SUB port.
-- **Live falsification** — sending a Ghidra-predicted mnemonic to
-  the live scanner to confirm or refute the prediction.
+- **Whitelist + forbidden-list probe** — Safety contract: mutating
+  commands forbidden; read-only commands must be whitelisted.
+- **Anchor-and-compare** — Re-send a known-good command between probes
+  to detect buffer leakage.
+- **Live falsification** — Send a predicted command to the live scanner
+  to confirm or refute it.
 
 ### Findings
 
-- **GSI XML** — the MAIN-port command that returns the entire
-  scanner state as XML. Single best command for a live mirror.
-- **GLT,SYS** — undocumented GLT subform that works on SDS100
-  (Phase 3 finding from BCDx36HP V1.05).
-- **The 13 SUB debug commands** — `o q w d r m z h l s t u v`. DSP
-  / RF debug taps in the SUB firmware. See
+- **GSI XML** — MAIN-port status dump used for the live mirror.
+- **GLT,SYS** — Undocumented GLT subform on SDS100.
+- **The 13 SUB debug commands** — DSP / RF debug taps. See
   [RE-Serial-Protocol](RE-Serial-Protocol).

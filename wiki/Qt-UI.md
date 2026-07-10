@@ -1,157 +1,142 @@
-# Qt UI (PySide6)
+# Qt UI
 
 > Status: shipped (v0.11.x)
 
-> This page documents the Qt-based desktop shell that ships as the
-> default `scanner-manager` console script (v0.11.1). The legacy
-> Tkinter UI is still available as `scanner-manager-tk`.
+The Qt desktop app is the default way to run Scanner Manager. Use it to
+register scanners, edit the on-card channel database (**HPDB** /
+**HPD** — see [Glossary](Glossary)), preview location coverage on
+BearTracker 885, and (on SDS100/200) mirror live activity and stream
+audio.
+
+<details>
+<summary>Classic Tk shell</summary>
+
+The older layout is still available as `scanner-manager-tk` for
+workflows not yet in Qt (RadioReference import, Virtual SD card,
+CityTable editor, Alerts viewer, Export Effective Scan Set). Prefer Qt
+for day-to-day editing.
+
+</details>
+
+## Prerequisites
+
+- Scanner Manager installed ([Install](Install))
+- For editing: SD card mounted (**Mass Storage** mode or a card reader)
+- For Live / Streaming (SDS100/200): scanner in **Serial** USB mode
+  (see [Glossary](Glossary))
 
 ## Quick start
 
 ```sh
 pip install -e .
-scanner-manager           # Qt shell (default)
+scanner-manager           # Qt (default)
 scanner-manager-qt        # alias
-scanner-manager-tk        # legacy Tk shell
 ```
 
-The Qt build pulls in `PySide6`, `pyqtgraph`, `pyserial`,
-`sounddevice`, and `numpy` automatically. Streaming + firmware push
-features add a few more deps:
+Optional extras for streaming and firmware:
 
 ```sh
 pip install -e .[streaming,firmware,radioreference]
 ```
 
-## Window layout (v0.11.x)
+Prebuilt downloads launch `ScannerManager` / `ScannerManager.exe`
+directly — see [Install](Install).
 
-The main window uses a **stacked central layout** (Storage vs Live)
-with a fixed header strip and popout windows for coverage and firmware.
+## Window layout
 
-```
-+----------------------------------------------------------+
-| Header bar:                                              |
-|   [Device selector v] [LED] [Storage|Live] [FW pill]     |
-+----------------------------------------------------------+
-| Central stack — Storage page (default):                  |
-|   Editor dock: toolbar + location sim bar (BT885)        |
-|   HPDB QTreeView | profile panels (BT885 inspector or    |
-|                    SDS details + Favorites/profile.cfg)  |
-|   Profile mismatch banner when card ≠ device config      |
-+----------------------------------------------------------+
-| Central stack — Live page (SDS100/200):                  |
-|   Live dock tabs:                                        |
-|     Live - Control    → virtual scanner faceplate        |
-|     Live - Monitoring → GSI, meters, GLG, waterfall      |
-|   Streaming dock (tabbed with Live when visible)         |
-+----------------------------------------------------------+
-| Status bar + optional Log window (View menu)             |
-| Firmware updater opens as standalone window (Tools menu) |
-| Coverage heatmap/map opens as popout (View menu)         |
-+----------------------------------------------------------+
-```
+The main window has a fixed **header** and a central stack that
+switches between **Storage** (editing) and **Live** (SDS100/200).
 
-Docks honour profile capability flags. BearTracker 885 hides the Live
-and Streaming surfaces because the BT885 has no RE'd serial mode.
+| Area | What you see |
+| --- | --- |
+| **Header** | Device selector, connection LED, **Storage** / **Live** toggle, firmware status pill |
+| **Storage** | Channel tree, details/inspector, location simulation bar (BT885), mismatch banner if needed |
+| **Live** (SDS100/200) | **Live - Control** (faceplate) and **Live - Monitoring** (meters, call feed, waterfall); Streaming dock when visible |
+| **Status bar** | Short status; optional **View → Log window…** |
+
+BearTracker 885 hides Live and Streaming — that model has no serial
+live mode in this app.
 
 ## Switching scanners
 
-The header's device selector reads `data/devices.json` (managed by
-`core/device_manager.DeviceManager`). Picking a device:
+1. **Devices → Add device…** — friendly name, scanner family, optional
+   SD card path. If you give a card path, the app reads `scanner.inf`
+   and can prefill the family.
+2. Pick the device in the header dropdown.
+3. The editor and docks rebuild for that profile.
 
-1. Calls `scanner_profiles.set_active_profile(...)`.
-2. Emits `MainWindow.activeDeviceChanged`.
-3. Tells every dock to rebuild via `set_active_device()` /
-   `set_active_profile()`.
-4. Re-applies visibility using the new profile's `supports_*` flags.
+If the card's model disagrees with the device row, a mismatch banner
+appears with a link to **Devices → Manage devices…**. You can also
+accept a confirm dialog to switch this device to the detected profile.
 
-Add a device via **Devices → Add device…**; the wizard asks for a
-friendly label, the scanner family, and (optionally) the SD card mount
-path. If you provide an SD card path the app auto-detects the scanner
-family from `BCDx36HP/scanner.inf` via `detect_from_card()` and
-prefills the selection. If the loaded card disagrees with the device's
-configured profile, the editor shows a mismatch banner with a link to
-**Manage devices…** (auto profile switch is backlog — banner only).
+## Location simulation bar (BearTracker 885)
 
-## Location simulation bar (0.11.0+)
+With a BT885 device and HPDB loaded:
 
-For BearTracker 885 profiles, the editor toolbar includes a **location
-simulation bar** (`gui/editor/location_sim_bar.py`):
+- Tick **Apply location filter**
+- Enter ZIP, county, or GPS and adjust **Tolerance**
 
-- **Apply location filter** checkbox
-- ZIP / county / GPS inputs and tolerance controls
-- Drives the HPDB tree filter and coverage map center
+That drives the tree filter and coverage map center. SDS100/200 use a
+three-column editor without this bar. See
+[ZIP & GPS Simulation](ZIP-and-GPS-Simulation).
 
-SDS100/200 profiles use the three-column editor layout without this
-bar (location filtering semantics differ on that hardware family).
-
-## Live dock (0.11.0+)
-
-The Live page splits into two tabs:
+## Live dock (SDS100/200)
 
 | Tab | Contents |
 | --- | --- |
-| **Live - Control** | Virtual scanner faceplate — clickable keypad, soft keys, LCD mirror |
-| **Live - Monitoring** | GSI XML mirror, signal meters, GLG call feed, FFT/waterfall |
+| **Live - Control** | Virtual faceplate — keypad, soft keys, LCD mirror |
+| **Live - Monitoring** | Status mirror, signal meters, call feed, waterfall |
 
-Connect/disconnect controls enumerate MAIN + SUB serial ports for the
-active SDS profile. The header LED tracks connection state (red /
-yellow / green).
+Connect MAIN and SUB serial ports from the Live controls. The header
+LED tracks connection state.
 
-## Menus
+## Menus (common actions)
 
 ### File / Devices / View
 
-- **File → Save** — save current HPD edits.
-- **Devices → Add / Manage devices…** — device manifest editor.
-- **View → Coverage / heatmap…** — popout pyqtgraph + Leaflet map.
-- **View → Log window…** — rolling application log.
+- **File → Save** — save current HPD edits
+- **Devices → Add / Manage devices…** — device list
+- **View → Coverage / heatmap…** — map and heatmap popout
+- **View → Log window…** — application log
 
-### Tools menu
+### Tools
 
-- **Firmware updater…** (`Ctrl+Shift+F`) — FTP discovery + apply wizard.
-- **Workspaces…** — switch between named `devices.json` bundles (Home
-  vs Travel setups). Not the legacy Virtual SD card clone; see
-  [Workspaces & Sync](Workspaces-and-Sync).
-- **Profile snapshots…** — capture and roll back `BCDx36HP/` folder state.
-- **Recent changes…** — MetaStore event log viewer.
-- **City / ZIP overrides…** — custom geo overrides for coverage when
-  bundled ZIP data is incomplete.
-- **Uniden tools…** — Sentinel / BT885 Update Manager launcher.
+- **Firmware updater…** (`Ctrl+Shift+F`)
+- **Workspaces…** — named device-list bundles (not Virtual SD card)
+- **Profile snapshots…** — folder-level `BCDx36HP/` rollback
+- **Recent changes…** — change history with **Revert**
+- **City / ZIP overrides…** — coverage geo helpers
+- **Uniden tools…** — Sentinel / BT885 Update Manager (**Windows only**)
 
-### Help menu
+### Help
 
-- **Open Wiki** — opens the GitHub wiki in the default browser.
-- **Check for updates…** — runs `core/app_updater.check_for_update()`.
-- **Report issue…** — templated GitHub issue with crash log path.
-- **About**.
+- **Open Wiki**, **Check for updates…**, **Report issue…**, **About**
 
-## Crash hook
+## If something goes wrong
 
-`gui.app._install_global_excepthook` writes unhandled exceptions to:
+- Empty tree — confirm the device SD path and that `HPDB/hpdb.cfg`
+  exists ([Quickstart](Quickstart)).
+- Live won't connect — Serial mode, correct MAIN/SUB ports, close other
+  apps holding the ports ([Troubleshooting](Troubleshooting)).
+- Crash — **Help → Report issue…** attaches the latest crash log path.
 
-- Windows: `%LOCALAPPDATA%\scanner-manager\crash\crash-<ts>.log`
-- macOS:   `~/Library/Logs/scanner-manager/crash/crash-<ts>.log`
-- Linux:   `${XDG_STATE_HOME:-~/.local/state}/scanner-manager/crash/`
+## Classic Tk gaps
 
-The Report Issue dialog references the most recent crash log.
-
-## Legacy Tk gaps (honest fallback)
-
-These features remain on `scanner-manager-tk` until ported:
+Still on `scanner-manager-tk` until ported:
 
 - RadioReference import UI and group linking
 - Virtual SD card clone / push / pull
-- CityTable editor, Alerts viewer, Export Effective Scan Set toolbar
-- Pure-Tk coverage heatmap with `tkintermapview`
+- CityTable editor, Alerts viewer, Export Effective Scan Set
+- Pure-Tk coverage map (`tkintermapview`)
 
-## Cross-references
+## Internals
 
-- Live dock + serial-mode safety: see
-  [`Metacache/Dev/RE/docs/SDS100_unofficial_commands.md`](../Metacache/Dev/RE/docs/SDS100_unofficial_commands.md)
-- Streaming pipeline: [Streaming-Server](Streaming-Server)
-- Firmware updater: [Firmware-Updater](Firmware-Updater)
-- Multi-scanner backend:
-  [`Metacache/Dev/MULTI_SCANNER_BACKEND.md`](../Metacache/Dev/MULTI_SCANNER_BACKEND.md)
-- Multi-device GUI design notes:
-  [`Metacache/Dev/MULTI_DEVICE_GUI.md`](../Metacache/Dev/MULTI_DEVICE_GUI.md)
+Crash logs:
+
+- Windows: `%LOCALAPPDATA%\scanner-manager\crash\`
+- macOS: `~/Library/Logs/scanner-manager/crash/`
+- Linux: `~/.local/state/scanner-manager/crash/`
+
+Contributor notes: [Architecture](Architecture),
+[Streaming Server](Streaming-Server),
+[Firmware Updater](Firmware-Updater).

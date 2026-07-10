@@ -3,7 +3,7 @@
 > Status: shipped (v0.11.x) — family diff reference for both profiles.
 
 > **Canonical narrative is in the wiki**:
-> [`wiki/RE-SD-Card.md`](../../../wiki/RE-SD-Card.md). This file is
+> [`wiki/RE-SD-Card.md`](../../../../wiki/RE-SD-Card.md). This file is
 > the lab notebook with the exhaustive byte-level diff.
 
 > Captured 2026-04-27 on `<HOST>` from real cards. BT885 mounted

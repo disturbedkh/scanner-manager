@@ -2,58 +2,65 @@
 
 > Status: shipped (v0.11.x)
 
-The BearTracker 885's firmware ships with a `CityTable*.dat` file that
-maps named cities (as chosen by the scanner user) to coordinates. The
-scanner itself doesn't display city names in its UI, but the table is
-used for GPS-relative decisions. You can extend it.
+Extend or override the location tables the BearTracker 885 uses for
+ZIP / GPS decisions. Classic Tk edits the firmware **CityTable** binary;
+Qt adds ZIP/county overrides for coverage when bundled data is thin.
 
-## Reading the table
+## Prerequisites
 
-On **Load**, Scanner Manager parses `firmware/CityTable*.dat` from the
-SD card via `scanner_profiles` helpers and `core/hpd.py` geo utilities.
-The parser auto-detects record sizes of 12, 16, 20, or 24 bytes (Uniden
-has shipped multiple revisions), and preserves trailing bytes in an
-`extras` field so round-tripping is lossless.
-
-## CityTable editor (legacy Tk)
-
-**Tools → CityTable editor...** in **`scanner-manager-tk`**:
-
-1. Click **Add row...**.
-2. Enter a city name, state abbreviation, and decimal-degree lat/lon.
-3. **Export patched CityTable...** writes a new `CityTable*.dat` back
-   into the firmware folder.
-
-A `.session.bak` snapshot is written beside the original.
+- BearTracker 885 card with `firmware/CityTable*.dat` (for the binary
+  editor)
+- Or Qt coverage workflow needing a missing ZIP/county mapping
 
 ## City / ZIP overrides (Qt)
 
-**Tools → City / ZIP overrides…** in the Qt shell manages user-supplied
-ZIP/county overrides used by the coverage heatmap when bundled
-`zip_county_map.json` is missing an entry. This is **not** a full
-CityTable binary editor — it supplements ZIP lookup for coverage only.
+**Tools → City / ZIP overrides…** manages user ZIP/county overrides used
+by the coverage heatmap when bundled lookup data is missing an entry.
 
-## ZipTable interplay
+This is **not** a full CityTable binary editor — it only supplements ZIP
+lookup for coverage. See [Coverage Tools](Coverage-Tools).
 
-The firmware `ZipTable*.dat` is parsed in the same pass. Its extras
-(flag byte at offset 7 plus any trailing per-record bytes) are
-captured into `zip_flag_bytes` and `zip_extras` maps so the same
-round-trip guarantee holds.
+<details>
+<summary>Classic Tk — CityTable editor</summary>
 
-ZipTable **write** support remains backlog; both shells read ZipTable for
-simulation.
+**Tools → CityTable editor...** in `scanner-manager-tk`:
+
+1. Click **Add row...**.
+2. Enter city name, state abbreviation, and decimal-degree lat/lon.
+3. **Export patched CityTable...** writes a new `CityTable*.dat` into
+   the firmware folder.
+
+A `.session.bak` snapshot is written beside the original.
+
+</details>
 
 ## Warnings
 
-- The scanner is picky about CityTable size and alignment. Don't hand-
-  edit the file outside Scanner Manager or Uniden's tools.
-- A malformed CityTable can prevent the scanner from booting the
-  firmware's ZIP UI. Keep a session snapshot.
-- Your scanner displays **SCAN / POLICE / EMS / FIRE / DOT** and
-  nothing else — adding a city doesn't add a display, just a
-  coordinate the firmware can use.
+- Do not hand-edit CityTable outside Scanner Manager or Uniden's tools
+  — size and alignment matter.
+- A bad CityTable can break the scanner's ZIP UI. Keep a session
+  snapshot or card backup.
+- Adding a city does **not** add a new display category on the scanner
+  (still SCAN / POLICE / EMS / FIRE / DOT) — it only adds coordinates
+  the firmware can use.
 
-## Cross-references
+## ZipTable
 
-- [ZIP & GPS Simulation](ZIP-and-GPS-Simulation)
-- [Coverage Tools](Coverage-Tools)
+Firmware `ZipTable*.dat` is read for simulation in both shells. Writing
+ZipTable back remains backlog.
+
+## If something goes wrong
+
+- Coverage misses a ZIP — add an override in Qt, or fix CityTable in
+  Classic Tk
+- Scanner ZIP UI broken after export — restore `.session.bak` or re-pave
+  with Uniden Tools ([Troubleshooting](Troubleshooting))
+
+## Internals
+
+On load, Scanner Manager parses `CityTable*.dat` with auto-detected
+record sizes (12 / 16 / 20 / 24 bytes) and preserves trailing bytes so
+round-trips stay lossless. ZipTable extras are captured the same way for
+read-only simulation.
+
+See [ZIP & GPS Simulation](ZIP-and-GPS-Simulation).

@@ -2,83 +2,70 @@
 
 > Status: shipped (v0.11.x)
 
-Scanner Manager detects Uniden's official desktop apps and can drive a
-full **push → update → pull** cycle without you leaving the Scanner
-Manager window.
+Detect Uniden's official desktop apps and run a **push → update → pull**
+cycle without leaving Scanner Manager — so vendor updates do not wipe
+your edits.
 
-Open **Tools → Uniden tools…** in Qt or the legacy Tk Tools menu.
+**Windows only.** On macOS and Linux, **Tools → Uniden tools…** shows a
+Windows-only notice. Uniden does not publish Mac or Linux builds of
+these tools.
+
+## Prerequisites
+
+- Windows PC
+- SD card / HPDB path bound in Scanner Manager
+- Optional: Sentinel and/or BT885 Update Manager installed (or download
+  via the dialog)
 
 ## Supported tools
 
-- **BCDx36HP Sentinel** — the long-standing Uniden programming tool
-  (SDS100/200 and related).
-- **BT885 Update Manager** — the BearTracker 885-specific updater.
+- **BCDx36HP Sentinel** — Uniden programming tool (SDS100/200 and related)
+- **BT885 Update Manager** — BearTracker 885 updater
 
-## Detection
+## Steps
 
-The dialog shows one row per tool:
+1. **Tools → Uniden tools…** (Qt or Classic Tk Tools menu).
+2. Review each tool row: path, version (or "not installed"), family.
+3. Use:
+   - **Launch** — open the tool
+   - **Launch + Auto-Sync** — snapshot, launch, wait for you to finish,
+     re-read the card, replay your edits on top
+   - **Install...** — download from Uniden's CDN (checksum verified) or
+     **Browse for installer...**
+   - **Override Path...** — portable or non-standard installs
+   - **Open Data Folder** / **Refresh**
 
-- Installed path + version (or "not installed").
-- Scanner family.
-- Buttons: **Launch**, **Launch + Auto-Sync**, **Install...**,
-  **Override Path...**, **Open Data Folder**, **Refresh**.
+### Launch + Auto-Sync (what it does for you)
 
-Detection scans the usual `Program Files` / `Program Files (x86)`
-locations and honors a per-tool override stored in `app_settings.json`
-under `uniden_tools_overrides`.
+1. Snapshots the current HPD (session backup).
+2. Launches Sentinel or BT885 Update Manager.
+3. Waits until you finish and close the tool.
+4. Re-reads the HPD from the card.
+5. Replays your change history on top so edits survive the vendor write.
+6. Records the pipeline as one revertable change-history entry.
+
+Full orchestration is most mature in Classic Tk; Qt exposes detection,
+launch, and installer download.
 
 ## Installers are not redistributed
 
-The app does not ship Uniden installer archives in the repo. Instead:
+Scanner Manager does not ship Uniden installer archives. **Install...**
+fetches from Uniden's CDN using a pinned manifest (URL + checksum),
+caches under `%LOCALAPPDATA%\scanner-manager\installers\`, and runs
+setup. Later installs of the same version reuse the cache.
 
-- A pinned manifest at `data/uniden_installers.json` lists the
-  download URL, expected SHA-256, and archive layout for each tool.
-- Clicking **Install...** on a missing tool opens the **Download Uniden
-  Installer** dialog, which fetches the archive directly from Uniden's
-  CDN, verifies the SHA-256, caches it under
-  `%LOCALAPPDATA%\scanner-manager\installers\`, and runs setup.
-- If your network blocks the download, use **Browse for installer...**
-  in the same dialog to pick a file you already have.
+## If something goes wrong
 
-Subsequent installs of the same version use the cached, already-verified
-copy and skip the download.
+- **"Hash mismatch"** — do not run the file; open a GitHub issue with
+  URL and hashes so maintainers can update the manifest
+- Installed but not detected — **Refresh**; Uniden sometimes installs
+  under `C:\Uniden\` — use **Override Path...**
+- **"Windows only"** on macOS/Linux — expected
 
-## Launch + Auto-Sync
+More: [Troubleshooting](Troubleshooting).
 
-Clicking **Launch + Auto-Sync**:
+## Internals
 
-1. Snapshots the current state of the HPD file (session backup).
-2. Launches the Uniden tool (Sentinel or BT885 Update Manager).
-3. Waits for you to perform whatever update you wanted (write new
-   firmware tables, merge RR content, etc.) and close the tool.
-4. Re-reads the HPD from the card.
-5. Replays Scanner Manager's MetaStore event log on top of the new
-   HPD so your edits survive the Uniden tool's write.
-6. Logs the whole pipeline as a **single revertable event**.
-
-The full orchestration is most mature in legacy Tk; Qt exposes detection,
-launch, and installer download.
-
-## Overrides
-
-If you have a portable install of Sentinel, or you installed to a
-non-standard path, use **Override Path...** to point Scanner Manager
-at the executable directly. The override is remembered.
-
-## Data folder
-
-**Open Data Folder** shells out to Explorer at the tool's
-per-user data directory. Useful when you want to inspect or replace
-files the tool caches (e.g. Sentinel's `ZipListUs.txt`).
-
-## Troubleshooting
-
-- **"Hash mismatch" on download** — the manifest has a pinned SHA-256
-  which did not match. Don't run the file; open a GitHub issue with
-  the hash you got and the URL so the maintainers can update the
-  manifest.
-- **Installer runs but nothing is detected afterwards** — Uniden
-  installs sometimes land in `C:\Uniden\` rather than `Program Files`;
-  click **Refresh**. If it's still not found, use **Override Path...**.
-- **"Windows only" on macOS/Linux** — expected; Uniden does not publish
-  Mac or Linux builds of these tools.
+Detection scans usual Program Files locations and honors overrides in
+`app_settings.json` (`uniden_tools_overrides`). Manifest:
+`data/uniden_installers.json`.

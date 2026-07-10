@@ -2,76 +2,82 @@
 
 > Status: shipped (v0.11.x)
 
-Enter a ZIP code or GPS coordinate and see exactly what the scanner will
-scan at that location — **including** statewide and national channels
-that show up on top of the local ones.
+Enter a ZIP code or GPS coordinate and see exactly what the BearTracker
+885 will scan at that location — including statewide and national
+channels on top of local ones.
 
-Primary UI today: **BearTracker 885** profiles in both shells. SDS100/200
-use different location semantics; the Qt editor hides the location sim
-bar for SDS profiles.
+Primary UI: **BearTracker 885** in the Qt app. SDS100/200 use different
+location behavior; Qt hides the location simulation bar for those
+profiles.
 
-## How it works
+## Prerequisites
 
-The BearTracker 885 decides what to scan using:
+- BearTracker 885 device with **HPDB** loaded ([Quickstart](Quickstart))
+- Optional: firmware `ZipTable*.dat` / `CityTable*.dat` on the card
+  (the app has a small offline fallback if they are missing)
 
-1. A firmware **ZipTable** that maps each ZIP to a primary county, a
-   set of neighboring counties, and a radius.
-2. A **CityTable** that maps ZIP/city pairs to coordinates.
-3. Service-type + button state (Police/EMS/Fire/DOT + Multi-dispatch).
+## Steps (Qt)
 
-Scanner Manager reads the firmware `ZipTable*.dat` and `CityTable*.dat`
-directly from your card (when available), supplementing them with a
-small offline fallback so the simulator still works if the firmware
-files haven't been decoded yet.
-
-## Enabling it
-
-### Qt (`scanner-manager`)
-
-1. Select a BearTracker 885 device with HPDB loaded.
+1. Select a BearTracker 885 device in the header.
 2. Tick **Apply location filter** in the location simulation bar.
-3. Enter a ZIP (fastest) or use county / GPS spinners.
+3. Enter a ZIP (fastest) or use county / GPS controls.
 4. Adjust **Tolerance** to widen or narrow the radius.
 
-### Legacy Tk (`scanner-manager-tk`)
+<details>
+<summary>Classic Tk shell</summary>
 
 1. Tick **Enable Location Filter** in the toolbar.
 2. Enter a ZIP or pick **City...** / **GPS...**.
 3. Click **Apply**.
 
+</details>
+
 ## Reading the results
 
-Every visible system is prefixed with a rank (`#1`, `#2`, ...) showing
-its distance-from-center ordering; groups inside are also ordered by
-distance. Each group is tagged with one of:
+Visible systems are prefixed with a rank (`#1`, `#2`, …) by distance
+from the center. Groups are tagged:
 
-| Tag         | Meaning                                                        |
-| ----------- | -------------------------------------------------------------- |
-| `COVERAGE`  | Center point falls inside the group's coverage radius.         |
-| `NEARBY`    | Edge of coverage is within the global *nearby* threshold.      |
-| `LOCAL`     | Group is pinned to this ZIP's primary county.                  |
-| `STATEWIDE` | Group is a state-level system (shows when any ZIP in-state).   |
-| `WIDE`      | National / multi-state system (e.g. interop, FAA, FRS).        |
+| Tag | Meaning |
+| --- | --- |
+| `COVERAGE` | Center is inside the group's coverage radius |
+| `NEARBY` | Edge of coverage is within the nearby threshold |
+| `LOCAL` | Pinned to this ZIP's primary county |
+| `STATEWIDE` | State-level system (any ZIP in-state) |
+| `WIDE` | National / multi-state (interop, FAA, FRS, …) |
 
-Groups without any tag are **not** in the effective scan set and are
-hidden by default.
-
-## Nearest-systems ranking
-
-With the location filter on, systems sort by distance from the center
-point and re-label with `#N` prefixes. The ranking respects active
-button filters (Police/EMS/Fire/DOT/Multi).
+Untagged groups are outside the effective scan set and stay hidden
+while the filter is on. Ranking also respects button filters
+(Police / EMS / Fire / DOT / Multi) — see
+[Scanner Button Service Types](Scanner-Button-Service-Types).
 
 ## Exporting the effective scan set
 
-**Legacy Tk:** **Export Effective Scan Set...** writes CSV/TXT with
-System, Group, Entry, service type, frequency/TGID, Lat, Lon, Range
-(mi), Distance (mi).
+<details>
+<summary>Classic Tk shell</summary>
 
-**Qt:** not ported yet — use legacy Tk for export, or copy visible tree
-rows manually.
+**Export Effective Scan Set...** writes CSV/TXT with System, Group,
+Entry, service type, frequency/TGID, Lat, Lon, Range, Distance.
 
-## Under the hood
+</details>
 
-See [Architecture](Architecture) for how the simulator plugs into the
-HPD tree and MetaStore. Coverage visualization: [Coverage Tools](Coverage-Tools).
+**Qt:** export is not ported yet — use Classic Tk for export, or copy
+visible tree rows manually.
+
+## If something goes wrong
+
+- Nothing filters — confirm **Apply location filter** is ticked and a
+  BT885 device is selected.
+- Odd ranking — check **Tolerance** and button filters; incomplete ZIP
+  data can be supplemented via **Tools → City / ZIP overrides…**
+  ([CityTable & Custom Locations](CityTable-and-Custom-Locations)).
+- Map empty — [Coverage Tools](Coverage-Tools),
+  [Troubleshooting](Troubleshooting).
+
+## Internals
+
+The BT885 uses firmware ZipTable (ZIP → counties / radius) and
+CityTable (city → coordinates), plus service-type / button state.
+Scanner Manager reads those tables from the card when present and
+falls back to bundled ZIP data for simulation.
+
+See [Architecture](Architecture) and [Coverage Tools](Coverage-Tools).

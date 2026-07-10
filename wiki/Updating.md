@@ -2,88 +2,95 @@
 
 > Status: shipped (v0.11.x)
 
-Scanner Manager ships with a built-in GitHub-release updater so you
-don't need to use git or track the download page to stay current.
+Keep Scanner Manager current without hunting the Releases page every
+time. Use the built-in updater from inside the app.
+
+## Prerequisites
+
+- A working install ([Install](Install))
+- Internet access (the app checks GitHub Releases)
 
 ## One-click updates
 
-1. **Help → Check for Updates...** runs a fresh query and always shows
-   a dialog, even when you're already on the latest version.
-2. The app also does a silent background check ~5 seconds after
-   startup. If a newer release is out — and you haven't skipped that
-   specific version — an *Update available* dialog appears.
+1. **Help → Check for Updates...** always shows a dialog — even when
+   you are already on the latest version.
+2. About five seconds after startup, the app also checks quietly in the
+   background. If a newer release exists (and you have not skipped that
+   version), an **Update available** dialog appears.
 3. The dialog shows release notes and four actions:
-   - **Update Now** — platform-dependent (see below).
-   - **Open Release Page** — sends you straight to the GitHub
-     Releases page for manual download.
-   - **Skip This Version** — remembers the version in
-     `app_settings.json` so we won't prompt again until a newer one
-     drops.
-   - **Remind Me Later** — closes the dialog but leaves the check
-     alive so it'll re-prompt after 24 hours.
+   - **Update Now** — behavior depends on how you installed (see below).
+   - **Open Release Page** — opens GitHub Releases for a manual download.
+   - **Skip This Version** — stops prompting for this version until a
+     newer one ships.
+   - **Remind Me Later** — closes the dialog; you may be prompted again
+     after about 24 hours.
 
-### Windows EXE (frozen)
+### What Update Now does
 
-**Update Now** opens the release page for a manual EXE replace today.
-An in-place `.bat` swap helper exists in code but is not fully wired
-in the Qt dialog yet.
+| How you installed | What **Update Now** does |
+| --- | --- |
+| **Windows** (`.exe` zip) | Opens the release page so you can download and replace the EXE. An automatic swap helper is not fully wired in the Qt dialog yet. |
+| **Linux tar.gz** | Downloads `ScannerManager-linux-x64.tar.gz`, checks its checksum, replaces the `ScannerManager` binary, and relaunches. |
+| **Linux AppImage** | **Not supported in-place.** Download the new `ScannerManager-x86_64.AppImage` from the release page, replace the old file, and run `chmod +x` again if needed. |
+| **macOS** | Opens the release page. In-place swaps need Gatekeeper handling that is not built yet — replace the app manually. |
+| **From source** (`pip` / git) | Opens the release page. Update with `git pull` and `pip install -e . --upgrade` (see below). |
 
-### Linux tar.gz / ELF (frozen)
+**AppImage vs tar.gz (Linux):** if you want one-click **Update Now**,
+prefer the tar.gz folder install. If you prefer a single double-click
+file, use the AppImage and replace it by hand when a release drops.
 
-**Update Now** downloads `ScannerManager-linux-x64.tar.gz`, verifies
-its SHA-256 against the sibling `.sha256` asset, extracts the
-`ScannerManager` binary, swaps it over the running file via a small
-shell helper, and relaunches.
-
-### Linux AppImage
-
-In-place Update Now is **not** supported for AppImage installs.
-Download the new `ScannerManager-x86_64.AppImage` from the release
-page and replace the old file (`chmod +x` again if needed).
-
-### macOS
-
-The updater detects new releases and opens the release page. In-place
-swaps need Gatekeeper handling that isn't built yet; download the new
-archive and replace your install manually.
-
-## Running from source (`pip install`)
-
-Source installs update the same way any other editable Python package
-does:
+## Running from source
 
 ```bash
 git pull
 pip install -e . --upgrade
 ```
 
-The in-app **Check for Updates...** dialog still works — it'll simply
-direct you to the release page rather than attempting a binary swap.
+**Help → Check for Updates...** still works — it points you at the
+release page rather than swapping a binary.
 
-## Skipping / disabling the check
+## Skipping or turning off the check
 
-`app_settings.json` stores three relevant keys:
-
-| Key | Default | Notes |
-|---|---|---|
-| `updater_check_on_startup` | `true` | Toggle to disable the silent background check. |
-| `updater_skipped_version` | `""` | Set by the **Skip This Version** button. |
-| `updater_last_check_at` | `0` | Unix timestamp of the last attempt; the 24h debounce runs off this. |
-
-Deleting or zeroing `updater_skipped_version` will re-enable prompts
-for a previously-skipped release.
-
-## Repository mirrors
-
-Development happens on a private GitLab mirror with full RE context.
-The public GitHub repo is a **filtered export** — see
-[`Metacache/EXPORT_POLICY.md`](../Metacache/EXPORT_POLICY.md). Safe
-Metacache RE files (docs, tools, specs) ship on GitHub as of v0.11.1;
-agent notebooks, firmware blobs, and raw captures do not. Release tags
-and binaries are published from GitHub only.
+- **Skip This Version** in the dialog remembers that version so you are
+  not prompted again until a newer release appears.
+- To allow prompts for a version you previously skipped, clear the
+  skipped-version setting (see Internals below) or wait for a newer
+  release.
 
 ## Privacy
 
 The updater talks only to
 `https://api.github.com/repos/disturbedkh/scanner-manager/releases/latest`
-with a standard User-Agent header. No analytics, no telemetry.
+with a normal User-Agent header. No analytics, no telemetry.
+
+## If something goes wrong
+
+- Dialog says you are up to date but GitHub shows a newer tag — try
+  **Help → Check for Updates...** again, or download from the
+  [Releases page](https://github.com/disturbedkh/scanner-manager/releases)
+  manually.
+- Linux tar.gz update fails mid-swap — re-download the release archive
+  and replace `ScannerManager` by hand, then `chmod +x ScannerManager`.
+- AppImage still runs the old build — confirm you replaced the file you
+  actually launch (shortcuts can point at an old path).
+
+More help: [Troubleshooting](Troubleshooting).
+
+## Internals
+
+Settings live in `app_settings.json`:
+
+| Key | Default | Notes |
+| --- | --- | --- |
+| `updater_check_on_startup` | `true` | Silent background check after launch |
+| `updater_skipped_version` | `""` | Set by **Skip This Version** |
+| `updater_last_check_at` | `0` | Last check time; used for the ~24h remind debounce |
+
+Clearing `updater_skipped_version` re-enables prompts for a previously
+skipped release.
+
+Development uses a private GitLab mirror; the public GitHub repo is a
+filtered export (see [`Metacache/EXPORT_POLICY.md`](../Metacache/EXPORT_POLICY.md)).
+Release tags and binaries are published from GitHub only. Safe Metacache
+RE docs and tools ship on GitHub as of 0.11.x; agent notebooks, firmware
+blobs, and raw captures do not.

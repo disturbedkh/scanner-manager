@@ -37,11 +37,13 @@ detected_id, reason = detect_from_card(Path("D:/"))  # reads scanner.inf
 
 - **Qt** calls `set_active_profile()` when the user picks a device in
   `gui/header.py`.
+- **Qt auto profile switch (shipped):** card load mismatch → confirm →
+  update `Device.scanner_profile_id` + metastore sidecar +
+  `set_active_profile()`; decline → mismatch banner only.
 - **Legacy Tk** still sets `ACTIVE_PROFILE = get_profile(DEFAULT_PROFILE_ID)`
   at import time in `legacy_tk/scanner_manager.py` — not reassigned at runtime.
 - **`detect_from_card()`** — reads `BCDx36HP/scanner.inf` field 1 (`BT885-SCN`
-  vs `SDS100`). Qt editor offers confirm-to-switch on mismatch (banner if
-  declined); legacy Tk does not call it yet.
+  vs `SDS100`). Qt path above; legacy Tk does not call it yet.
 
 ## The `ScannerProfile` surface
 

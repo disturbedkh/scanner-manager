@@ -1,9 +1,9 @@
 # Sentinel USB Traffic Capture - Guided Walkthrough (Phase 4)
 
 > **Canonical narrative is in the wiki**:
-> [`wiki/RE-Sentinel.md`](../../../wiki/RE-Sentinel.md) and the
+> [`wiki/RE-Sentinel.md`](../../../../wiki/RE-Sentinel.md) and the
 > "Capture a Sentinel op" recipe in
-> [`wiki/RE-Workflows.md`](../../../wiki/RE-Workflows.md).
+> [`wiki/RE-Workflows.md`](../../../../wiki/RE-Workflows.md).
 
 > **RECOMMENDED PATH (automated):** run
 > `py Metacache\Dev\RE\tools\sentinel\sentinel_session.py` and follow the prompts. It
@@ -40,7 +40,7 @@ By the end of this walkthrough, the directory
 | `05_backup.pcapng` | Sentinel "Backup" |
 | `06_restore.pcapng` | Sentinel "Restore" |
 
-The decoder script (`_decode_pcap.py`, separate guide) will then
+The decoder script (`tools/sentinel/decode_sentinel_pcap.py`, separate guide) will then
 turn these into JSONL command/response pairs.
 
 ## Background context
@@ -176,7 +176,7 @@ For each operation in the table below, repeat this 4-step ritual:
 When all the pcaps are in `Metacache/Dev/RE/sentinel_pcaps/`, run:
 
 ```powershell
-py Metacache\Dev\RE\_decode_pcap.py Metacache\Dev\RE\sentinel_pcaps\*.pcapng
+py Metacache\Dev\RE\tools\sentinel\decode_sentinel_pcap.py Metacache\Dev\RE\sentinel_pcaps\*.pcapng
 ```
 
 (See [`pcap_decode.md`](pcap_decode.md) for the decoder runbook.)

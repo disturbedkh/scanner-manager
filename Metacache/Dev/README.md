@@ -3,22 +3,31 @@
 > Status: **active plan** — shared agent + developer notebook for
 > `Metacache/Dev/`. Read before touching profiles, GUI, or firmware.
 
+**End users → [`wiki/`](../../wiki/)** (L4/L3). This tree is L0 agent notebook.
+
 This folder (`Metacache/Dev/`) is the **shared brain** for AI agents (Cursor) and human
 developers working on `scanner-manager` from multiple machines and chat
 sessions. Anything that needs to survive a session reset, hop between
 desktops, or get picked up by a fresh Cursor agent goes here.
 
 **Documentation layers** (see also [`Metacache/README.md`](../README.md) — IA
-charter owned by ops docs):
+charter owned by ops docs; L0–L4 matrix: [`../docs/style-guide.md`](../docs/style-guide.md)):
 
-| Layer | Path | Audience |
-| --- | --- | --- |
-| User wiki | `wiki/` | Feature tours, quickstart, troubleshooting |
-| Contributor ops | `Metacache/docs/` | Release checklist, formats, style |
-| Agent notebook | `Metacache/Dev/` (this tree, excl. deep RE) | PROJECT_STATE, WORKSTREAMS, as-built refs |
-| RE lab | `Metacache/Dev/RE/` | Session logs, catalogs — **facts win over wiki** |
+| Layer | Path | Audience | Lang |
+| --- | --- | --- | --- |
+| User wiki | `wiki/` | Feature tours, quickstart, troubleshooting | L4/L3 |
+| Contributor ops | `Metacache/docs/` | Release checklist, formats, style | L1 |
+| Agent notebook | `Metacache/Dev/` (this tree, excl. deep RE) | PROJECT_STATE, WORKSTREAMS, as-built refs | L0 |
+| RE lab | `Metacache/Dev/RE/` | Session logs, catalogs — **facts win over wiki** | L0/L2 |
 
 User-facing ops docs live in sibling [`../docs/`](../docs/) under Metacache.
+
+**Archive policy**
+
+| Artifact | Policy |
+| --- | --- |
+| `WORKER_LOG.md` | **Append-only** — newest on top; do not rewrite/delete history |
+| `REVIEW_YYYY-MM.md` | **Historical** snapshot of a doc-refresh wave; fix factual residuals only |
 
 > If you are a Cursor agent landing in this repo for the first time:
 > **read this entire folder before doing anything**, in the order

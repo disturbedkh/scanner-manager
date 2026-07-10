@@ -1,7 +1,7 @@
 # SDS100 unofficial / undocumented commands
 
 > **Canonical narrative is in the wiki**:
-> [`wiki/RE-Serial-Protocol.md`](../../../wiki/RE-Serial-Protocol.md).
+> [`wiki/RE-Serial-Protocol.md`](../../../../wiki/RE-Serial-Protocol.md).
 > This file is the lab notebook - exhaustive raw catalog with the
 > probe captures behind it. The wiki abridges; this file does not.
 
@@ -78,10 +78,10 @@ from the parser's compare ladder and then live-falsified on COM3.
 
 The 13 lowercase debug commands above (`o q w d r m z h l s t u v`) are
 **all parsed directly by the SUB MCU**, not forwarded. Empirical
-falsification with `_probe_batch.py` returned HIT for all 11 emitting
+falsification with [`tools/probes/probe_batch.py`](../tools/probes/probe_batch.py) returned HIT for all 11 emitting
 commands and TIMEOUT for both silent toggles - matching the decompile
 exactly. Full session report:
-[`sessions/probe_batch_round4_pass1_*.md`](sessions/).
+[`sessions/probe_batch_round4_pass1_*.md`](../sessions/).
 
 The dispatch lives in `FUN_14006ca6` (0x14006b20-0x14006f45). Format
 strings for the responses live in the data section starting at
@@ -236,19 +236,19 @@ Phases 6.1-6.4 are now DONE for the lowercase debug command set:
 
 - Phase 6.1 (extract payload): COMPLETE.
 - Phase 6.2 (Ghidra headless import + auto-analysis): COMPLETE via
-  `automation/run_ghidra_setup.ps1`. Project lives at
-  `firmware/SDS100_SUB.gpr`.
+  `tools/automation/run_ghidra_setup.ps1`. Project lives at
+  `../firmware/SDS100_SUB.gpr`.
 - Phase 6.3 (locate dispatch): COMPLETE. Parser is `FUN_14006ca6`.
   Documented in [`sub_command_dispatch.md`](sub_command_dispatch.md).
 - Phase 6.4 (live-falsify): COMPLETE for the 13 single-char debug
-  commands. See [`sessions/probe_batch_round4_pass1_*`](sessions/).
+  commands. See [`sessions/probe_batch_round4_pass1_*`](../sessions/).
 
 What's still **PENDING**:
 
 - Round 5: inter-MCU bus protocol spec (USART2 frame format between
   SUB and MAIN, the actual byte-stream Sentinel + MAIN commands ride
   on). Outline and entry points are in
-  [`sessions/round1_2_findings_2026-05-03.md`](sessions/round1_2_findings_2026-05-03.md).
+  [`sessions/round1_2_findings_2026-05-03.md`](../sessions/round1_2_findings_2026-05-03.md).
 - Mode-state probing: re-run `q`/`r`/`m` after pre-toggling `t` and
   `u` to enumerate the format-string variants that the same dump
   emits in different modes (the 35 "untriggered format strings"

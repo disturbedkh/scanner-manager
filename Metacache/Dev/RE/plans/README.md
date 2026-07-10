@@ -27,4 +27,4 @@ When you write a new plan:
 3. Add a row to this table.
 4. If the plan deserves a wiki page (long-running roadmap items
    usually do), mirror it as `wiki/<Title>-Roadmap.md` and link
-   from [Reverse-Engineering](../../../wiki/Reverse-Engineering.md).
+   from [Reverse-Engineering](../../../../wiki/Reverse-Engineering.md).

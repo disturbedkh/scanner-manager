@@ -1,5 +1,15 @@
 # Contributing to Scanner Manager
 
+> Status: shipped (v0.11.x)
+
+**Looking to install or use the app?** You are in the wrong place —
+start at the
+[Install](https://github.com/disturbedkh/scanner-manager/wiki/Install)
+and
+[Quickstart](https://github.com/disturbedkh/scanner-manager/wiki/Quickstart)
+wiki pages (or the root [README](README.md)). This file is for people
+who want to change the code.
+
 Thanks for looking at the code! Scanner Manager is MIT-licensed and
 accepts contributions via GitHub pull requests.
 

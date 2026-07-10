@@ -65,3 +65,11 @@ unless that probe call returns a non-expired premium subscription.
 When the probe fails (bad creds, no subscription, offline), the app
 falls through to the legacy HTML scraper — the pipeline must keep
 working for free-tier users.
+
+## Related
+
+| Doc | Purpose |
+| --- | --- |
+| [`uniden-behavior.md`](uniden-behavior.md) | Uniden app RR call map (TBD from RE) |
+| [RadioReference-Import wiki](https://github.com/disturbedkh/scanner-manager/wiki/RadioReference-Import) | User import flow (L3) |
+| `tests/test_rr_api.py` | Mapping parity vs HTML scraper |

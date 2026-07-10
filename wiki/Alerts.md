@@ -1,33 +1,40 @@
 # Alerts
 
-> Status: shipped (v0.11.x) — legacy Tk viewer only
+> Status: shipped (v0.11.x) — Classic Tk viewer only
 
-The BearTracker 885 writes metadata (and often an audio clip) into
-`alert/` on the SD card whenever a user-defined alert trigger fires
-(for example, a priority channel hit). Scanner Manager ships a light
-viewer for that folder so you don't have to open it in Explorer.
+Browse alert files the BearTracker 885 writes to the SD card when a
+user-defined alert fires (for example a priority channel hit) — without
+digging through Explorer by hand.
 
-## Alerts viewer
+## Prerequisites
 
-**Legacy Tk only** (`scanner-manager-tk`): **Alerts...** on the toolbar
-opens the viewer. It:
+- BearTracker 885 SD card with an `alert/` folder
+- Classic Tk shell (`scanner-manager-tk`) — Qt does not port this dialog
+  yet
 
-1. Walks the card's `alert/` folder recursively.
-2. Lists every non-hidden file with size + modification timestamp.
-3. Lets you **Open** a file in the OS default handler or **Reveal in
-   Explorer**.
+## Steps (Classic Tk)
 
-Audio files open in your default audio player; CSV/TXT files in your
-default text editor.
+1. Load the card in `scanner-manager-tk`.
+2. Click **Alerts...** on the toolbar.
+3. Browse the list (size + modification time for each non-hidden file).
+4. **Open** in the OS default app, or **Reveal in Explorer**.
 
-The Qt shell does not port this dialog yet — launch `scanner-manager-tk`
-with the same SD path, or browse `alert/` in your file manager.
+Audio opens in your default player; text/CSV in your default editor.
 
-## What the viewer doesn't do (yet)
+In Qt, use the same SD path in Classic Tk, or browse `alert/` in your
+file manager.
 
-- No in-app audio playback.
-- No cross-session aggregation or statistics.
-- No Qt port.
+## What the viewer does not do yet
 
-Track requests on the
+- No in-app audio playback
+- No cross-session stats
+- No Qt port
+
+Feature requests:
 [issues page](https://github.com/disturbedkh/scanner-manager/issues).
+
+## If something goes wrong
+
+- Empty list — confirm `alert/` exists on the card and the correct SD
+  path is loaded
+- File won't open — check the OS file association for that extension

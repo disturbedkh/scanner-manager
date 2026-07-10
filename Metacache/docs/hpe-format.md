@@ -55,4 +55,6 @@ When `.hpe` support lands, this doc becomes the specification for an
 - [ ] Document magic, endianness, record boundaries.
 - [ ] Map records → internal Favorites List model used by SDS profile.
 - [ ] Round-trip test against Sentinel-written files.
-- [ ] Qt Favorites List editor (wiki UX narrative when shipped).
+- [ ] Qt Favorites List editor — UX narrative:
+      [Channel-List-Management wiki](https://github.com/disturbedkh/scanner-manager/wiki/Channel-List-Management)
+      when shipped.

@@ -1,12 +1,12 @@
 # SDS100 Firmware - Static RE write-up
 
 > **Canonical narrative is in the wiki**:
-> [`wiki/RE-Firmware.md`](../../../wiki/RE-Firmware.md). This file
+> [`wiki/RE-Firmware.md`](../../../../wiki/RE-Firmware.md). This file
 > is the lab notebook with raw entropy + diff data.
 
 > Captured 2026-04-27 EDT (Session 4 + static RE pass) on
-> `<HOST>`. Tooling: `Metacache/Dev/RE/_firmware_strings.py`,
-> `Metacache/Dev/RE/_firmware_structure.py`. Outputs in
+> `<HOST>`. Tooling: `Metacache/Dev/RE/tools/firmware/firmware_strings.py`,
+> `Metacache/Dev/RE/tools/firmware/firmware_structure.py`. Outputs in
 > `Metacache/Dev/RE/firmware_analysis/`.
 >
 > **Bottom line: Main is encrypted (static RE infeasible). Sub is
@@ -263,7 +263,7 @@ compressed code regions, not real changes.
    directly if possible, bypassing MAIN's `GWF` stream toggle.
 4. **The SUB port is under-explored.** Session 4 only sent 10
    commands to it; we should write a SUB-targeted whitelist
-   (`Metacache/Dev/RE/sub_probe.py`) and walk a short alphabet of
+   (`Metacache/Dev/RE/tools/probes/sub_probe.py`) and walk a short alphabet of
    1-3-letter mnemonics looking for the status-S query, IF-frequency
    query, gain-state query, FFT-stream query, etc.
 5. **SDS150 (UB3912) is the same firmware family.** Per the V2.00
@@ -274,10 +274,10 @@ compressed code regions, not real changes.
 
 ## Tooling reference
 
-- `Metacache/Dev/RE/_firmware_strings.py` - extracts ASCII runs from each
+- `Metacache/Dev/RE/tools/firmware/firmware_strings.py` - extracts ASCII runs from each
   firmware image, writes per-file string lists, computes set diffs
   between old/new of each MCU, scans for command-mnemonic candidates.
-- `Metacache/Dev/RE/_firmware_structure.py` - per-image entropy profile,
+- `Metacache/Dev/RE/tools/firmware/firmware_structure.py` - per-image entropy profile,
   hex dump of head/tail, magic-byte signature scan, byte-level diff
   between same-MCU versions.
 - `Metacache/Dev/RE/firmware_analysis/firmware_structure_report.md` - the
@@ -299,11 +299,11 @@ compressed code regions, not real changes.
 
 ### Sub payload extraction
 
-[`_inflate_sub.py`](_inflate_sub.py) parses the container header
+[`tools/firmware/inflate_sub.py`](../tools/firmware/inflate_sub.py) parses the container header
 and writes the payload directly:
-[`firmware/sub_1.03.15_inflated.bin`](firmware/sub_1.03.15_inflated.bin)
+[`firmware/sub_1.03.15_inflated.bin`](../firmware/sub_1.03.15_inflated.bin)
 (90,076 bytes; full chunk map in
-[`firmware/sub_1.03.15_chunk_map.md`](firmware/sub_1.03.15_chunk_map.md)).
+[`firmware/sub_1.03.15_chunk_map.md`](../firmware/sub_1.03.15_chunk_map.md)).
 
 Container layout (corrected):
 
@@ -412,7 +412,7 @@ CIC/FIR/NCO debug, ADC P-P, and squelch threshold.
    [`sentinel_capture.md`](sentinel_capture.md); needs user to
    drive Sentinel through 6 operations with USBPcap recording.
 3. **Targeted SUB re-probe** based on the 35 untriggered format
-   strings - extend [`sub_probe.py`](sub_probe.py) with mnemonic
+   strings - extend [`tools/probes/sub_probe.py`](../tools/probes/sub_probe.py) with mnemonic
    candidates derived from the string fragments (`RF_GainMode`
    -> try `RFGM`, `RFG`, `GAIN`; `R840_FM` -> try `R840`, `STD`,
    `MODE`; etc.).

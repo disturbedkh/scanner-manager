@@ -2,28 +2,29 @@
 
 > Status: shipped (v0.11.x) — tiered export for public GitHub mirror.
 
-The private GitLab mirror tracks the **full** `Metacache/` tree (~236
+The private GitLab mirror tracks the **full** `Metacache/` tree (~240
 files): RE lab notebooks, probe sessions, firmware blobs, Ghidra projects,
 and agent handoff docs. The public GitHub mirror ships a **filtered**
 subset so future RE contributors can reproduce our work without
 machine-specific paths, raw USB captures, or internal agent notebooks.
 
+Machine-readable SSOT: [`scripts/metacache_export_rules.yaml`](../scripts/metacache_export_rules.yaml).
+Release cutter steps: [`docs/RELEASE.md`](docs/RELEASE.md) §3.
+
 ## Three tiers
 
-| Tier | GitHub | GitLab | Examples |
+| Tier | GitHub | GitLab | Examples (see YAML for full list) |
 | --- | --- | --- | --- |
-| **public_original** | As-is | Tracked | `Metacache/Dev/RE/docs/`, `specs/`, `tools/`, decompiles, decoded pcap summaries |
-| **public_sanitize** | Redacted copy at export | Full originals tracked | `RE/sessions/*.txt`, `analysis_dump.json` |
-| **gitignore_only** | Stripped (no substitute) | Tracked | `WORKER_LOG.md`, firmware `.bin/.firm/.zip`, `.pcap`, vendor installers |
-
-Machine-readable rules: [`scripts/metacache_export_rules.yaml`](../scripts/metacache_export_rules.yaml).
+| **public_original** | As-is | Tracked | Default for `Metacache/` not listed below — e.g. `Dev/RE/docs/`, `Dev/RE/specs/`, `Dev/RE/tools/`, decompile notes, `*.summary.md` |
+| **public_sanitize** | Redacted copy at export | Full originals tracked | `Dev/RE/sessions/*.{txt,jsonl}`, `Dev/RE/firmware/analysis_dump.json` |
+| **gitignore_only** | Stripped (no substitute) | Tracked | `Dev/WORKER_LOG.md`, `Dev/PROJECT_STATE.md`, `Dev/CURSOR.md`, `Dev/MACHINES.md`, firmware `*.bin`/`*.firm`/`*.zip`, `*.pcap`, Ghidra `.gpr`/`.rep`, `vendor/`, `.cursor/`, `dev_mcp/` |
 
 ## Publishing to GitHub
 
 From repo root (after committing to GitLab `main`):
 
 ```powershell
-.\scripts\publish_github.ps1 -Tag v0.11.1 -Force
+.\scripts\publish_github.ps1 -Tag v0.11.2 -Force
 ```
 
 The script:
@@ -51,13 +52,15 @@ When you add files under `Metacache/`:
 Use [`Metacache/Dev/MACHINES.example.md`](Dev/MACHINES.example.md) as the
 public template. Keep real hostname/path rows out of git; the live
 `MACHINES.md` (if you maintain one locally) is GitLab-only and stripped
-on export.
+on export (`gitignore_only`).
 
-## Cross-links (verify after doc refresh)
+## Cross-links
 
 | Target | Purpose |
 | --- | --- |
-| [`CONTRIBUTING.md`](../CONTRIBUTING.md) | Contributor onboarding — should link here |
+| [`CONTRIBUTING.md`](../CONTRIBUTING.md) | Contributor onboarding — links here |
 | [wiki RE-Toolchain](https://github.com/disturbedkh/scanner-manager/wiki/RE-Toolchain) | RE export tiers for public contributors |
-| [`docs/RELEASE.md`](docs/RELEASE.md) | Release checklist includes GitHub publish step |
+| [`docs/RELEASE.md`](docs/RELEASE.md) | Release checklist — GitHub publish step |
 | [`docs/README.md`](docs/README.md) | Ops doc index |
+| [`ROADMAP.md`](ROADMAP.md) | Build phases / GA gate (export is release hygiene) |
+| [`Dev/RE/README.md`](Dev/RE/README.md) | RE lab index (facts; export does not rewrite lab) |

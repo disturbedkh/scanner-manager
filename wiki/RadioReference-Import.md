@@ -1,103 +1,88 @@
 # RadioReference Import
 
-> Status: shipped (v0.11.x) — import UI in legacy Tk; MetaStore + SOAP client shared
+> Status: shipped (v0.11.x) — import UI in Classic Tk; shared backend
 
-Scanner Manager can pull channel rows straight from
-[RadioReference.com](https://www.radioreference.com) in two modes,
-depending on what's available.
+Pull channel rows from [RadioReference.com](https://www.radioreference.com)
+into your on-card **HPD** database, review a diff, and apply — with the
+whole import undoable as one change-history entry.
 
-**Shell note:** the full import dialog, group linking, and refresh flows
-run in **`scanner-manager-tk`** today. The Qt shell shares
-`core/rr_api.py` and records imports in the MetaStore, but does not yet
-expose **Import from RR...** in the editor. Use legacy Tk for imports
-until the Qt port lands.
+<details>
+<summary>Classic Tk shell (required for import UI today)</summary>
+
+The full **Import from RR...** dialog, group linking, and refresh flows
+run in **`scanner-manager-tk`**. Qt records imports in change history
+and shares the API client, but does not yet expose the import dialog.
+Use Classic Tk for imports until the Qt port lands.
+
+</details>
+
+## Prerequisites
+
+- Card loaded in Classic Tk ([Install](Install), [Quickstart](Quickstart))
+- A RadioReference category or trunked-system URL (or premium account
+  for the official API)
+- Optional: `pip install -e .[radioreference]` for SOAP API + keyring
+  credential storage
 
 ## Modes
 
 ### HTML scrape (no account needed)
 
-Paste any public RadioReference URL and Scanner Manager parses the
-page. Works for:
+Paste a public RadioReference URL. Works for conventional categories,
+FCC callsign pages, and trunked talkgroup listings. Do not hammer the
+site — RadioReference rate-limits aggressive scraping.
 
-- Conventional frequency **categories**
-  (`/db/aid/...` / `/db/sid/...` conventional pages).
-- FCC callsign pages.
-- Trunked **talkgroup** listings.
+### SOAP API (RR account)
 
-Login isn't required for HTML scraping but RadioReference rate-limits
-aggressive scraping — don't hammer it.
+With a premium RadioReference subscription:
 
-### SOAP API (requires an RR account)
+1. **Settings → RadioReference account** (Classic Tk) — username and
+   password. Stored in the OS credential vault (never clear-text on
+   disk).
+2. The import dialog prefers the API when credentials are present, and
+   falls back to HTML scrape if the API is unreachable.
 
-If you have a RadioReference premium subscription, Scanner Manager can
-talk to the official SOAP API via `zeep` (`core/rr_api.py`):
+SOAP is better for large trunked systems; HTML scrape is fine for
+one-off categories.
 
-1. **Settings → RadioReference account** (legacy Tk) — enter username +
-   password. They're stored in the OS credential vault (Windows
-   Credential Manager / macOS Keychain / Secret Service on Linux) via
-   `keyring`. Scanner Manager never writes credentials to disk in
-   clear text.
-2. The Import dialog prefers the SOAP API when credentials are
-   present, falling back to the HTML scraper only if the API is
-   unreachable.
-
-Install extras: `pip install -e .[radioreference]`.
-
-SOAP is more reliable for trunked systems with many TGIDs and for
-bulk pulls; the HTML scraper is handy for one-off categories.
-
-## The import dialog (legacy Tk)
+## Steps (Classic Tk)
 
 1. Load the card, then click **Import from RR...**.
 2. Paste a URL.
-3. Scanner Manager loads and parses, then shows a two-column diff:
-   - **Left:** what's currently in the HPD.
-   - **Right:** what RR has.
-4. Tick the rows you want to add or overwrite; leave the rest alone.
+3. Review the two-column diff: left = current HPD, right = RadioReference.
+4. Tick the rows to add or overwrite; leave the rest alone.
 5. **Apply**.
 
-## How the import is recorded
+View or undo later in Qt via **Tools → Recent changes…** even if the
+import ran in Classic Tk — one **Revert** rolls the whole import back.
 
-Instead of logging hundreds of separate edits, the whole import is
-recorded as a **single MetaStore entry** (`OP_IMPORT_APPLY`). That means:
+## Reconciliation on refresh
 
-- Imports stay fast and don't bloat the change log.
-- One **Revert** click rolls the entire import back in one go.
-- View/revert imports in Qt via **Tools → Recent changes…** even if
-  the import was performed from legacy Tk.
+When you re-import later:
 
-## Reconciliation with user edits
-
-When you re-run an import later:
-
-- Your **Delete** flags are preserved.
-- Your **service-type overrides** are preserved.
-- Renames you've made are preserved when RR can still be matched by
-  frequency or TGID.
-- New RR rows are added.
-- RR rows you deleted stay deleted.
-
-See [Architecture](Architecture) for how the event replay logic backs
-this up.
+- Your **Delete** flags, service-type overrides, and renames are kept
+  when rows still match by frequency or **TGID**
+- New RR rows are added; rows you deleted stay deleted
 
 ## Encrypted talkgroups
 
-The BearTracker 885 can't decode encrypted audio, so Scanner Manager
-defaults to keeping these out of your HPD:
+The BearTracker 885 cannot decode encrypted audio, so by default:
 
-- **New imports** skip encrypted TGIDs entirely.
-- **Refreshes** of an existing system delete any existing entries that
-  RadioReference has since flagged encrypted. Those deletions are
-  bundled into the same Change History entry as the import, so one
-  Revert click restores everything.
-- **Override:** the import dialog has a "Include encrypted talkgroups
-  (not recommended)" checkbox for power users who want the entries in
-  the tree anyway. The choice is remembered per-system.
+- New imports skip encrypted TGIDs
+- Refreshes remove entries RR has since marked encrypted (same undo
+  bundle as the import)
+- Optional checkbox: **Include encrypted talkgroups (not recommended)**
+  — remembered per system
 
-## Troubleshooting
+## If something goes wrong
 
-- **"Unusable page"** — double-check the URL. A `.../db/sid/...` that
-  shows talkgroups should work; a site index page won't.
-- **Slow / stuck loading** — the SOAP API has better per-request
-  throughput than scraping; consider entering RR credentials.
-- **Login errors** — clear the credential via Settings and re-enter.
+- **"Unusable page"** — use a category or trunked-system URL, not a site
+  index ([Troubleshooting](Troubleshooting))
+- Slow loads — enter RR credentials so the API is used
+- Login errors — clear credentials in Settings and re-enter
+
+## Internals
+
+The whole import is one change-history event (not hundreds of row
+edits), so one **Revert** undoes everything. Contributor detail:
+[Architecture](Architecture).

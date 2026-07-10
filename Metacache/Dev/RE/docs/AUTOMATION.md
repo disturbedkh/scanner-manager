@@ -3,7 +3,7 @@
 > Status: shipped (v0.11.x) — one-command Ghidra + Sentinel flows.
 
 > **Canonical narrative is in the wiki**:
-> [`wiki/RE-Toolchain.md`](../../../wiki/RE-Toolchain.md). This
+> [`wiki/RE-Toolchain.md`](../../../../wiki/RE-Toolchain.md). This
 > file is the lab notebook with the original implementation
 > details + troubleshooting notes.
 

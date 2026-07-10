@@ -2,71 +2,77 @@
 
 > Status: shipped (v0.11.x)
 
-The BearTracker 885's user interface is built around four toggleable
-buttons: **POLICE**, **EMS**, **FIRE**, and **DOT**. Plus a global
-**SCAN** on/off. There are no other user-selectable categories — no
-ham, no aviation button, no business-group button. Everything the
-scanner scans has to route through one of those four buttons.
+On the BearTracker 885, **Service Type** on each channel entry chooses
+which physical button turns that channel on: **POLICE**, **EMS**,
+**FIRE**, or **DOT** (plus global **SCAN**). There is no separate ham /
+aviation / business button — everything must map through those four.
 
-That means when you're editing an HPD file, **the Service Type on each
-entry determines which button enables it**, and **a Service Type that
-isn't mapped to a button will never play**. Scanner Manager's button
-filter mirrors exactly what the scanner actually does.
+If a service type is not mapped to a button, that entry never plays.
+Scanner Manager's button filters mirror the scanner.
 
-In the **Qt shell**, BT885 profiles expose the same filters in the
-inspector panel; SDS100/200 profiles do not use hardware button
-semantics.
+In **Qt**, BT885 profiles expose these filters in the inspector. SDS100/200
+profiles do not use this hardware button model.
 
-## Current mapping (as of firmware v1.xx)
+## Prerequisites
 
-Service Type 1 — **Multi-Dispatch** — is a wildcard. Uniden's updater
-rewrites RadioReference's "Law Dispatch" rows and similar generic
-dispatch rows to Service Type 14, then pre-maps 14 back to 1 so they
-come through on every button with a dispatch category. If you're
-importing RR content by hand, using Service Type 1 is the safest
-default for a generic dispatch channel.
+- BearTracker 885 **HPD** / **HPDB** loaded
+- Optional: RadioReference import in Classic Tk (prefills service types)
 
-| Service Type | Shown on Button          | Notes                          |
-| ------------ | ------------------------ | ------------------------------ |
-| 1            | Police / EMS / Fire / DOT | Multi-Dispatch. Plays on all four. |
-| 2            | Police                   | Law Dispatch.                  |
-| 3            | Police                   | Law Tactical.                  |
-| 4            | Police                   | Law Talk.                      |
-| 14           | Police / EMS / Fire / DOT | Uniden maps 14 → Multi-Dispatch. |
-| 5            | EMS                      | EMS Dispatch.                  |
-| 6            | EMS                      | EMS Tactical.                  |
-| 7            | EMS                      | EMS Talk.                      |
-| 8            | Fire                     | Fire Dispatch.                 |
-| 9            | Fire                     | Fire Tactical.                 |
-| 10           | Fire                     | Fire Talk.                     |
-| 11           | DOT                      | Roads / Highway.               |
-| 12           | DOT                      | Transit.                       |
-| 13           | DOT                      | Public Works.                  |
+## Current mapping
 
-Service types not listed above **will not play on any of the four
-buttons**. If you want, for example, a security-guard channel to scan,
-re-map it to a DOT service type.
+Service Type **1 (Multi-Dispatch)** is a wildcard — it plays on all four
+buttons. Uniden's updater often rewrites generic "Law Dispatch"-style
+RadioReference rows to type **14**, which the firmware treats like
+Multi-Dispatch. For hand imports, type **1** is the safest default for
+generic dispatch.
 
-## Picking the right type during import
+| Service Type | Shown on button | Notes |
+| --- | --- | --- |
+| 1 | Police / EMS / Fire / DOT | Multi-Dispatch |
+| 2 | Police | Law Dispatch |
+| 3 | Police | Law Tactical |
+| 4 | Police | Law Talk |
+| 14 | Police / EMS / Fire / DOT | Treated like Multi-Dispatch |
+| 5 | EMS | EMS Dispatch |
+| 6 | EMS | EMS Tactical |
+| 7 | EMS | EMS Talk |
+| 8 | Fire | Fire Dispatch |
+| 9 | Fire | Fire Tactical |
+| 10 | Fire | Fire Talk |
+| 11 | DOT | Roads / Highway |
+| 12 | DOT | Transit |
+| 13 | DOT | Public Works |
 
-Scanner Manager prefills a sensible service type when importing from
-RadioReference (legacy Tk):
+Types not listed above do not play on any of the four buttons. Remap
+(for example) a security channel to a DOT type if you want it to scan.
 
-- **Law ...** rows → 2, 3, or 4 depending on sub-category.
-- **Fire ...** rows → 8, 9, or 10.
-- **EMS ...** rows → 5, 6, or 7.
-- **Public Services ...** → 11 / 12 / 13.
-- Anything that looks like a generic multi-discipline dispatch → 1.
+## Picking a type during import
 
-You can always override in the diff dialog before **Apply**.
+Classic Tk RadioReference import prefills:
+
+- Law … → 2, 3, or 4
+- Fire … → 8, 9, or 10
+- EMS … → 5, 6, or 7
+- Public Services … → 11 / 12 / 13
+- Generic multi-discipline dispatch → 1
+
+Override in the diff dialog before **Apply**.
 
 ## Bulk remap
 
-To re-map a whole group or system in one shot, use **Bulk: update
-service type** (legacy Tk context menu today). The dialog offers a
-per-current-type replacement across the selection.
+**Bulk: update service type** (Classic Tk context menu today) remaps
+every current type in a group or system in one shot — one change-history
+**Revert** undoes the batch. See
+[Channel List Management](Channel-List-Management).
 
-## Cross-references
+## If something goes wrong
 
-- [Channel List Management](Channel-List-Management)
-- [ZIP & GPS Simulation](ZIP-and-GPS-Simulation) — button filters affect ranking
+- Channel never plays — check its service type is in the table above and
+  the matching button is on
+- Filter hides everything — clear button filters in the inspector /
+  toolbar
+
+## Internals
+
+Button filters affect location ranking as well as tree visibility — see
+[ZIP & GPS Simulation](ZIP-and-GPS-Simulation).

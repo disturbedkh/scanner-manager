@@ -1,11 +1,11 @@
 # Decoding Sentinel USB Captures - Guided Walkthrough (Phase 4 cont.)
 
 > **Canonical narrative is in the wiki**:
-> [`wiki/RE-Sentinel.md`](../../../wiki/RE-Sentinel.md) and the
+> [`wiki/RE-Sentinel.md`](../../../../wiki/RE-Sentinel.md) and the
 > "Capture a Sentinel op" recipe in
-> [`wiki/RE-Workflows.md`](../../../wiki/RE-Workflows.md). This
+> [`wiki/RE-Workflows.md`](../../../../wiki/RE-Workflows.md). This
 > file is the lab notebook with the early manual walkthrough; the
-> SCSI/UMS/FAT32 decoder (`_decode_sentinel_pcap.py`) supersedes
+> SCSI/UMS/FAT32 decoder (`tools/sentinel/decode_sentinel_pcap.py`) supersedes
 > the CDC-style decoder this doc was originally about.
 
 > **Goal**: turn the 6 `.pcapng` captures from
@@ -61,7 +61,7 @@ If neither finds it, you can pass the path explicitly later via
 From the repo root:
 
 ```powershell
-py Metacache\Dev\RE\_decode_pcap.py Metacache\Dev\RE\sentinel_pcaps\*.pcapng
+py Metacache\Dev\RE\tools\sentinel\decode_sentinel_pcap.py Metacache\Dev\RE\sentinel_pcaps\*.pcapng
 ```
 
 The decoder will:
@@ -194,7 +194,7 @@ Untriggered-format-string count should drop noticeably.
 
 **Novel mnemonic list shows commands that ARE in the spec**
 - The decoder's `KNOWN_HEADS` set may be stale. Edit it in
-  `_decode_pcap.py` to add missing heads, then re-run.
+  `tools/sentinel/decode_sentinel_pcap.py` to add missing heads, then re-run.
 
 ## Decoder design notes
 

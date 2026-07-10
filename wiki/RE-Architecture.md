@@ -2,11 +2,29 @@
 
 > Status: shipped (v0.11.x) — hardware decomposition reference.
 
-> Where this fits: the structural picture of the SDS100 hardware
-> and how we observe it. For the consolidated narrative start at
-> [Reverse Engineering](Reverse-Engineering).
+> Where this fits: structural picture of the SDS100. Start at
+> [Reverse Engineering](Reverse-Engineering) for the consolidated story.
 
-## Two MCUs, three buses, one SD card
+## What this answers
+
+What hardware is inside an SDS100, which MCU owns which bus, and how
+signal / USB / SD traffic flows — so contributors know which surface
+to probe for a given question.
+
+## Known vs OPEN
+
+| Topic | State | Notes |
+|---|---|---|
+| Two-MCU split (MAIN + SUB) | DONE | Live serial + SUB decompile |
+| USB dual-mode topology | DONE | See [RE-USB-Modes](RE-USB-Modes) |
+| SUB = LPC43xx + R840 tuner | DONE | Strings + peripheral scan |
+| MAIN = STM32-family, encrypted FW | DONE (identity); static RE INFEASIBLE | See [RE-Firmware](RE-Firmware) |
+| USART2 inter-MCU physical + framing | Layers 0–2 DONE | Layer 3 OPEN — [RE-Inter-MCU-Bus](RE-Inter-MCU-Bus) |
+| SDS150 / SDS200 card image | OPEN | Same family expected; no card imaged yet |
+
+## Deep dive
+
+### Two MCUs, three buses, one SD card
 
 ```mermaid
 flowchart TB
@@ -33,33 +51,23 @@ flowchart TB
     SUB -- "USB CDC<br/>VID 1965 PID 0019" --> OurApp
 ```
 
-**Reads** (from outermost to innermost):
+**Outermost → innermost:**
 
-1. **The host PC** sees one of two USB topologies, depending on the
-   mode the user picked at power-on:
-   - Mass Storage mode: MAIN exposes the SD as a SCSI block device.
-     Sentinel can do its job, and so can our app.
-   - Serial mode: MAIN exposes one CDC port (`PID 001A`), SUB
-     exposes a sister CDC port (`PID 0019`). The SD card disappears
-     while in this mode. See [RE-USB-Modes](RE-USB-Modes).
-2. **MAIN** owns the LCD, keypad, scan engine, SD card, and
-   USB-host endpoint. Its firmware is encrypted (entropy 7.9999/8.0)
-   so we can't read it statically; everything we know about MAIN
-   comes from the live serial command surface plus the published
+1. **Host PC** sees one of two USB topologies (user picks at power-on):
+   - Mass Storage: MAIN exposes the SD as SCSI. Sentinel and our app.
+   - Serial: MAIN CDC `PID 0x001A` + SUB CDC `PID 0x0019`. SD volume
+     disappears. See [RE-USB-Modes](RE-USB-Modes).
+2. **MAIN** owns LCD, keypad, scan engine, SD, USB-host endpoint.
+   Firmware encrypted — knowledge comes from live serial + published
    Uniden Remote Command Specs (V1.02 + V2.00 + BCDx36HP V1.05).
-3. **SUB** owns the RF front-end. It drives the R840 tuner over
-   I2C, runs the digital-down-conversion + filter chain
-   (CIC -> FIR1 -> FIR2 -> NCO mix -> FFT), produces the waterfall
-   data, and feeds I/Q + audio samples back to MAIN.
-4. **The two MCUs talk over LPC43xx USART2** at 115200/8N1 with
-   no flow control. Path is internal to the SoC - we did not find
-   external pin-mux for it. See [RE-Inter-MCU-Bus](RE-Inter-MCU-Bus).
-5. **The R840** is a TV tuner IC that the Uniden firmware repurposes
-   for a much wider receive surface than its DVB-T2 origin
-   suggests. Mode strings `R840_FM`, `R840_DVB_T2_1_7M`, etc. are
-   in the SUB firmware string table.
+3. **SUB** owns RF front-end: R840 over I2C, DDC chain
+   (CIC → FIR1 → FIR2 → NCO → FFT), waterfall data, I/Q + audio to MAIN.
+4. **USART2** at 115200/8N1, no flow control, SoC-internal (no external
+   pin-mux). See [RE-Inter-MCU-Bus](RE-Inter-MCU-Bus).
+5. **R840** — TV tuner IC repurposed for wide receive. Mode strings
+   `R840_FM`, `R840_DVB_T2_1_7M`, etc. in SUB string table.
 
-## How signal flows during scan
+### How signal flows during scan
 
 ```mermaid
 flowchart LR
@@ -75,51 +83,47 @@ flowchart LR
     SUB -. exposes via<br/>SUB-port debug commands .-> FFT
 ```
 
-The 13 SUB-port debug commands give us live taps into every block
-of this chain. See [RE-Serial-Protocol](RE-Serial-Protocol) for the
-full mapping of command -> DSP block.
+The 13 SUB-port debug commands tap every block. Mapping:
+[RE-Serial-Protocol](RE-Serial-Protocol).
 
-## Two USB modes, two surfaces
-
-The user picks at power-on:
+### Two USB modes, two surfaces
 
 | Mode | Surface | What we get | What we can't do |
 |---|---|---|---|
-| Mass Storage | FAT32 over USB MSC/SCSI | Read/write every persistent file: HPDs, profile, scanner.inf, firmware images, favourites | Anything live (RSSI, GSI, scan state, DSP) |
-| Serial | Two USB CDC ports (MAIN + SUB) | Live state via MAIN port commands; DSP/RF debug via SUB port | Read/write SD files (volume disappears) |
+| Mass Storage | FAT32 over USB MSC/SCSI | Read/write persistent files | Anything live |
+| Serial | Two USB CDC ports | Live MAIN commands + SUB DSP debug | SD file I/O (volume gone) |
 
-These are mutually exclusive on a given session. Our app handles
-both, transitioning by asking the user to enter the appropriate
-mode for each task. Sentinel only ever uses Mass Storage.
+Mutually exclusive per session. Sentinel only uses Mass Storage.
 
-## Firmware versions on the unit we RE'd
+### Firmware versions on the unit we RE'd
 
-Captured from `scanner.inf` and live `MDL`/`VER` queries on
-`<HOST>` 2026-04-27:
+Captured from `scanner.inf` and live `MDL`/`VER` on `<HOST>` 2026-04-27
+(later Session 4 bumped MAIN/SUB):
 
 | Component | Version | Source |
 |---|---|---|
-| MAIN firmware | 1.26.01 | `VER` on MAIN port; `Scanner` field 3 of `scanner.inf` |
-| SUB firmware | 1.03.15 | `VER` on SUB port; `Scanner` field 9 of `scanner.inf` |
-| Boot firmware? | 1.00.00 | `Scanner` fields 6/7 (educated guess - DSP / boot loader) |
-| Hardware revision | `01` | `Scanner` field 4 |
-| Serial number | `<SERIAL>` | `Scanner` field 2 |
-| Model fingerprint | `SDS100` | `Scanner` field 1; matches `MDL` on MAIN port |
+| MAIN firmware | 1.26.01 (was 1.23.07 on first card image) | `VER` on MAIN; `scanner.inf` field 3 |
+| SUB firmware | 1.03.15 (was 1.03.05 on first card image) | `VER` on SUB; `scanner.inf` field 9 |
+| Boot / DSP fields | 1.00.00 | `scanner.inf` fields 6/7 (educated guess) |
+| Hardware revision | `01` | field 4 |
+| Model fingerprint | `SDS100` | field 1; matches `MDL` on MAIN |
 
-`scanner.inf`'s 9-field `Scanner` line is BCDx36HP-family-canonical;
-the BT885 has the same shape but only 8 fields (no SUB MCU, no
-field 9). See [RE-SD-Card](RE-SD-Card).
+`scanner.inf`'s 9-field `Scanner` line is BCDx36HP-canonical; BT885
+has 8 fields (no SUB / no field 9). See [RE-SD-Card](RE-SD-Card).
 
-## Where the SDS200 / SDS150 fit
+### Where SDS200 / SDS150 fit
 
-The Uniden SDS150 (UB3912) and SDS200 (UB3842) are the same
-firmware family per the V2.00 spec. We expect them to share:
+Same firmware family per V2.00 spec. Expect same `BCDx36HP/` layout,
+SUB container, MAIN command surface (modulo form-factor), dual USB
+modes. **No SDS150/SDS200 card imaged yet** — deltas go on a sibling
+page when available. Lab note: SDS100.md treats SDS200 as ~99% shared.
 
-- Same `BCDx36HP/` SD-card layout.
-- Same SUB MCU + firmware container format.
-- Same MAIN-port command surface (modulo a few `BAS` / form-factor
-  differences).
-- Same dual-USB-mode boot prompt.
+## Lab pointers
 
-We have not yet imaged an SDS150 or SDS200 SD card; deltas will be
-documented as a sibling page when they're available.
+| Path | Role |
+|---|---|
+| `Metacache/Dev/RE/docs/SDS100.md` | Primary SDS100 lab notebook |
+| `Metacache/Dev/RE/docs/sub_static_analysis.md` | LPC43xx / peripheral / string analysis |
+| `Metacache/Dev/RE/firmware/decompiles/` | Per-function Ghidra JSON/MD (GitLab-heavy) |
+| `Metacache/Dev/RE/docs/SDS100_inter_mcu_protocol.md` | USART2 bit-level lab write-up |
+| `Metacache/Dev/RE/tools/probes/list_ports.py` | Confirm dual-CDC topology live |
