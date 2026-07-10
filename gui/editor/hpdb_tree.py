@@ -29,7 +29,9 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QHeaderView,
+    QLabel,
     QLineEdit,
+    QStackedWidget,
     QTreeView,
     QVBoxLayout,
     QWidget,
@@ -98,7 +100,17 @@ class HpdbTreeWidget(QWidget):
         self._view.setColumnWidth(2, 80)
         self._view.setColumnWidth(3, 160)
         self._view.selectionModel().currentChanged.connect(self._on_current_changed)
-        layout.addWidget(self._view)
+
+        self._empty_label = QLabel()
+        self._empty_label.setWordWrap(True)
+        self._empty_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self._empty_label.setStyleSheet("color: #666; padding: 8px;")
+        self._empty_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+
+        self._tree_stack = QStackedWidget()
+        self._tree_stack.addWidget(self._view)
+        self._tree_stack.addWidget(self._empty_label)
+        layout.addWidget(self._tree_stack)
 
     # ------------------------------------------------------------------
     # Public API
@@ -196,6 +208,7 @@ class HpdbTreeWidget(QWidget):
             self._model,
         )
         self._view.collapseAll()
+        self._show_tree_view()
         self._apply_visibility_filters()
         return True
 
@@ -212,6 +225,7 @@ class HpdbTreeWidget(QWidget):
         self._hpd_config = None
         self._sd_root = Path(sd_path) if sd_path else None
         self._model.removeRows(0, self._model.rowCount())
+        self._show_tree_view()
 
     def _restore_from_cache(self, cached: CachedHpdb) -> bool:
         self._hpd_files = cached.hpd_files
@@ -219,6 +233,7 @@ class HpdbTreeWidget(QWidget):
         self._model = cached.model
         self._view.setModel(self._model)
         self._view.collapseAll()
+        self._show_tree_view()
         self._apply_visibility_filters()
         return True
 
@@ -441,12 +456,12 @@ class HpdbTreeWidget(QWidget):
         return items
 
     def _show_message_row(self, message: str) -> None:
-        item = QStandardItem(message)
-        item.setEditable(False)
-        item.setForeground(QBrush(QColor("#666")))
-        self._model.appendRow(
-            [item, QStandardItem(""), QStandardItem(""), QStandardItem("")]
-        )
+        """Show a word-wrapped empty-state message (not a truncating tree cell)."""
+        self._empty_label.setText(message)
+        self._tree_stack.setCurrentWidget(self._empty_label)
+
+    def _show_tree_view(self) -> None:
+        self._tree_stack.setCurrentWidget(self._view)
 
     # ------------------------------------------------------------------
     # Selection + filtering

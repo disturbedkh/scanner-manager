@@ -208,8 +208,9 @@ def test_hpdb_tree_missing_hpdb_shows_message(qtbot, tmp_path: Path) -> None:
     tree = HpdbTreeWidget()
     qtbot.addWidget(tree)
     assert tree.try_load_from_card(str(missing)) is False
-    assert tree._model.rowCount() == 1
-    assert "No HPDB folder" in tree._model.item(0, 0).text()
+    assert tree._model.rowCount() == 0
+    assert tree._tree_stack.currentWidget() is tree._empty_label
+    assert "No HPDB folder" in tree._empty_label.text()
 
 
 def test_hpdb_tree_empty_hpd_dir_shows_message(qtbot, tmp_path: Path) -> None:
@@ -222,7 +223,8 @@ def test_hpdb_tree_empty_hpd_dir_shows_message(qtbot, tmp_path: Path) -> None:
     tree = HpdbTreeWidget()
     qtbot.addWidget(tree)
     assert tree.try_load_from_card(str(root)) is False
-    assert "No s_*.hpd" in tree._model.item(0, 0).text()
+    assert tree._tree_stack.currentWidget() is tree._empty_label
+    assert "No s_*.hpd" in tree._empty_label.text()
 
 
 def test_hpdb_tree_skips_unparseable_files(

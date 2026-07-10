@@ -106,18 +106,18 @@ _SCANNABLE_TYPES: Set[int] = {*_SERVICE_TYPES}
 _BUTTON_FILTERS: Dict[str, Set[int]] = {}
 
 _SERVICE_TYPE_HELP_TEXT = (
-    "The SDS100/200 plays every service type by default - selection\n"
-    "is done through Favorites Lists + Quick Keys, not hardware\n"
-    "buttons. The 36 slot ``ServiceType`` mask in profile.cfg lets\n"
+    "The SDS100/200 plays every service type by default - selection "
+    "is done through Favorites Lists + Quick Keys, not hardware "
+    "buttons. The 36 slot ``ServiceType`` mask in profile.cfg lets "
     "you mute whole categories.\n"
     "\n"
-    "RadioReference imports map agency tags to these IDs the same\n"
-    "way they do on the BearTracker, so the BT885 -> SDS migration\n"
+    "RadioReference imports map agency tags to these IDs the same "
+    "way they do on the BearTracker, so the BT885 -> SDS migration "
     "is a straight copy.\n"
     "\n"
-    "Tip: Quick Keys 1-115 are the SDS equivalent of the BT885's\n"
-    "Police/Fire/EMS/DOT buttons. Assign a Favorites List to a\n"
-    "Quick Key in the Favorites editor; the per-FL Quick Key\n"
+    "Tip: Quick Keys 1-115 are the SDS equivalent of the BT885's "
+    "Police/Fire/EMS/DOT buttons. Assign a Favorites List to a "
+    "Quick Key in the Favorites editor; the per-FL Quick Key "
     "checkbox toggles the whole list on/off."
 )
 

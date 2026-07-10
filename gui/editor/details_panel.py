@@ -12,15 +12,17 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -91,9 +93,18 @@ class BaseDetailsPanel(QWidget):
         self._help_label.setStyleSheet("color: #555555;")
         self._help_label.setVisible(False)
         self._help_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
-        layout.addWidget(self._help_label)
 
-        layout.addStretch(1)
+        self._help_scroll = QScrollArea()
+        self._help_scroll.setWidgetResizable(True)
+        self._help_scroll.setFrameShape(QFrame.NoFrame)
+        self._help_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._help_scroll.setWidget(self._help_label)
+        self._help_scroll.setVisible(False)
+        self._help_scroll.setMinimumHeight(72)
+        self._help_scroll.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
+        layout.addWidget(self._help_scroll, stretch=1)
 
         self._actions_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         self._reset()
@@ -103,7 +114,9 @@ class BaseDetailsPanel(QWidget):
         self._bulk_button.setText(bulk_action_label(profile))
         help_text = profile.service_type_help_text().strip()
         self._help_label.setText(help_text)
-        self._help_label.setVisible(bool(help_text))
+        visible = bool(help_text)
+        self._help_label.setVisible(visible)
+        self._help_scroll.setVisible(visible)
         if self._payload:
             self.show_entry(self._payload)
 

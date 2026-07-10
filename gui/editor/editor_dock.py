@@ -144,6 +144,10 @@ class EditorDock(QWidget):
 
         self._sds_splitter = QSplitter(Qt.Horizontal)
         self._sds_splitter.setHandleWidth(6)
+        self._sds_splitter_user_adjusted = False
+        self._sds_splitter.splitterMoved.connect(self._on_sds_splitter_moved)
+        self._details.setMinimumWidth(280)
+        self._side_panel.setMinimumWidth(240)
         self._sds_splitter.addWidget(self._details)
         self._sds_splitter.addWidget(self._side_panel)
         self._sds_splitter.setStretchFactor(0, 1)
@@ -205,11 +209,18 @@ class EditorDock(QWidget):
     def showEvent(self, event) -> None:  # noqa: N802 (Qt naming)
         super().showEvent(event)
         profile = self._current_profile
-        if profile is not None and profile.uses_hardware_button_semantics:
+        if profile is None:
+            return
+        if profile.uses_hardware_button_semantics:
             self._apply_bt885_splitter_defaults()
+        else:
+            self._apply_sds_splitter_defaults()
 
     def _on_splitter_moved(self, _pos: int, _index: int) -> None:
         self._splitter_user_adjusted = True
+
+    def _on_sds_splitter_moved(self, _pos: int, _index: int) -> None:
+        self._sds_splitter_user_adjusted = True
 
     def _apply_bt885_splitter_defaults(self) -> None:
         """Give the tree a usable share on wide (~1900px) windows."""
@@ -221,6 +232,20 @@ class EditorDock(QWidget):
         tree_w = max(340, int(width * 0.45))
         inspector_w = max(360, width - tree_w)
         self._splitter.setSizes([tree_w, inspector_w])
+
+    def _apply_sds_splitter_defaults(self) -> None:
+        """Balance tree | details | side panel on wide displays."""
+        outer_w = self._splitter.width()
+        if outer_w >= 400 and not self._splitter_user_adjusted:
+            tree_w = max(340, int(outer_w * 0.35))
+            right_w = max(520, outer_w - tree_w)
+            self._splitter.setSizes([tree_w, right_w])
+
+        inner_w = self._sds_splitter.width()
+        if inner_w >= 400 and not self._sds_splitter_user_adjusted:
+            details_w = max(280, int(inner_w * 0.55))
+            side_w = max(240, inner_w - details_w)
+            self._sds_splitter.setSizes([details_w, side_w])
 
     def _apply_editor_layout(self, profile: ScannerProfile) -> None:
         """BT885: tree | inspector. SDS: tree | details | side panel."""
@@ -243,6 +268,7 @@ class EditorDock(QWidget):
             self._connect_details_panel(self._details)
             self._splitter.setStretchFactor(0, 4)
             self._splitter.setStretchFactor(1, 6)
+            self._apply_sds_splitter_defaults()
 
     def _sync_hpdb_context(self) -> None:
         self._location_sim.set_hpdb_context(

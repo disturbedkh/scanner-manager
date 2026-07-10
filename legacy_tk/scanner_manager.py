@@ -410,13 +410,13 @@ SERVICE_TYPE_HELP_TEXT = (
     "  EMS button      - plays EMS Dispatch channels\n"
     "  DOT button      - plays Public Works channels\n"
     "\n"
-    "Channels tagged 'Multi Dispatch' play whenever any of the four\n"
-    "buttons is active. Channels tagged for a different kind (tac,\n"
+    "Channels tagged 'Multi Dispatch' play whenever any of the four "
+    "buttons is active. Channels tagged for a different kind (tac, "
     "talk, etc.) are ignored - the scanner has no button for them.\n"
     "\n"
-    "Advanced: the numeric service type IDs the HPD file uses are\n"
-    "  2 Police Dispatch, 3 Fire Dispatch, 4 EMS Dispatch,\n"
-    "  14 Public Works, 1 Multi Dispatch.\n"
+    "Advanced: the numeric service type IDs the HPD file uses are "
+    "2 Police Dispatch, 3 Fire Dispatch, 4 EMS Dispatch, "
+    "14 Public Works, 1 Multi Dispatch. "
     "Everything else (Tac, Talk, Auto/BTW) is stored but not played."
 )
 

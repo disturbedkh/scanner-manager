@@ -216,6 +216,7 @@ class FavoritesListsPanel(QWidget):
 
         self._info = QLabel("Select a list to inspect (Phase 2 = read-only)")
         self._info.setStyleSheet("color: #777;")
+        self._info.setWordWrap(True)
         layout.addWidget(self._info)
 
         self._last_cache_key: Optional[_FavoritesKey] = None
