@@ -50,7 +50,7 @@ is the IA charter only — do not duplicate agent runbooks here.
 
 ## Product status (pointer)
 
-**Version:** `0.11.1` (SSOT: `pyproject.toml`, `CHANGELOG.md`).
+**Version:** `0.11.2` (SSOT: `pyproject.toml`, `CHANGELOG.md`).
 
 **Status wording:** **0.11.x beta** — Qt default (`scanner-manager`),
 legacy Tk fallback (`scanner-manager-tk`). Shipped profiles: BearTracker

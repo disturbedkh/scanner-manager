@@ -6,6 +6,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-07-10
+
+### Added
+
+- Release-blocker triage in [`Metacache/ROADMAP.md`](Metacache/ROADMAP.md)
+  (Phase 2 DoD, Phase 3/4 outcomes, GA gate) and version↔tag sync gates in
+  [`Metacache/docs/RELEASE.md`](Metacache/docs/RELEASE.md).
+
+### Fixed
+
+- Correctness, thread-safety, and performance pass across core/GUI paths
+  (indexed reconcile, projection dedup, shared helpers).
+- SonarCloud / CI hardening: Option A dual profiles, autoscan disable,
+  Qt teardown tolerance on Linux coverage, lockfile install parity.
+
+### Changed
+
+- Agent notebook (`PROJECT_STATE`, `WORKSTREAMS`, `BUILD_SYSTEM`) aligned
+  with release-integrity gap and P1 auto-profile backlog priority.
+
 ## [0.11.1] - 2026-07-03
 
 ### Added

@@ -1,11 +1,12 @@
 # Build system
 
 > Status: **shipped (v0.11.x)** — GitLab CI primary; Sonar Option A (Cloud +
-> VPS). Phase 2 tail: CI vars + first green tagged VPS gate.
+> VPS). Phase 2 tail: dual-scan baseline + Qt teardown policy (see ROADMAP).
 
 Canonical design for Scanner Manager CI, packaging, and quality gates.
-Roadmap index: [`../ROADMAP.md`](../ROADMAP.md).
-SSOT version: `pyproject.toml` (`0.11.1` as of 2026-07-05).
+Roadmap index: [`../ROADMAP.md`](../ROADMAP.md) (release-blocker triage,
+Phase 2 DoD, Phase 3 trust/signing, Phase 4 E2E/HIL, GA gate).
+SSOT version: `pyproject.toml` (`0.11.2` as of 2026-07-10).
 
 ## Pipeline stages (GitLab `.gitlab-ci.yml`)
 
@@ -134,5 +135,12 @@ Verifies bundled `data/*.json`, critical imports, prints version, exits 0.
 
 ## Release cut
 
-Follow [`../docs/RELEASE.md`](../docs/RELEASE.md). Tag push triggers build →
-verify → GitLab Release publish.
+Follow [`../docs/RELEASE.md`](../docs/RELEASE.md) (version↔tag sync is a
+hard gate). Tag push triggers build → verify → GitLab Release publish.
+
+**Parked on ROADMAP (not release-cut blockers for continued beta):**
+
+- **Phase 2 tail** — Qt teardown ACCESS_VIOLATION after green tests (CI
+  already tolerates when the log shows all passed); first green
+  `sonar_compare.ps1`.
+- **Phase 3** — code signing, notarization, CycloneDX SBOM.

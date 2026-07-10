@@ -6,11 +6,14 @@
 
 Build-system design: [`../Dev/BUILD_SYSTEM.md`](../Dev/BUILD_SYSTEM.md).
 Sonar gates: [`../Dev/SONARQUBE.md`](../Dev/SONARQUBE.md).
+Release-blocker triage / GA gate: [`../ROADMAP.md`](../ROADMAP.md).
 
 ## 0. Pre-flight
 
 - [ ] `git status` is clean on `main`.
 - [ ] `pytest -m "not requires_serial and not slow" -q` is green locally.
+      (Qt teardown ACCESS_VIOLATION / segfault after a fully green log is
+      tolerated in CI; do not treat that alone as a release blocker for beta.)
 - [ ] Scoped ruff passes on the product tree:
 
   ```bash
@@ -21,9 +24,31 @@ Sonar gates: [`../Dev/SONARQUBE.md`](../Dev/SONARQUBE.md).
       `pyproject.toml` deps changed).
 - [ ] Sonar: SonarCloud gate green on GitHub `main`; optional local
       `.\scripts\sonar_scan.ps1` (VPS compliance) + `.\scripts\sonar_compare.ps1`.
-- [ ] `CHANGELOG.md` has a heading for the new version (move content
-      from `[Unreleased]`).
-- [ ] `pyproject.toml` `version` matches (e.g. `0.11.1`).
+- [ ] **Version sync (hard gate):** all three match the intended release:
+      1. `pyproject.toml` `version` (e.g. `0.11.1`)
+      2. `CHANGELOG.md` heading `## [0.11.1] - YYYY-MM-DD`
+      3. Intended annotated tag name `v0.11.1`
+- [ ] **Tag existence check:** confirm the intended tag is **not** already
+      on GitLab, and that you are not shipping a version that will remain
+      tagless:
+
+  ```powershell
+  # Local describe (may show commits past last tag — that is the gap to close)
+  git describe --tags --always
+  # Remote tags on GitLab (origin)
+  git ls-remote --tags origin "refs/tags/v*"
+  ```
+
+  **Do not** announce or publish a version whose annotated tag is missing
+  from GitLab `origin`. Tree claims (`pyproject` / `CHANGELOG`) without a
+  matching `v*` tag are a release-integrity failure.
+- [ ] **Claimed vs tagged (catch-up cuts):** if `pyproject` / `CHANGELOG`
+      already advertise `X.Y.Z` but GitLab never received `vX.Y.Z`, either:
+      - cut annotated catch-up tag `vX.Y.Z` on the commit that matches those
+        notes, and note “catch-up tag” in the GitLab Release description; or
+      - bump to `X.Y.(Z+1)`, move post-claim commits into the new CHANGELOG
+        section, then tag that. Prefer bump when HEAD has material product
+        changes not covered by the existing `X.Y.Z` notes.
 - [ ] `data/uniden_installers.json` hashes are pinned when rotating
       installers (re-run `scripts/pin_uniden_hashes.py` or verify
       against freshly downloaded files).
@@ -39,6 +64,10 @@ pip install -e . --no-deps
 
 Every push to `main` runs `.gitlab-ci.yml` (lint + tiered tests + coverage
 gate + optional SonarQube VPS).
+
+**Human-gated:** annotated tag creation, `git push origin v*`, waiting on
+GitLab Release jobs, and `publish_github.ps1` are **not** agent-automatic.
+Only cut/push a tag when a human explicitly requests that release step.
 
 For a release candidate or final tag:
 
@@ -133,5 +162,5 @@ Draft release notes from `CHANGELOG.md`.
 | Doc | Purpose |
 | --- | --- |
 | [`README.md`](README.md) | Ops doc index |
-| [`../ROADMAP.md`](../ROADMAP.md) | Build Phase 2 (SonarCloud + VPS) |
+| [`../ROADMAP.md`](../ROADMAP.md) | Build phases, release-blocker triage, GA gate |
 | [Updating wiki](https://github.com/disturbedkh/scanner-manager/wiki/Updating) | End-user update instructions |
