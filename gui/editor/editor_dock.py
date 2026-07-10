@@ -72,6 +72,9 @@ class EditorDock(QWidget):
     """Main editor surface for the active scanner."""
 
     manageDevicesRequested = Signal()
+    # Emitted when the user accepts switching the active device to the
+    # profile detected from the loaded SD card (confirm dialog).
+    profileSwitchRequested = Signal(object, object)  # Device, ScannerProfile
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -126,8 +129,11 @@ class EditorDock(QWidget):
         # ---- Horizontal splitter: tree | profile-specific right stack ----
         self._splitter = QSplitter(Qt.Horizontal)
         self._splitter.setHandleWidth(6)
+        self._splitter_user_adjusted = False
+        self._splitter.splitterMoved.connect(self._on_splitter_moved)
 
         self._tree = HpdbTreeWidget()
+        self._tree.setMinimumWidth(340)
         self._splitter.addWidget(self._tree)
 
         self._details: BaseDetailsPanel = details_panel_for(
@@ -196,6 +202,26 @@ class EditorDock(QWidget):
         except (RuntimeError, TypeError):
             pass
 
+    def showEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        super().showEvent(event)
+        profile = self._current_profile
+        if profile is not None and profile.uses_hardware_button_semantics:
+            self._apply_bt885_splitter_defaults()
+
+    def _on_splitter_moved(self, _pos: int, _index: int) -> None:
+        self._splitter_user_adjusted = True
+
+    def _apply_bt885_splitter_defaults(self) -> None:
+        """Give the tree a usable share on wide (~1900px) windows."""
+        if self._splitter_user_adjusted:
+            return
+        width = self._splitter.width()
+        if width < 400:
+            return
+        tree_w = max(340, int(width * 0.45))
+        inspector_w = max(360, width - tree_w)
+        self._splitter.setSizes([tree_w, inspector_w])
+
     def _apply_editor_layout(self, profile: ScannerProfile) -> None:
         """BT885: tree | inspector. SDS: tree | details | side panel."""
         is_bt885 = profile.uses_hardware_button_semantics
@@ -210,6 +236,7 @@ class EditorDock(QWidget):
             )
             self._splitter.setStretchFactor(0, 5)
             self._splitter.setStretchFactor(1, 4)
+            self._apply_bt885_splitter_defaults()
         else:
             self._right_stack.setCurrentIndex(1)
             self._disconnect_bt885_inspector()
@@ -275,7 +302,7 @@ class EditorDock(QWidget):
         sd_path = device.sd_card_path or ""
         self._side_panel.set_card_path(sd_path)
         if sd_path:
-            self._update_profile_mismatch_banner(sd_path, profile)
+            self._maybe_offer_profile_switch(sd_path, device, profile)
         else:
             self._clear_profile_mismatch_banner()
 
@@ -360,7 +387,7 @@ class EditorDock(QWidget):
                 self._status_label.setText(
                     self._hpdb_status_text(f"No HPDB loaded from {sd_path}")
                 )
-            self._update_profile_mismatch_banner(sd_path, profile)
+            self._maybe_offer_profile_switch(sd_path, device, profile)
         else:
             self._tree.try_load_from_card("", device_id=device.id)
             self._status_label.setText(
@@ -378,13 +405,42 @@ class EditorDock(QWidget):
             self._bt885_inspector.button_filter_panel().selected_buttons()
         )
         self._tree.set_include_others(
-            self._bt885_inspector._include_others.isChecked()
+            self._bt885_inspector.include_others()
         )
         self._on_location_filter_changed(self._location_sim.current_state())
 
     def _on_button_filter_changed(self, selected: set) -> None:
         if self._current_profile and self._current_profile.uses_hardware_button_semantics:
             self._tree.set_button_filter(selected)
+
+    def _maybe_offer_profile_switch(
+        self, sd_path: str, device: Device, configured: ScannerProfile
+    ) -> None:
+        """Detect card profile; offer to switch device, else show banner."""
+        detected = detect_from_card(sd_path)
+        if detected is None or detected.id == configured.id:
+            self._clear_profile_mismatch_banner()
+            return
+        reply = QMessageBox.question(
+            self,
+            "Scanner profile mismatch",
+            f"This SD card looks like a {detected.display_name}, but this device "
+            f"is configured as {configured.display_name}.\n\n"
+            f"Switch this device to {detected.display_name}?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if reply == QMessageBox.Yes:
+            self._clear_profile_mismatch_banner()
+            self.profileSwitchRequested.emit(device, detected)
+            return
+        self._mismatch_banner.setText(
+            f"This SD card looks like a {detected.display_name}, but this device "
+            f"is configured as {configured.display_name}. Service-type labels may "
+            "be wrong until you fix the device profile."
+        )
+        self._mismatch_banner.setVisible(True)
+        self._manage_devices_link.setVisible(True)
 
     def _update_profile_mismatch_banner(
         self, sd_path: str, configured: ScannerProfile

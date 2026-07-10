@@ -39,7 +39,7 @@ def _make_fake_card(root: Path) -> None:
     (root / "firmware" / "CityTable_V1_00_00.dat").write_bytes(b"CITY" * 100)
     (root / "HPDB" / "hpdb.cfg").write_text("# fake hpdb\n", encoding="utf-8")
     (root / "s_000001.hpd").write_text(
-        "TargetModel\tBeartracker885\n"
+        "TargetModel\tBCDx36HP\n"
         "Conventional\tCountyId=316\tStateId=12\tAlachua\n",
         encoding="utf-8",
     )
@@ -60,7 +60,7 @@ def test_profile_upsert_roundtrips_through_disk(tmp_path: Path):
             "workspace_dir": str(tmp_path / "ws"),
             "card_volume_serial": "A1B2C3D4",
             "content_fingerprint": "deadbeef",
-            "target_model": "Beartracker885",
+            "target_model": "BCDx36HP",
         }
     )
     store.set_active_profile(pid)
@@ -138,7 +138,7 @@ def test_probe_present_card_has_fingerprint_and_target(tmp_path: Path):
     _make_fake_card(tmp_path)
     ident = probe_card_identity(str(tmp_path))
     assert ident.content_fingerprint, "fingerprint should be populated"
-    assert ident.target_model == "Beartracker885"
+    assert ident.target_model == "BCDx36HP"
     assert ident.root_path == str(tmp_path)
 
 
@@ -192,7 +192,7 @@ def test_diff_trees_detects_changed_card_only(tmp_path: Path):
     # Modify the card only.
     time.sleep(0.1)
     (card_root / "s_000001.hpd").write_text(
-        "TargetModel\tBeartracker885\n# card changed\n", encoding="utf-8"
+        "TargetModel\tBCDx36HP\n# card changed\n", encoding="utf-8"
     )
     diffs = diff_trees(
         workspace_root=str(ws_root),
@@ -212,11 +212,11 @@ def test_diff_trees_detects_changed_both(tmp_path: Path):
     # Modify the card.
     time.sleep(0.1)
     (card_root / "s_000001.hpd").write_text(
-        "TargetModel\tBeartracker885\n# card\n", encoding="utf-8"
+        "TargetModel\tBCDx36HP\n# card\n", encoding="utf-8"
     )
     # Modify workspace too, differently.
     (ws_root / "s_000001.hpd").write_text(
-        "TargetModel\tBeartracker885\n# workspace\n", encoding="utf-8"
+        "TargetModel\tBCDx36HP\n# workspace\n", encoding="utf-8"
     )
     diffs = diff_trees(
         workspace_root=str(ws_root),
@@ -256,7 +256,7 @@ def test_sync_pull_copies_card_change_and_flags_external(tmp_path: Path):
     baseline = capture_file_state(str(ws_root))
     time.sleep(0.1)
     (card_root / "s_000001.hpd").write_text(
-        "TargetModel\tBeartracker885\n# updated by updater\n",
+        "TargetModel\tBCDx36HP\n# updated by updater\n",
         encoding="utf-8",
     )
 
@@ -322,7 +322,7 @@ def test_sync_push_writes_workspace_hpd_back_to_card(tmp_path: Path):
     baseline = capture_file_state(str(ws_root))
     time.sleep(0.1)
     (ws_root / "s_000001.hpd").write_text(
-        "TargetModel\tBeartracker885\n# workspace edits\n",
+        "TargetModel\tBCDx36HP\n# workspace edits\n",
         encoding="utf-8",
     )
 
@@ -674,7 +674,7 @@ def test_snapshot_from_dict_roundtrip():
         "sha256": "deadbeef",
         "card_fingerprint": "fp",
         "card_volume_serial": "SERIAL",
-        "target_model": "Beartracker885",
+        "target_model": "BCDx36HP",
         "keep": True,
     }
     snap = Snapshot.from_dict(raw)

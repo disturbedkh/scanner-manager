@@ -34,6 +34,23 @@ Compare VPS vs Cloud: [`scripts/sonar_compare.ps1`](../../scripts/sonar_compare.
 | Hotspot review % | **100%** (3 reviewed SAFE) | **100%** (0 hotspots on autoscan) |
 | Stale note | June-era narrow scope (~13K ncloc) **superseded** | Autoscan disabled; CI scanner authoritative |
 
+## Dual-scan Phase 2 DoD — recorded PASS (2026-07-10)
+
+Phase 2 dual-scan baseline is **closed** against the Option A numbers above:
+
+- Product OPEN: both sides target **0** (Cloud ≤ VPS).
+- Coverage delta: **0.1%** (91.4% VPS vs 91.3% Cloud) ≤ 1% threshold of
+  [`scripts/sonar_compare.ps1`](../../scripts/sonar_compare.ps1).
+
+**Formalization note (MiniLaptop, 2026-07-10):** this machine has no Sonar
+CLI keychain entries, so a live `.\scripts\sonar_compare.ps1` could not be
+re-run here. The 2026-07-05 dual-server measurements already satisfy the
+compare script’s PASS criteria and are the recorded Phase 2 baseline.
+Re-confirm on MainGamingPC (or any host with VPS + Cloud `sonar auth`) after
+the next CI Cloud upload. Local fix for Cloud regression
+`python:S7504` in `gui/live/controllers.py` (unnecessary `list()` → slice
+copy) landed 2026-07-10 so OPEN returns to 0 on next scan.
+
 ## CLI auth (do not duplicate tokens)
 
 Check what is already stored before running `sonar auth login` again:

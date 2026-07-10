@@ -87,11 +87,13 @@ class BaseDetailsPanel(QWidget):
         actions_layout.addStretch(1)
         layout.addWidget(self._actions_widget)
 
-        self._help_label = ScalingHelpLabel("")
+        self._help_label = ScalingHelpLabel("", max_scale=1.15)
         self._help_label.setStyleSheet("color: #555555;")
         self._help_label.setVisible(False)
-        self._help_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
-        layout.addWidget(self._help_label, stretch=1)
+        self._help_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        layout.addWidget(self._help_label)
+
+        layout.addStretch(1)
 
         self._actions_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         self._reset()

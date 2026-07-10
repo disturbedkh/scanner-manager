@@ -119,7 +119,8 @@ class _PollMixin:
     def _await_workers(self, timeout_ms: int = 2000) -> None:
         # Let in-flight polls finish before the driver is closed so a
         # worker never reads a closed handle.
-        for worker in list(self._workers):
+        # Snapshot: finished handlers may mutate ``_workers`` during wait.
+        for worker in self._workers[:]:
             worker.wait(timeout_ms)
 
     def close(self) -> None:

@@ -61,11 +61,14 @@ the MetaStore log. Each row shows:
 Bulk operations and imports group into composite events so one Revert
 rolls back the whole batch.
 
-## Profile mismatch banner (Qt)
+## Profile mismatch / auto switch (Qt)
 
 When `detect_from_card()` finds a different model than the device's
-configured profile, the editor shows a banner. Fix via **Manage
-devices…** — automatic profile switch on load is backlog.
+configured profile, the editor offers a **confirm dialog** to switch
+this device to the detected profile (persists `scanner_profile_id` on
+the device manifest and linked metastore workspace sidecar). Decline
+keeps the mismatch banner and **Manage devices…** link. Legacy Tk still
+does not call `detect_from_card()`.
 
 ## Session safety net
 

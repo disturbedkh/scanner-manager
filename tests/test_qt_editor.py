@@ -567,7 +567,11 @@ def test_details_panel_factory() -> None:
     assert isinstance(details_panel_for(get_profile("uniden_sds100")), HpdbDetailsPanel)
 
 
-def test_editor_dock_profile_mismatch_banner(qtbot, tmp_path: Path) -> None:
+def test_editor_dock_profile_mismatch_banner_on_decline(
+    qtbot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
     from core.device_manager import Device
     from gui.editor.editor_dock import EditorDock
 
@@ -581,9 +585,103 @@ def test_editor_dock_profile_mismatch_banner(qtbot, tmp_path: Path) -> None:
     (hpdb / "hpdb.cfg").write_text(_BT885_CFG, encoding="utf-8")
     (hpdb / "s_000012.hpd").write_text(_BT885_HPD, encoding="utf-8")
 
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.No)
+
     dock = EditorDock()
     qtbot.addWidget(dock)
     bt885 = get_profile("uniden_bt885")
     device = Device.make("uniden_bt885", "Wrong profile", sd_card_path=str(root))
     dock.set_active_device(device, bt885)
     assert "SDS" in dock._mismatch_banner.text()
+    assert dock._mismatch_banner.text()  # banner populated on decline
+
+
+def test_editor_dock_profile_switch_emitted_on_accept(
+    qtbot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    from core.device_manager import Device
+    from gui.editor.editor_dock import EditorDock
+
+    root = tmp_path / "card"
+    hpdb = root / "BCDx36HP" / "HPDB"
+    hpdb.mkdir(parents=True)
+    (root / "BCDx36HP" / "scanner.inf").write_text(
+        "TargetModel\tBCDx36HP\nFormatVersion\t1.00\nScanner\tSDS100\t1\t1.00\t01\t\t1.00\t1.00\t0\n",
+        encoding="utf-8",
+    )
+    (hpdb / "hpdb.cfg").write_text(_BT885_CFG, encoding="utf-8")
+    (hpdb / "s_000012.hpd").write_text(_BT885_HPD, encoding="utf-8")
+
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
+
+    dock = EditorDock()
+    qtbot.addWidget(dock)
+    received: list = []
+    dock.profileSwitchRequested.connect(lambda d, p: received.append((d, p)))
+    bt885 = get_profile("uniden_bt885")
+    device = Device.make("uniden_bt885", "Wrong profile", sd_card_path=str(root))
+    dock.set_active_device(device, bt885)
+    assert len(received) == 1
+    assert received[0][1].id == "uniden_sds100"
+    assert dock._mismatch_banner.text() == ""
+
+
+def test_main_window_persists_profile_switch(
+    qtbot, tmp_path: Path, tmp_devices: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    from core.device_manager import Device, DeviceManager
+    from core.metastore import GlobalMetaStore
+    from gui.main_window import MainWindow
+
+    root = tmp_path / "card"
+    hpdb = root / "BCDx36HP" / "HPDB"
+    hpdb.mkdir(parents=True)
+    (root / "BCDx36HP" / "scanner.inf").write_text(
+        "TargetModel\tBCDx36HP\nFormatVersion\t1.00\nScanner\tSDS100\t1\t1.00\t01\t\t1.00\t1.00\t0\n",
+        encoding="utf-8",
+    )
+    (hpdb / "hpdb.cfg").write_text(_BT885_CFG, encoding="utf-8")
+    (hpdb / "s_000012.hpd").write_text(_BT885_HPD, encoding="utf-8")
+
+    meta_path = tmp_path / "scanner_manager.meta.json"
+    store = GlobalMetaStore(meta_path)
+    store.upsert_profile(
+        {
+            "profile_id": "ws1",
+            "name": "Workspace",
+            "workspace_dir": str(tmp_path / "ws"),
+            "scanner_profile_id": "uniden_bt885",
+        }
+    )
+    store.save()
+
+    dm = DeviceManager(tmp_devices)
+    device = Device.make(
+        "uniden_bt885",
+        "Wrong",
+        sd_card_path=str(root),
+        metastore_profile_id="ws1",
+    )
+    dm.add_device(device)
+
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
+    monkeypatch.chdir(tmp_path)
+
+    win = MainWindow()
+    qtbot.addWidget(win)
+    # Force our device manager (MainWindow constructed its own).
+    win._device_manager = dm
+    win._header.set_device_manager(dm)
+    win._header.refresh_devices()
+    # Trigger editor load with mismatch (header may have already fired).
+    win._editor_dock.set_active_device(device, get_profile("uniden_bt885"))
+
+    reloaded = DeviceManager(tmp_devices).get_default()
+    assert reloaded is not None
+    assert reloaded.scanner_profile_id == "uniden_sds100"
+    sidecar = GlobalMetaStore(meta_path)
+    assert sidecar.get_profile("ws1")["scanner_profile_id"] == "uniden_sds100"

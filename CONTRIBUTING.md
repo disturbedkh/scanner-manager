@@ -121,11 +121,8 @@ The Help → Report an Issue... menu entry pre-fills most of this.
 See [`Metacache/Dev/WORKSTREAMS.md`](Metacache/Dev/WORKSTREAMS.md) for
 the live backlog. Highlights:
 
-- **Auto profile switch on card load** — Qt shows a mismatch banner
-  today; legacy Tk does not use `detect_from_card()` yet.
+- **Legacy Tk `detect_from_card`** — Tk open dialog still assumes BT885.
 - **Favorites Lists editor UI** (SDS100/SDS200).
-- **BT885 fixture cleanup** — replace stale `Beartracker885`
-  `TargetModel` aliases with RE-verified `BCDx36HP`.
 - **Waterfall live-verify items** — SUB-port span/gain probes need
   hardware confirmation.
 

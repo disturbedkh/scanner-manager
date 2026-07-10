@@ -40,7 +40,8 @@ detected_id, reason = detect_from_card(Path("D:/"))  # reads scanner.inf
 - **Legacy Tk** still sets `ACTIVE_PROFILE = get_profile(DEFAULT_PROFILE_ID)`
   at import time in `legacy_tk/scanner_manager.py` — not reassigned at runtime.
 - **`detect_from_card()`** — reads `BCDx36HP/scanner.inf` field 1 (`BT885-SCN`
-  vs `SDS100`). Qt editor shows mismatch banner; does not auto-switch yet.
+  vs `SDS100`). Qt editor offers confirm-to-switch on mismatch (banner if
+  declined); legacy Tk does not call it yet.
 
 ## The `ScannerProfile` surface
 
@@ -80,18 +81,17 @@ to a scanner profile. Don't conflate them.
 
 ## Residual TODOs (priority order)
 
-1. **Auto-detect on card load.** Wire `detect_from_card()` to reassign
-   active device/profile and persist `scanner_profile_id` on workspace
-   sidecar (Qt banner exists; full switch is backlog).
-2. **Legacy Tk detect path.** Port `detect_from_card()` to Tk open dialog.
-3. **Stop branching on globals in legacy Tk.** Migrate remaining
+1. **Legacy Tk detect path.** Port `detect_from_card()` to Tk open dialog.
+2. **Stop branching on globals in legacy Tk.** Migrate remaining
    `SERVICE_TYPES`/`SCANNABLE_TYPES` reads to `ACTIVE_PROFILE`; retire
    `compat.py` and parity test when done.
-4. **BT885 alias/fixture cleanup.** Real cards write `TargetModel\tBCDx36HP`;
-   retire `Beartracker885` alias and update test fixtures. See
-   `Metacache/Dev/RE/docs/BT885.md`.
-5. **Installer registry.** `data/uniden_installers.json` is BT885-shaped;
+3. **Installer registry.** `data/uniden_installers.json` is BT885-shaped;
    extend per-family as needed.
+
+**Shipped (2026-07-10):** Qt auto profile switch on card load (confirm
+dialog → `Device.scanner_profile_id` + metastore sidecar; banner on
+decline). BT885 fixtures/aliases use `BCDx36HP` (stale `Beartracker885`
+removed).
 
 ## Adding a third profile
 

@@ -301,7 +301,7 @@ class _HeadlessApp:
     def __init__(self, tmp_path: Path):
         hpd_path = tmp_path / "s_000777.hpd"
         hpd_path.write_text(
-            "TargetModel\tBeartracker885\n"
+            "TargetModel\tBCDx36HP\n"
             "Conventional\tCountyId=316\tStateId=12\tAlachua\n"
             "AreaCounty\tCountyId=316\tStateId=12\tAlachua\n"
             "C-Group\tCGroupId=1\tCountyId=316\tPublic Safety\tOff\t29.65\t-82.33\t10.0\tCircle\n"
@@ -494,7 +494,7 @@ def _make_multi_group_app(tmp_path: Path) -> "_HeadlessApp":
     delete_system / revert a realistic cascade to handle."""
     hpd_path = tmp_path / "s_000999.hpd"
     hpd_path.write_text(
-        "TargetModel\tBeartracker885\n"
+        "TargetModel\tBCDx36HP\n"
         "Conventional\tCountyId=316\tStateId=12\tAlachua\n"
         "AreaCounty\tCountyId=316\tStateId=12\tAlachua\n"
         "C-Group\tCGroupId=1\tCountyId=316\tPublic Safety\tOff\t29.65\t-82.33\t10.0\tCircle\n"

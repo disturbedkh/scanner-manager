@@ -77,7 +77,7 @@ def test_reconcile_reapplies_edits_and_reinserts_user_entries(tmp_path: Path):
     _write_hpd(
         old_path,
         [
-            "TargetModel\tBeartracker885",
+            "TargetModel\tBCDx36HP",
             "FormatVersion\t1",
             "Conventional\tSystemId=1\t\tCounty Conventional",
             "AreaCounty\tCountyId=86\tStateId=12\tMiami-Dade",
@@ -90,7 +90,7 @@ def test_reconcile_reapplies_edits_and_reinserts_user_entries(tmp_path: Path):
     _write_hpd(
         new_path,
         [
-            "TargetModel\tBeartracker885",
+            "TargetModel\tBCDx36HP",
             "FormatVersion\t1",
             "Conventional\tSystemId=1\t\tCounty Conventional",
             "AreaCounty\tCountyId=86\tStateId=12\tMiami-Dade",
@@ -131,7 +131,7 @@ def test_reconcile_reinserts_user_entry_by_name_when_group_id_changes(tmp_path: 
     _write_hpd(
         old_path,
         [
-            "TargetModel\tBeartracker885",
+            "TargetModel\tBCDx36HP",
             "FormatVersion\t1",
             "Conventional\tSystemId=1\t\tCounty Conventional",
             "AreaCounty\tCountyId=86\tStateId=12\tMiami-Dade",
@@ -142,7 +142,7 @@ def test_reconcile_reinserts_user_entry_by_name_when_group_id_changes(tmp_path: 
     _write_hpd(
         new_path,
         [
-            "TargetModel\tBeartracker885",
+            "TargetModel\tBCDx36HP",
             "FormatVersion\t1",
             "Conventional\tSystemId=1\t\tCounty Conventional",
             "AreaCounty\tCountyId=86\tStateId=12\tMiami-Dade",
@@ -286,7 +286,7 @@ def test_add_cgroup_inserts_and_allows_freq_add(tmp_path: Path):
     hpd_path.write_text(
         "\n".join(
             [
-                "TargetModel\tBeartracker885",
+                "TargetModel\tBCDx36HP",
                 "Conventional\tCountyId=316\tStateId=12\tAlachua\tOff\tConventional",
                 "AreaCounty\tCountyId=316\tStateId=12\tAlachua",
                 "C-Group\tCGroupId=24005\tCountyId=316\tAlachua - Existing\tOff\t29.78\t-82.46\t6.0\tCircle",
@@ -311,7 +311,7 @@ def test_haversine_and_system_coverage(tmp_path: Path):
     hpd_path.write_text(
         "\n".join(
             [
-                "TargetModel\tBeartracker885",
+                "TargetModel\tBCDx36HP",
                 "Conventional\tSystemId=1\t\tAlachua County",
                 "AreaCounty\tCountyId=316\tStateId=12\tAlachua",
                 "C-Group\tCGroupId=1\tSystemId=1\tGainesville\tOff\t29.65\t-82.33\t10.0\tCircle",
@@ -486,7 +486,7 @@ def test_scanner_city_index_builds_from_group_names(tmp_path: Path):
     hpd_path.write_text(
         "\n".join(
             [
-                "TargetModel\tBeartracker885",
+                "TargetModel\tBCDx36HP",
                 "Conventional\tCountyId=316\tStateId=12\tAlachua",
                 "AreaCounty\tCountyId=316\tStateId=12\tAlachua",
                 "C-Group\tCGroupId=1\tCountyId=316\tAlachua County - Gainesville\tOff\t29.65\t-82.33\t10.0\tCircle",
@@ -970,7 +970,7 @@ def test_trs_apply_import_skips_duplicates_and_inherits_geo(tmp_path: Path):
     hpd_path = tmp_path / "trs.hpd"
     hpd_path.write_text(
         "\n".join([
-            "TargetModel\tBeartracker885",
+            "TargetModel\tBCDx36HP",
             "Trunk\tTrunkId=7728\tStateId=12\tAlachua County Public Safety\tOff\t09/29/2025 03:36:55\tP25Standard",
             "AreaCounty\tCountyId=316\tStateId=12\tAlachua",
             "Site\tSiteId=22241\tTrunkId=7728\tSimulcast\tOff\t29.658570\t-82.339440\t24.0\tAUTO\tStandard",
@@ -1039,7 +1039,7 @@ def test_hpd_add_tgroup_and_tgid(tmp_path: Path):
     hpd_path = tmp_path / "trunk.hpd"
     hpd_path.write_text(
         "\n".join([
-            "TargetModel\tBeartracker885",
+            "TargetModel\tBCDx36HP",
             "Trunk\tTrunkId=7728\tStateId=12\tAlachua County Public Safety\tOff\t09/29/2025 03:36:55\tP25Standard",
             "AreaCounty\tCountyId=316\tStateId=12\tAlachua",
             "Site\tSiteId=22241\tTrunkId=7728\tSimulcast\tOff\t29.66\t-82.34\t24.0\tAUTO\tStandard",
@@ -1062,7 +1062,7 @@ def test_hpd_edit_entry_changes_fields(tmp_path: Path):
     hpd_path = tmp_path / "edit.hpd"
     hpd_path.write_text(
         "\n".join([
-            "TargetModel\tBeartracker885",
+            "TargetModel\tBCDx36HP",
             "Conventional\tCountyId=316\tStateId=12\tAlachua",
             "AreaCounty\tCountyId=316\tStateId=12\tAlachua",
             "C-Group\tCGroupId=1\tCountyId=316\tG\tOff\t29.65\t-82.33\t10.0\tCircle",
@@ -1085,7 +1085,7 @@ def test_hpd_delete_entry_removes_record_and_entry(tmp_path: Path):
     hpd_path = tmp_path / "del.hpd"
     hpd_path.write_text(
         "\n".join([
-            "TargetModel\tBeartracker885",
+            "TargetModel\tBCDx36HP",
             "Conventional\tCountyId=316\tStateId=12\tAlachua",
             "AreaCounty\tCountyId=316\tStateId=12\tAlachua",
             "C-Group\tCGroupId=1\tCountyId=316\tG\tOff\t29.65\t-82.33\t10.0\tCircle",
@@ -1108,7 +1108,7 @@ def test_hpd_edit_and_delete_group(tmp_path: Path):
     hpd_path = tmp_path / "grp.hpd"
     hpd_path.write_text(
         "\n".join([
-            "TargetModel\tBeartracker885",
+            "TargetModel\tBCDx36HP",
             "Conventional\tCountyId=316\tStateId=12\tAlachua",
             "AreaCounty\tCountyId=316\tStateId=12\tAlachua",
             "C-Group\tCGroupId=1\tCountyId=316\tGamma\tOff\t29.65\t-82.33\t10.0\tCircle",
@@ -1141,7 +1141,7 @@ def test_hpd_save_no_longer_creates_timestamped_backups(tmp_path: Path):
     """
     hpd_path = tmp_path / "save.hpd"
     hpd_path.write_text(
-        "TargetModel\tBeartracker885\n"
+        "TargetModel\tBCDx36HP\n"
         "Conventional\tCountyId=316\tStateId=12\tAlachua\n"
         "AreaCounty\tCountyId=316\tStateId=12\tAlachua\n"
         "C-Group\tCGroupId=1\tCountyId=316\tG\tOff\t29.65\t-82.33\t10.0\tCircle\n",
@@ -1166,7 +1166,7 @@ def test_suggest_mode_and_audit_mode_issues(tmp_path: Path):
     hpd_path = tmp_path / "audit.hpd"
     hpd_path.write_text(
         "\n".join([
-            "TargetModel\tBeartracker885",
+            "TargetModel\tBCDx36HP",
             "Conventional\tCountyId=316\tStateId=12\tAlachua",
             "AreaCounty\tCountyId=316\tStateId=12\tAlachua",
             "C-Group\tCGroupId=1\tCountyId=316\tG\tOff\t29.65\t-82.33\t10.0\tCircle",
@@ -1195,7 +1195,7 @@ def test_audit_mode_issue_with_rr_prefers_rr_data(tmp_path: Path):
     hpd_path = tmp_path / "audit_rr.hpd"
     hpd_path.write_text(
         "\n".join([
-            "TargetModel\tBeartracker885",
+            "TargetModel\tBCDx36HP",
             "Conventional\tCountyId=316\tStateId=12\tAlachua",
             "AreaCounty\tCountyId=316\tStateId=12\tAlachua",
             "C-Group\tCGroupId=1\tCountyId=316\tG\tOff\t29.65\t-82.33\t10.0\tCircle",
@@ -1253,7 +1253,7 @@ def test_rectangle_contains_point_and_group_coverage(tmp_path: Path):
     hpd_path = tmp_path / "rect.hpd"
     hpd_path.write_text(
         "\n".join([
-            "TargetModel\tBeartracker885",
+            "TargetModel\tBCDx36HP",
             "Conventional\tCountyId=0\tStateId=0\tNational",
             "C-Group\tCGroupId=42\tCountyId=0\tBTW:Region",
             "C-Freq\tCFreqId=1\tCGroupId=42\tSome\tOff\t460000000\tNFM\t\t2",
@@ -1292,7 +1292,7 @@ def test_resolve_city_offline_prefers_custom_then_hpd(tmp_path: Path):
     hpd_path.write_text(
         "\n".join(
             [
-                "TargetModel\tBeartracker885",
+                "TargetModel\tBCDx36HP",
                 "Conventional\tCountyId=316\tStateId=12\tAlachua",
                 "AreaCounty\tCountyId=316\tStateId=12\tAlachua",
                 "C-Group\tCGroupId=1\tCountyId=316\tAlachua County - Gainesville\tOff\t29.65\t-82.33\t10.0\tCircle",

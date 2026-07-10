@@ -182,8 +182,11 @@ def test_inspector_include_others_signal(qtbot) -> None:
     qtbot.addWidget(panel)
     flags: list = []
     panel.includeOthersChanged.connect(flags.append)
-    panel._include_others.setChecked(False)
+    buttons = panel.button_filter_panel()
+    assert buttons._include_others.parent() is buttons._button_box
+    buttons._include_others.setChecked(False)
     assert flags == [False]
+    assert panel.include_others() is False
 
 
 def test_editor_dock_has_no_embedded_coverage(qtbot, card_root: Path) -> None:

@@ -31,7 +31,7 @@ Implemented in:
 | `gui/devices_dialog.py` | Add Device / Manage Devices wizards; optional `detect_from_card()` when an SD path is given. |
 | `core/device_manager.py` | `Device`, `DeviceManager` — load/save `data/devices.json`. |
 | `data/devices.json` | Shipped default device manifest (schema v1). |
-| `gui/editor/editor_dock.py` | Mismatch banner when loaded SD card profile ≠ selected device (`detect_from_card()`). |
+| `gui/editor/editor_dock.py` | Confirm-to-switch (or mismatch banner on decline) when card profile ≠ device (`detect_from_card()`). |
 
 ## What "device" means
 
@@ -145,23 +145,22 @@ via `core/device_manager._default_devices_path()` (user-data override supported)
 
 Workspaces may redirect to a bundled copy under the workspace directory.
 
-## Card detection (partial)
+## Card detection
 
-`detect_from_card()` is **wired for awareness, not auto-switch**:
+`detect_from_card()` drives **confirm-to-switch** on card load:
 
 - **Add Device** wizard: suggests profile from SD path.
-- **Editor dock**: shows a banner when the mounted card's detected profile
-  differs from the selected device's `scanner_profile_id`.
-- Does **not** automatically change the header selection or call
-  `set_active_profile()` on card insert.
-
-Backlog: full detect-on-open device matching (see `WORKSTREAMS.md`).
+- **Editor dock**: on mismatch, offers to switch this device to the
+  detected profile (`profileSwitchRequested` →
+  `MainWindow._on_profile_switch_from_card`). Accept updates
+  `Device.scanner_profile_id`, persists the devices manifest + linked
+  metastore sidecar, then rebinds via the normal header device-changed
+  path. Decline keeps the mismatch banner + Manage devices link.
 
 ## Residual gaps
 
 | Gap | Today | Target |
 | --- | --- | --- |
-| Auto profile switch on card load | Mismatch banner only | Select matching device or prompt to create one |
 | Legacy Tk multi-device | Not implemented | Qt-only; Tk remains single-profile |
 | Simultaneous USB scanners | One scanner at a time | Out of scope |
 | Favorites Lists editor | No dedicated UI | Future editor tab |

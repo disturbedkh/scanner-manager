@@ -135,6 +135,9 @@ class MainWindow(QMainWindow):
         # Storage-mode editor (HPDB tree, coverage, profile side panels).
         self._editor_dock = EditorDock(parent=self)
         self._editor_dock.manageDevicesRequested.connect(self._on_manage_devices)
+        self._editor_dock.profileSwitchRequested.connect(
+            self._on_profile_switch_from_card
+        )
 
         # Live-mode surface: serial mirror + streaming tabs (full central width).
         self._live_dock = LiveDock(parent=self)
@@ -280,6 +283,51 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     # Header signal handlers
     # ------------------------------------------------------------------
+
+    def _on_profile_switch_from_card(
+        self, device: Device, profile: ScannerProfile
+    ) -> None:
+        """User accepted switching the device to the card-detected profile."""
+        if device is None or profile is None:
+            return
+        device.scanner_profile_id = profile.id
+        try:
+            self._device_manager.update_device(device)
+        except Exception:
+            logger.exception("Could not persist scanner_profile_id for device")
+            return
+        self._persist_metastore_scanner_profile(device)
+        self._current_device = device
+        # Refresh header labels; emits deviceChanged → _on_device_changed.
+        self._header.refresh_devices()
+
+    def _persist_metastore_scanner_profile(self, device: Device) -> None:
+        """Write ``scanner_profile_id`` onto the workspace sidecar when linked."""
+        mid = device.metastore_profile_id
+        if not mid:
+            return
+        from core.metastore import GlobalMetaStore
+
+        candidates = [
+            Path(self._device_manager.path).parent / GlobalMetaStore.DEFAULT_FILENAME,
+            Path.cwd() / GlobalMetaStore.DEFAULT_FILENAME,
+        ]
+        for meta_path in candidates:
+            if not meta_path.exists():
+                continue
+            try:
+                store = GlobalMetaStore(meta_path)
+                entry = store.get_profile(mid)
+                if entry is None:
+                    continue
+                entry["scanner_profile_id"] = device.scanner_profile_id
+                store.upsert_profile(entry)
+                store.save()
+                return
+            except Exception:
+                logger.exception(
+                    "Could not persist scanner_profile_id on %s", meta_path
+                )
 
     def _on_device_changed(self, device: Device) -> None:
         if device is None:

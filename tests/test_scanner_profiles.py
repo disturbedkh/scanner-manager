@@ -32,12 +32,20 @@ def test_list_profiles_contains_default() -> None:
 
 @pytest.mark.parametrize(
     "target_model",
-    ["Beartracker885", "BEARTRACKER885", "BT885", " beartracker885 "],
+    ["BT885", "BCDx36HP", "bcdx36hp", " bt885 "],
 )
 def test_target_model_resolves_to_bt885(target_model: str) -> None:
     profile = profiles_for_target_model(target_model)
     assert profile is not None
     assert profile.id == "uniden_bt885"
+
+
+def test_stale_beartracker885_alias_removed() -> None:
+    """Real cards write BCDx36HP; Beartracker885 is no longer an alias."""
+    assert profiles_for_target_model("Beartracker885") is None
+    bt885 = get_profile("uniden_bt885")
+    assert "Beartracker885" not in bt885.target_model_aliases
+    assert "BCDx36HP" in bt885.target_model_aliases
 
 
 def test_target_model_unknown_returns_none() -> None:

@@ -108,11 +108,11 @@ Shipping profiles (v0.11.1):
 | `uniden_sds100` | SDS100 / SDS200 | Serial live mirror, streaming, firmware FTP |
 
 `detect_from_card(sd_path)` reads `BCDx36HP/scanner.inf` field 1 and
-returns the matching profile. The Qt editor shows a mismatch banner when
-the card fingerprint disagrees with the configured device profile
-(`gui/editor/editor_dock.py`). **Legacy Tk does not call
-`detect_from_card()` today** — auto profile switch on card load remains
-backlog (banner only in Qt).
+returns the matching profile. On mismatch, the Qt editor offers a
+confirm dialog to switch the device profile (and persist
+`scanner_profile_id`); decline keeps the mismatch banner
+(`gui/editor/editor_dock.py` → `MainWindow._on_profile_switch_from_card`).
+**Legacy Tk does not call `detect_from_card()` today.**
 
 `data/scanner_profiles.json` is the manifest of known models;
 `data/devices.json` holds user device rows (label, profile id, SD path).

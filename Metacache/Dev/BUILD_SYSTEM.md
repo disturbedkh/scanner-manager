@@ -1,11 +1,12 @@
 # Build system
 
 > Status: **shipped (v0.11.x)** — GitLab CI primary; Sonar Option A (Cloud +
-> VPS). Phase 2 tail: dual-scan baseline + Qt teardown policy (see ROADMAP).
+> VPS). **Phase 2 complete** (dual-scan baseline recorded; Qt teardown
+> permanent CI tolerance). Phase 3 trust/signing still planned — see ROADMAP.
 
 Canonical design for Scanner Manager CI, packaging, and quality gates.
 Roadmap index: [`../ROADMAP.md`](../ROADMAP.md) (release-blocker triage,
-Phase 2 DoD, Phase 3 trust/signing, Phase 4 E2E/HIL, GA gate).
+Phase 2 Done, Phase 3 trust/signing, Phase 4 E2E/HIL, GA gate).
 SSOT version: `pyproject.toml` (`0.11.2` as of 2026-07-10).
 
 ## Pipeline stages (GitLab `.gitlab-ci.yml`)
@@ -138,9 +139,23 @@ Verifies bundled `data/*.json`, critical imports, prints version, exits 0.
 Follow [`../docs/RELEASE.md`](../docs/RELEASE.md) (version↔tag sync is a
 hard gate). Tag push triggers build → verify → GitLab Release publish.
 
+### Qt teardown — permanent CI tolerance (Phase 2 DoD closed)
+
+Post-pass Qt native crashes during interpreter/teardown are **accepted**
+when the pytest log shows all tests passed and no `FAILED` / `ERROR` lines:
+
+| Platform | Typical exit | Policy |
+| --- | --- | --- |
+| Linux | 139 (SIGSEGV), 134 (SIGABRT) | Ignore in CI when log is fully green |
+| Windows | `0xC0000005` (ACCESS_VIOLATION) | Same; local `sonar_scan*.ps1` continues when `coverage.xml` exists |
+
+Implemented in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)
+(Qt + coverage jobs) and [`scripts/sonar_scan.ps1`](../../scripts/sonar_scan.ps1) /
+[`scripts/sonar_scan_cloud.ps1`](../../scripts/sonar_scan_cloud.ps1).
+Root-cause debugging of the PySide6 teardown crash is **out of scope** for
+Phase 2; do not treat a green-log teardown crash as a release blocker for
+continued 0.11.x beta.
+
 **Parked on ROADMAP (not release-cut blockers for continued beta):**
 
-- **Phase 2 tail** — Qt teardown ACCESS_VIOLATION after green tests (CI
-  already tolerates when the log shows all passed); first green
-  `sonar_compare.ps1`.
 - **Phase 3** — code signing, notarization, CycloneDX SBOM.

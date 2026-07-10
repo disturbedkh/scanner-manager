@@ -156,6 +156,7 @@ class ButtonFilterPanel(QWidget):
     """BT885 scanner-button preview row."""
 
     selectionChanged = Signal(set)
+    includeOthersChanged = Signal(bool)
 
     BUTTONS: Tuple[Tuple[str, str], ...] = (
         ("POLICE", "Police"),
@@ -179,11 +180,19 @@ class ButtonFilterPanel(QWidget):
             cb.toggled.connect(lambda _checked, k=key: self._on_toggled(k))
             row.addWidget(cb)
             self._checks[key] = cb
+        self._include_others = QCheckBox("Include other types")
+        self._include_others.setChecked(True)
+        self._include_others.toggled.connect(self.includeOthersChanged.emit)
+        row.addWidget(self._include_others)
         row.addStretch(1)
         layout.addWidget(box)
+        self._button_box = box
 
     def selected_buttons(self) -> set:
         return {k for k, cb in self._checks.items() if cb.isChecked()}
+
+    def include_others(self) -> bool:
+        return self._include_others.isChecked()
 
     def _on_toggled(self, _key: str) -> None:
         self.selectionChanged.emit(self.selected_buttons())

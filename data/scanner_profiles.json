@@ -5,7 +5,7 @@
       "id": "uniden_bt885",
       "display": "Uniden BearTracker 885",
       "family": "uniden_beartracker",
-      "match_target_model": ["Beartracker885", "BearTracker885", "BT885", "BCDx36HP"],
+      "match_target_model": ["BT885", "BCDx36HP"],
       "match_scanner_inf": ["BT885-SCN"],
       "match_product_name": ["BT885", "BT885-SCN"],
       "supports_serial_mode": false,

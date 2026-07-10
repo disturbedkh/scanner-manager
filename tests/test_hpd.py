@@ -35,7 +35,7 @@ def test_hpd_load_builds_conventional_system(tmp_path: Path) -> None:
     _write_hpd(
         path,
         [
-            "TargetModel\tBeartracker885",
+            "TargetModel\tBCDx36HP",
             "FormatVersion\t1",
             "Conventional\tSystemId=1\t\tCounty Conventional",
             "AreaCounty\tCountyId=86\tStateId=12\tMiami-Dade",
@@ -57,7 +57,7 @@ def test_delete_system_returns_payload(tmp_path: Path) -> None:
     _write_hpd(
         path,
         [
-            "TargetModel\tBeartracker885",
+            "TargetModel\tBCDx36HP",
             "FormatVersion\t1",
             "Conventional\tSystemId=1\t\tCounty Conventional",
             "C-Group\tCGroupId=10\tSystemId=1\tDispatch",
@@ -76,7 +76,7 @@ def test_delete_system_returns_payload(tmp_path: Path) -> None:
 def test_hpd_config_loads_state_and_county(tmp_path: Path) -> None:
     cfg_path = tmp_path / "hpdb.cfg"
     hpd_path = tmp_path / "s_000012.hpd"
-    hpd_path.write_text("TargetModel\tBeartracker885\n", encoding="utf-8")
+    hpd_path.write_text("TargetModel\tBCDx36HP\n", encoding="utf-8")
     cfg_path.write_text(
         "StateInfo\t12\t0\tFlorida\tFL\n"
         "CountyInfo\t86\t12\tMiami-Dade\n",
