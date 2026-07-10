@@ -42,11 +42,11 @@ Phase 2 dual-scan baseline is **closed** against the Option A numbers above:
 - Coverage delta: **0.1%** (91.4% VPS vs 91.3% Cloud) ≤ 1% threshold of
   [`scripts/sonar_compare.ps1`](../../scripts/sonar_compare.ps1).
 
-**Formalization note (MiniLaptop, 2026-07-10):** this machine has no Sonar
-CLI keychain entries, so a live `.\scripts\sonar_compare.ps1` could not be
-re-run here. The 2026-07-05 dual-server measurements already satisfy the
+**Formalization note (2026-07-10):** one dev laptop has no Sonar CLI
+keychain entries, so a live `.\scripts\sonar_compare.ps1` could not be
+re-run there. The 2026-07-05 dual-server measurements already satisfy the
 compare script’s PASS criteria and are the recorded Phase 2 baseline.
-Re-confirm on MainGamingPC (or any host with VPS + Cloud `sonar auth`) after
+Re-confirm on a host with VPS + Cloud `sonar auth` after
 the next CI Cloud upload. Local fix for Cloud regression
 `python:S7504` in `gui/live/controllers.py` (unnecessary `list()` → slice
 copy) landed 2026-07-10 so OPEN returns to 0 on next scan.
