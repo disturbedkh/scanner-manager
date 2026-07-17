@@ -38,6 +38,8 @@ Use built-in Task subagents with prompts from [`.cursor/agents/`](.cursor/agents
 - **Don't commit** unless the user asks
 - **`app_eval` MCP** blocked unless `SCANNER_MANAGER_ALLOW_APP_EVAL=1`
 - **Sonar issues:** use **`Sonarcloud`** MCP first; fall back to **`Sonarqube`** MCP (user-global `%USERPROFILE%\.cursor\mcp.json`)
+- **Private git:** Forgejo at `git.kjhuttoenterprises.com` (remote `gitea`);
+  GitLab.com is deprecated — see [`Metacache/Dev/CURSOR.md`](Metacache/Dev/CURSOR.md)
 
 ## Active workstreams (headline)
 

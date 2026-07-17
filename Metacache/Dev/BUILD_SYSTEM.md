@@ -1,15 +1,19 @@
 # Build system
 
-> Status: **shipped (v0.11.x)** — GitLab CI primary; Sonar Option A (Cloud +
-> VPS). **Phase 2 complete** (dual-scan baseline recorded; Qt teardown
-> permanent CI tolerance). Phase 3 trust/signing still planned — see ROADMAP.
+> Status: **shipped (v0.11.x)** — private SSOT on **Forgejo** (GitLab.com
+> deprecated 2026-07-17). Sonar Option A (Cloud + VPS). **Phase 2 complete**.
+> Forgejo Actions cutover **parked** — [`.gitlab-ci.yml`](../../.gitlab-ci.yml)
+> is historical. Phase 3 trust/signing still planned — see ROADMAP.
 
 Canonical design for Scanner Manager CI, packaging, and quality gates.
 Roadmap index: [`../ROADMAP.md`](../ROADMAP.md) (release-blocker triage,
 Phase 2 Done, Phase 3 trust/signing, Phase 4 E2E/HIL, GA gate).
 SSOT version: `pyproject.toml` (`0.11.2` as of 2026-07-10).
 
-## Pipeline stages (GitLab `.gitlab-ci.yml`)
+## Pipeline stages (historical GitLab `.gitlab-ci.yml`)
+
+Until Forgejo Actions are wired, treat the following as the **as-built
+reference** for what CI used to run (and what Actions should recreate):
 
 ```text
 lint → test (tiered + matrix) → quality (coverage + SonarQube) → release → verify → publish
@@ -19,10 +23,13 @@ lint → test (tiered + matrix) → quality (coverage + SonarQube) → release �
 | --- | --- | --- |
 | `lint` | `lint` | Full-repo `ruff check` |
 | `test` | `test:unit`, `test:qt`, `test:integration`, `test:linux:*`, `test:windows`, `test:macos` | Tiered + cross-platform pytest |
-| `quality` | `test:coverage`, `sonarqube` | Coverage XML + Sonar gate (VPS job; Cloud via `scripts/sonar_scan_cloud.ps1` on push to GitHub) |
+| `quality` | `test:coverage`, `sonarqube` | Coverage XML + Sonar gate (VPS job; Cloud via `scripts/sonar_scan_cloud.ps1`) |
 | `release` | `release:windows`, `release:macos`, `release:linux` | PyInstaller tag builds |
 | `verify` | `verify:*` | Frozen `--smoke` + SHA-256 sidecar check |
-| `publish` | `release:publish` | GitLab Release assets + wheel/sdist |
+| `publish` | `release:publish` | Release assets + wheel/sdist |
+
+**Current practice:** run scoped ruff + `pytest` locally; publish public
+mirror with `.\scripts\publish_github.ps1` from Forgejo `gitea` main.
 
 ## Install path (SSOT)
 

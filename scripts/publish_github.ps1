@@ -1,21 +1,26 @@
 # Publish a sanitized public export to GitHub (disturbedkh/scanner-manager).
 #
-# GitLab retains the full private tree. This script clones GitLab main,
-# applies scripts/metacache_export_rules.yaml (strip gitignore_only paths),
-# runs scripts/sanitize_for_github.py, audits, then force-pushes main + tag.
+# Private Forgejo SSOT retains the full tree. This script clones private
+# main (remote "gitea"), applies scripts/metacache_export_rules.yaml
+# (strip gitignore_only paths), runs scripts/sanitize_for_github.py,
+# audits, then force-pushes main + tag to GitHub.
 #
 # Prerequisites:
 #   pip install git-filter-repo pyyaml
-#   git remote "gitlab" -> private GitLab mirror
-#   git remote "origin"  -> https://github.com/disturbedkh/scanner-manager.git
+#   git remote "gitea"  -> https://git.kjhuttoenterprises.com/disturbedkh/Scanner-Manager.git
+#   git remote "origin" -> https://github.com/disturbedkh/scanner-manager.git
+#   For HTTPS clone of private repo: GITEA_TOKEN or FORGEJO_TOKEN in env
+#   (or credential helper already configured).
 #
 # Usage:
 #   .\scripts\publish_github.ps1
-#   .\scripts\publish_github.ps1 -Tag v0.11.1 -Force
+#   .\scripts\publish_github.ps1 -Tag v0.11.2 -Force
 
 param(
-    [string]$Tag = "v0.11.1",
-    [string]$GitLabRemote = "gitlab",
+    [string]$Tag = "v0.11.2",
+    [string]$PrivateRemote = "gitea",
+    # Deprecated: former GitLab remote name; if set, overrides PrivateRemote
+    [string]$GitLabRemote = "",
     [string]$GitHubRemote = "origin",
     [switch]$Force,
     [switch]$SkipCloudGate
@@ -24,6 +29,11 @@ param(
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $RepoRoot
+
+if ($GitLabRemote) {
+    Write-Warning "-GitLabRemote is deprecated; use -PrivateRemote (default: gitea)."
+    $PrivateRemote = $GitLabRemote
+}
 
 function Require-Command {
     param([string]$Name, [string]$Hint)
@@ -34,11 +44,36 @@ function Require-Command {
 
 function Resolve-RemoteUrl {
     param([string]$Remote)
+    # Prefer fetch URL (HTTPS) for clone; push may be SSH.
     $url = git remote get-url $Remote 2>$null
     if (-not $url) {
         throw "Git remote '$Remote' is not configured."
     }
     return $url
+}
+
+function Get-AuthenticatedCloneUrl {
+    param([string]$Url)
+    if ($Url -notmatch '^https://') {
+        return $Url
+    }
+    $token = $env:FORGEJO_TOKEN
+    if (-not $token) { $token = $env:GITEA_TOKEN }
+    if (-not $token) {
+        $token = [Environment]::GetEnvironmentVariable("FORGEJO_TOKEN", "User")
+    }
+    if (-not $token) {
+        $token = [Environment]::GetEnvironmentVariable("GITEA_TOKEN", "User")
+    }
+    if (-not $token) {
+        # Unauthenticated HTTPS may fail for private repos; let git try credential helper.
+        return $Url
+    }
+    # oauth2:TOKEN@host/... for Gitea/Forgejo HTTPS
+    if ($Url -match '^https://([^/]+)/(.+)$') {
+        return "https://oauth2:$token@$($Matches[1])/$($Matches[2])"
+    }
+    return $Url
 }
 
 function Get-VenvPython {
@@ -56,10 +91,11 @@ function Invoke-FilterRepo {
 Require-Command git "Install Git."
 $Python = Get-VenvPython
 
-$gitlabUrl = Resolve-RemoteUrl -Remote $GitLabRemote
+$privateUrl = Resolve-RemoteUrl -Remote $PrivateRemote
 $githubUrl = Resolve-RemoteUrl -Remote $GitHubRemote
+$cloneUrl = Get-AuthenticatedCloneUrl -Url $privateUrl
 
-Write-Host "GitLab source : $gitlabUrl" -ForegroundColor Cyan
+Write-Host "Private source: $privateUrl (remote '$PrivateRemote')" -ForegroundColor Cyan
 Write-Host "GitHub target : $githubUrl" -ForegroundColor Cyan
 Write-Host "Release tag   : $Tag" -ForegroundColor Cyan
 
@@ -92,8 +128,8 @@ New-Item -ItemType Directory -Path $cloneDir -Force | Out-Null
 
 try {
     Write-Host ""
-    Write-Host "Cloning GitLab main..." -ForegroundColor Green
-    git clone --branch main --single-branch $gitlabUrl $cloneDir
+    Write-Host "Cloning private main ($PrivateRemote)..." -ForegroundColor Green
+    git clone --branch main --single-branch $cloneUrl $cloneDir
     Set-Location $cloneDir
 
     Write-Host ""

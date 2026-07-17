@@ -30,8 +30,15 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
 ```bash
-git clone https://github.com/disturbedkh/scanner-manager.git
-cd scanner-manager
+# Full private tree (recommended for contributors with Forgejo access)
+git clone https://git.kjhuttoenterprises.com/disturbedkh/Scanner-Manager.git
+cd Scanner-Manager
+# HTTPS needs a Forgejo PAT (GITEA_TOKEN / credential helper).
+
+# Or public sanitized tree:
+# git clone https://github.com/disturbedkh/scanner-manager.git
+# cd scanner-manager
+
 python -m pip install -U pip
 python -m pip install -e ".[full,dev]"
 ```

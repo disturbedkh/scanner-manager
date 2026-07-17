@@ -1,10 +1,14 @@
 {
   "mcpServers": {
-    "GitLab": {
-      "url": "https://gitlab.com/api/v4/mcp",
-      "auth": {
-        "scopes": ["mcp"]
-      }
+    "Forgejo": {
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/scripts/run_forgejo_mcp.ps1"
+      ]
     },
     "scanner-manager-dev": {
       "command": "${workspaceFolder}${/}.venv${/}Scripts${/}python.exe",

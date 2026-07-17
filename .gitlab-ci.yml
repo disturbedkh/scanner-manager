@@ -1,4 +1,6 @@
-# GitLab CI — primary gate for scanner-manager (private mirror).
+# GitLab CI — HISTORICAL / UNUSED (GitLab.com deprecated 2026-07-17).
+# Private SSOT is Forgejo: https://git.kjhuttoenterprises.com/disturbedkh/Scanner-Manager
+# Actions cutover is a follow-up; do not treat this file as the live primary gate.
 # Install path: pip-sync requirements.lock + pip install -e . --no-deps
 
 stages:
