@@ -129,7 +129,13 @@ New-Item -ItemType Directory -Path $cloneDir -Force | Out-Null
 try {
     Write-Host ""
     Write-Host "Cloning private main ($PrivateRemote)..." -ForegroundColor Green
+    # git writes progress to stderr; don't treat as terminating under $ErrorActionPreference Stop
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     git clone --branch main --single-branch $cloneUrl $cloneDir
+    $cloneExit = $LASTEXITCODE
+    $ErrorActionPreference = $prevEap
+    if ($cloneExit -ne 0) { throw "git clone failed with exit $cloneExit" }
     Set-Location $cloneDir
     # Avoid leaking oauth2:TOKEN@… via later git-filter-repo remote notices
     if ((git remote) -contains 'origin') {
