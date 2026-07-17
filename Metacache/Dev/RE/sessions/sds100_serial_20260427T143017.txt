@@ -1,8 +1,8 @@
 # SDS100 passive serial probe
 # When     : 2026-04-27T14:30:17
-# Host     : MINILAPTOP
+# Host: <HOST>
 # Port     : COM5  (baud=115200, 8N1)
-# Output   : C:\Users\khutt\OneDrive\Desktop\Projects\scanner-manager-20260420T171611Z-3-001\scanner-manager\AI\Dev\RE\sessions\sds100_serial_20260427T143017.txt
+# Output: <repo>/Metacache/Dev/RE/sessions/sds100_serial_20260427T143017.txt
 # Probe ID : 20260427T143017
 #
 # Forbidden (never sent): ['CLR', 'DLA', 'EPG', 'GLT', 'JNT', 'JPM', 'KEY', 'MEMSET', 'PRG', 'RST,SET', 'SLO', 'TGW', 'VLO', 'WIPE', 'WPL', 'WPS']
