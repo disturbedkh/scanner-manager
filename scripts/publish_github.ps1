@@ -131,6 +131,10 @@ try {
     Write-Host "Cloning private main ($PrivateRemote)..." -ForegroundColor Green
     git clone --branch main --single-branch $cloneUrl $cloneDir
     Set-Location $cloneDir
+    # Avoid leaking oauth2:TOKEN@… via later git-filter-repo remote notices
+    if ((git remote) -contains 'origin') {
+        git remote set-url origin $privateUrl
+    }
 
     Write-Host ""
     Write-Host "Running git filter-repo (metacache_export_rules.yaml)..." -ForegroundColor Green
