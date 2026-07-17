@@ -140,7 +140,10 @@ def test_get_tool_returns_single_or_none(
 # run_tool / install_tool guardrails
 # ---------------------------------------------------------------------------
 
-def test_run_tool_raises_when_not_installed() -> None:
+def test_run_tool_raises_when_not_installed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(uniden_tools.sys, "platform", "win32")
     tool = UnidenTool(
         tool_id=TOOL_BT885,
         display_name="x",
@@ -151,7 +154,25 @@ def test_run_tool_raises_when_not_installed() -> None:
         run_tool(tool)
 
 
-def test_install_tool_raises_without_installer(tmp_path: Path) -> None:
+def test_run_tool_raises_on_non_windows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(uniden_tools.sys, "platform", "linux")
+    tool = UnidenTool(
+        tool_id=TOOL_BT885,
+        display_name="x",
+        scanner_family="x",
+        installed=True,
+        exe_path="/tmp/fake.exe",
+    )
+    with pytest.raises(OSError, match="Windows-only"):
+        run_tool(tool)
+
+
+def test_install_tool_raises_without_installer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(uniden_tools.sys, "platform", "win32")
     tool = UnidenTool(
         tool_id=TOOL_SENTINEL,
         display_name="x",
@@ -159,6 +180,20 @@ def test_install_tool_raises_without_installer(tmp_path: Path) -> None:
         bundled_installer=None,
     )
     with pytest.raises(FileNotFoundError):
+        install_tool(tool)
+
+
+def test_install_tool_raises_on_non_windows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(uniden_tools.sys, "platform", "linux")
+    tool = UnidenTool(
+        tool_id=TOOL_SENTINEL,
+        display_name="x",
+        scanner_family="x",
+        bundled_installer="/tmp/setup.exe",
+    )
+    with pytest.raises(OSError, match="Windows-only"):
         install_tool(tool)
 
 
@@ -357,6 +392,7 @@ def test_read_exe_version_uses_mtime_cache(
 def test_run_tool_launches_when_installed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(uniden_tools.sys, "platform", "win32")
     exe = tmp_path / "UpdateManager.exe"
     exe.write_bytes(b"MZ")
     tool = UnidenTool(
@@ -380,6 +416,7 @@ def test_run_tool_launches_when_installed(
 def test_run_tool_no_wait_returns_zero(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(uniden_tools.sys, "platform", "win32")
     exe = tmp_path / "UpdateManager.exe"
     exe.write_bytes(b"MZ")
     tool = UnidenTool(
@@ -405,6 +442,7 @@ def test_run_tool_timeout_kills_process(
 ) -> None:
     import subprocess
 
+    monkeypatch.setattr(uniden_tools.sys, "platform", "win32")
     exe = tmp_path / "UpdateManager.exe"
     exe.write_bytes(b"MZ")
     tool = UnidenTool(
@@ -451,6 +489,7 @@ def test_extract_setup_from_archive_zip_and_exe(tmp_path: Path) -> None:
 def test_install_tool_runs_bundled_exe(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(uniden_tools.sys, "platform", "win32")
     installer = tmp_path / "setup.exe"
     installer.write_bytes(b"MZ")
     tool = UnidenTool(
@@ -922,6 +961,7 @@ def test_install_tool_from_zip_archive(
 
     from core.uniden_tools import install_tool
 
+    monkeypatch.setattr(uniden_tools.sys, "platform", "win32")
     archive = tmp_path / "bundle.zip"
     with zipfile.ZipFile(archive, "w") as zf:
         zf.writestr("pkg/setup.exe", b"MZ")
@@ -956,9 +996,12 @@ def test_install_tool_from_zip_archive(
     assert launched
 
 
-def test_install_tool_zip_extraction_failure(tmp_path: Path) -> None:
+def test_install_tool_zip_extraction_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from core.uniden_tools import install_tool
 
+    monkeypatch.setattr(uniden_tools.sys, "platform", "win32")
     bad_zip = tmp_path / "broken.zip"
     bad_zip.write_bytes(b"not-a-zip")
     tool = UnidenTool(
@@ -974,6 +1017,7 @@ def test_install_tool_zip_extraction_failure(tmp_path: Path) -> None:
 def test_install_tool_no_wait(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(uniden_tools.sys, "platform", "win32")
     installer = tmp_path / "setup.exe"
     installer.write_bytes(b"MZ")
     tool = UnidenTool(
